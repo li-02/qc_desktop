@@ -1,21 +1,27 @@
 {
   "name": "qc_desktop",
   "version": "1.0.0",
-  "description": "Electron TypeScript Application",
+  "description": "QC Desktop Application",
   "main": "dist/electron/main.js",
   "scripts": {
-    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:electron\"",
+    "dev": "cross-env NODE_ENV=development concurrently \"npm run dev:frontend\" \"npm run dev:electron\"",
     "dev:frontend": "cd frontend && npm run dev",
-    "dev:electron": "tsc -p electron/tsconfig.json && electron .",
-    "build": "tsc -p electron/tsconfig.json && cd frontend && npm run build",
+    "dev:electron": "wait-on http://localhost:5173 && tsc -p electron/tsconfig.json && electron .",
+    "build": "npm run build:frontend && npm run build:electron && npm run copy-dist",
+    "build:frontend": "cd frontend && npm run build",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "copy-dist": "mkdir -p public && cp -r frontend/dist public/ && cp -r dist public/",
     "watch": "tsc -w -p electron/tsconfig.json"
   },
   "dependencies": {
-    "electron": "^28.1.0"
+    "electron": "^31.7.6"
   },
   "devDependencies": {
-    "@types/node": "^20.10.5",
+    "@types/node": "^20.16.0",
     "concurrently": "^8.2.2",
-    "typescript": "^5.3.3"
+    "cross-env": "^7.0.3",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.4.2",
+    "wait-on": "^7.2.0"
   }
 }

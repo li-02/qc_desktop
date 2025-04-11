@@ -1,0 +1,29 @@
+{
+    "appId": "com.yourcompany.qc-desktop",
+    "productName": "QC Desktop",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "public/dist/**/*",
+      "public/frontend/dist/**/*",
+      "node_modules/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.utilities"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }

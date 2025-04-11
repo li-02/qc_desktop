@@ -1,0 +1,21 @@
+{
+  "name": "qc_desktop",
+  "version": "1.0.0",
+  "description": "Electron TypeScript Application",
+  "main": "dist/electron/main.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:electron\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:electron": "tsc -p electron/tsconfig.json && electron .",
+    "build": "tsc -p electron/tsconfig.json && cd frontend && npm run build",
+    "watch": "tsc -w -p electron/tsconfig.json"
+  },
+  "dependencies": {
+    "electron": "^28.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "concurrently": "^8.2.2",
+    "typescript": "^5.3.3"
+  }
+}

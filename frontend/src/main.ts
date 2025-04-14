@@ -1,17 +1,18 @@
 import { createApp } from 'vue'
-import './style.css'
+import './assets/style.css'
 import App from './App.vue'
-import ELementPlus from 'element-plus'
+import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
-import * as ELementPlusIconsVue from '@element-plus/icons-vue'
+import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 // 引入tailwindcss
 import './assets/tailwind.css'
+import 'animate.css'
 
-const app=createApp(App)
+const app = createApp(App)
 
-// 注册所有ELement Plus图标
-for(const [key,component] of Object.entries(ELementPlusIconsVue)){
-    app.component(key,component)
+// 注册所有Element Plus图标
+for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+  app.component(key, component)
 }
-app.use(ELementPlus)
+app.use(ElementPlus)
 app.mount('#app')

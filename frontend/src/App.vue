@@ -1,10 +1,9 @@
-
 <script setup lang="ts">
-import AppStartPage from './views/app-start-page/index.vue'
+import HomePage from './views/home-page/index.vue'
 </script>
 
 <template>
-  <AppStartPage />
+  <HomePage />
 </template>
 
 <style>

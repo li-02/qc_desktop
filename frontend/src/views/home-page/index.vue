@@ -34,37 +34,51 @@ const importData = () => {
             text
           />
 
-          <transition name="fade">
-            <div v-if="!isCollapsed" class="flex flex-col h-full bg-gray-100 aside-container">
-              <!--              项目浏览器部分，占据上部分-->
-              <div class="flex flex-col h-1/2 min-h-0">
-                <h3 class="bg-gray-600 rounded aside-label-container">
-                  <span class="text-white text-sm"> 项目浏览器 </span>
-                </h3>
-                <div
-                  class="bg-white p-2 border border-gray-300 mt-1 rounded flex-grow overflow-auto"
-                >
-                  <p class="bg-blue-500 text-white p-1 rounded text-xs">密云监测站</p>
-                  <p class="text-gray-500 p-1 text-xs">暂无数据</p>
+          <!-- 使用 Tailwind 的过渡类和 Vue 的 Transition -->
+          <div class="flex flex-col h-full">
+            <Transition
+              enter-active-class="transition-opacity duration-300 delay-200"
+              leave-active-class="transition-opacity duration-150"
+              enter-from-class="opacity-0"
+              leave-to-class="opacity-0"
+            >
+              <div v-if="!isCollapsed" class="flex flex-col h-full bg-gray-100 !p-1">
+                <!-- 项目浏览器部分 -->
+                <div class="flex flex-col h-1/2 min-h-0">
+                  <p class="bg-gray-600 rounded !py-1 !my-1 flex items-center h-6">
+                    <span class="text-white text-sm !ml-2"> 项目浏览器 </span>
+                  </p>
+                  <div
+                    class="bg-white !p-2 border border-gray-300 mt-1 rounded flex-grow overflow-auto"
+                  >
+                    <p class="bg-blue-500 p-1 rounded flex items-center h-6">
+                      <span class="text-white text-xs !ml-2">密云监测站</span>
+                    </p>
+                    <p class="p-1 bg-gray-200 !my-1 flex items-center h-5 rounded">
+                      <span class="text-gray-500 text-xs !ml-2">暂无数据</span>
+                    </p>
+                  </div>
+                </div>
+                <!-- 数据处理步骤部分 -->
+                <div class="flex flex-col h-1/2 min-h-0 !mt-1">
+                  <p class="bg-gray-600 rounded !py-1 !my-1 flex items-center h-6">
+                    <span class="text-white text-sm !ml-2"> 数据处理步骤 </span>
+                  </p>
+                  <div
+                    class="bg-white !p-2 border border-gray-300 mt-1 rounded flex-grow overflow-auto !py-1"
+                  >
+                    <p class="p-1 bg-gray-200 !my-1 h-5 flex items-center rounded">
+                      <span class="text-gray-500 text-xs !ml-2">导入数据</span>
+                    </p>
+                    <p>数据预处理</p>
+                    <p>数据分析</p>
+                    <p>数据可视化</p>
+                    <p>数据导出</p>
+                  </div>
                 </div>
               </div>
-              <!--              数据处理步骤部分-->
-              <div class="flex flex-col h-1/2 min-h-0 mt-4">
-                <h3 class="bg-gray-500 rounded aside-label-container">
-                  <span class="text-sm text-white"> 数据处理步骤 </span>
-                </h3>
-                <div
-                  class="bg-white p-2 border border-gray-300 mt-1 rounded flex-grow overflow-auto aside-label-container"
-                >
-                  <p class="text-gray-500 p-1 text-xs">导入数据</p>
-                  <p>数据预处理</p>
-                  <p>数据分析</p>
-                  <p>数据可视化</p>
-                  <p>数据导出</p>
-                </div>
-              </div>
-            </div>
-          </transition>
+            </Transition>
+          </div>
         </div>
       </el-aside>
       <el-main class="bg-white p-4 sm:p-2 md:p-4">
@@ -95,22 +109,8 @@ const importData = () => {
 .el-aside {
   border-right: 1px solid #e0e0e0;
 }
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s;
-}
-.fade-enter,
-.fade-leave-to {
-  opacity: 0;
-}
 .toggle-btn {
   font-size: 20px;
   justify-content: start;
-}
-.aside-container {
-  padding: 4px;
-}
-.aside-label-container {
-  padding: 4px 0;
 }
 </style>

@@ -1,5 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
+import {Menu} from 'electron'; // 引入Menu模块
+
 
 // 保持窗口对象的全局引用，避免JavaScript对象被垃圾回收时窗口关闭
 let mainWindow: BrowserWindow | null = null;
@@ -9,11 +11,31 @@ function createWindow() {
     width: 800,
     height: 600,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      nodeIntegration: false,
+      contextIsolation: true,
       preload: path.join(__dirname, 'preload.js') // 我们将添加预加载脚本
     }
   });
+  // 菜单栏模板
+  const menuBar=[
+    {
+      label: '文件',
+      submenu:[
+        {label:'新建项目',click:()=>{
+          if(mainWindow){
+            mainWindow.webContents.send('open-create-project-dialog');
+          }
+        }},
+        {label:'导入数据',click:()=>{
+          if(mainWindow){
+            mainWindow.webContents.send('open-import-data-dialog');
+          }
+        }}
+      ]
+    }
+  ];
+  const menu=Menu.buildFromTemplate(menuBar); // 构建菜单栏
+  Menu.setApplicationMenu(menu); // 设置菜单栏
 
   // 根据环境加载不同的URL
   if (process.env.NODE_ENV === 'development') {

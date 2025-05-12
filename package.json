@@ -14,7 +14,8 @@
     "watch": "tsc -w -p electron/tsconfig.json"
   },
   "dependencies": {
-    "electron": "^31.7.6"
+    "electron": "^31.7.6",
+    "mitt": "^3.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.16.0",

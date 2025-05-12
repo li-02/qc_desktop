@@ -9,16 +9,19 @@ const toggleCollapse = () => {
 const importData = () => {
   ElMessage.success('导入数据功能待实现')
 }
+const createNewProject = () => {
+  ElMessage.success('新建项目功能待实现')
+}
 </script>
 
 <template>
-  <!-- 工具栏 -->
   <el-container class="h-screen bg-gray-100 md-bg-gray-200">
-    <el-header class="bg-gray-700 text-white flex items-center px-4">
-      <el-button type="primary" class="mr-2"><span class="text-lg">+</span></el-button>
+    <!-- 工具栏 -->
+    <!-- <el-header class="bg-gray-700 text-white flex items-center px-4">
+      <el-button type="primary" class="mr-2" @click="createNewProject"><span class="text-lg">新建项目</span></el-button>
       <el-button type="primary" class="mr-2"><span class="text-lg">-</span></el-button>
       <el-button type="primary">导入数据</el-button>
-    </el-header>
+    </el-header> -->
     <!--    主布局-->
     <el-container>
       <!-- 侧边栏（可折叠） -->

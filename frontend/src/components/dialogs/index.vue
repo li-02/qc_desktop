@@ -46,6 +46,7 @@ onUnmounted(()=>{
 
 <style scoped>
 .global-dialogs{
-    display: none;
+    position: relative; /* 使用相对定位而不是隐藏 */
+    z-index: 2000; /* 确保对话框层级足够高 */
 }
 </style>

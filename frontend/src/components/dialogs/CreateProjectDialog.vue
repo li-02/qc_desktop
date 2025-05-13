@@ -1,50 +1,131 @@
 <!-- 新建项目 -->
 <script setup lang="ts">
-import { ref } from 'vue';
+import {ref} from "vue";
+import "plus-pro-components/es/components/form/style/css";
+import {type FieldValues, type PlusColumn, PlusForm} from "plus-pro-components";
 
 const dialogVisible = ref(false);
-const form=ref({
-    name: '',
+const projectInfo = ref<FieldValues>({
+  siteName: "",
+  longitude: "",
+  latitude: "",
+  altitude: "",
 });
-const open=()=>{
-    dialogVisible.value=true;
-}
-const close=()=>{
-    dialogVisible.value=false;
-}
-const confirm=()=>{
-    console.log(form.value.name);
-    close();
-}
-const handleClosed=()=>{
-    form.value={
-        name: '',
-    }
-}
+const rules = {
+  siteName: [
+    {
+      required: true,
+      message: "请输入站点名称",
+    },
+  ],
+};
+const columns: PlusColumn[] = [
+  {
+    label: "站点名称",
+    width: 120,
+    prop: "siteName",
+    valueType: "input",
+    fieldProps: {
+      placeholder: "",
+    },
+  },
+  {
+    label: "经度",
+    width: 120,
+    prop: "longitude",
+    valueType: "copy",
+    colProps: {
+      span: 8,
+    },
+    fieldSlots: {
+      append: () => "°",
+    },
+    fieldProps: {
+      placeholder: "",
+    },
+  },
+  {
+    label: "纬度",
+    width: 120,
+    prop: "latitude",
+    valueType: "copy",
+    colProps: {
+      span: 8,
+    },
+    fieldSlots: {
+      append: () => "°",
+    },
+    fieldProps: {
+      placeholder: "",
+    },
+  },
+  {
+    label: "高度",
+    width: 120,
+    prop: "altitude",
+    valueType: "copy",
+    colProps: {
+      span: 8,
+    },
+    fieldSlots: {
+      append: () => "m",
+    },
+    fieldProps: {
+      placeholder: "",
+    },
+  },
+];
+const open = () => {
+  dialogVisible.value = true;
+};
+const close = () => {
+  dialogVisible.value = false;
+};
+const handleClosed = () => {
+  projectInfo.value = {
+    siteName: "",
+    longitude: "",
+    latitude: "",
+    altitude: "",
+  };
+};
+const handleChange = (values: FieldValues, prop: PlusColumn) => {
+  console.log(values, prop, "change");
+};
+const handleSubmit = (values: FieldValues) => {
+  console.log(values, "submit");
+};
+const handleSubmitError = (err: any) => {
+  console.log(err, "err");
+};
+const handleReset = () => {
+  console.log("handleReset");
+};
+
 // 暴露方法给父组件
 defineExpose({
   open,
-  close
+  close,
 });
 </script>
 
 <template>
-<div>
+  <div>
     <el-dialog v-model="dialogVisible" title="新建项目" width="50%" @closed="handleClosed">
-        <el-form :model="form">
-            <el-form-item label="1">
-                <el-input v-model="form.name" placeholder="请输入项目名称"></el-input>
-            </el-form-item>
-        </el-form>
-        <template #footer>
-            <span>
-                <el-button @click="close">取消</el-button>
-                <el-button type="primary" @click="confirm">确定</el-button>
-            </span>
-        </template>
+      <PlusForm
+        v-model="projectInfo"
+        class="m-auto"
+        :columns="columns"
+        :rules="rules"
+        :row-props="{gutter: 5}"
+        label-width="100px"
+        label-position="right"
+        @change="handleChange"
+        @submit="handleSubmit"
+        @submit-error="handleSubmitError"
+        @reset="handleReset" />
     </el-dialog>
-</div>
+  </div>
 </template>
 
-<style scoped>
-</style>
+<style scoped></style>

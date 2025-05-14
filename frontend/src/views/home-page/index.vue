@@ -1,119 +1,118 @@
-<script lang="ts" setup>
-import { ref } from 'vue'
-import { ElMessage } from 'element-plus'
+<template>
+  <div class="bg-white rounded-lg shadow-sm p-6">
+    <div class="flex items-center mb-6">
+      <el-icon class="text-blue-500 text-xl mr-2">
+        <HomeFilled/>
+      </el-icon>
+      <h2 class="text-2xl font-bold text-gray-800">密云监测站数据分析</h2>
+    </div>
 
-const isCollapsed = ref(false)
-const toggleCollapse = () => {
-  isCollapsed.value = !isCollapsed.value
-}
+    <el-card class="welcome-card mb-6">
+      <template #header>
+        <div class="flex items-center">
+          <el-icon class="mr-2">
+            <InfoFilled/>
+          </el-icon>
+          <span>项目概览</span>
+        </div>
+      </template>
+      <div class="flex flex-col md:flex-row">
+        <div class="flex items-center justify-center md:w-1/3 mb-4 md:mb-0">
+          <div
+              class="w-24 h-24 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center transform transition-transform hover:scale-105"
+          >
+            <el-icon class="text-4xl">
+              <DataAnalysis/>
+            </el-icon>
+          </div>
+        </div>
+        <div class="md:w-2/3">
+          <h3 class="text-lg font-medium mb-2">欢迎使用数据分析平台</h3>
+          <p class="text-gray-600 mb-4">本平台提供全面的数据处理和分析功能，帮助您从数据中获取有价值的见解。</p>
+          <el-button
+              type="primary"
+              @click="importData"
+              class="transform transition-transform hover:scale-105"
+          >
+            <el-icon class="mr-1">
+              <Upload/>
+            </el-icon>
+            导入数据
+          </el-button>
+        </div>
+      </div>
+    </el-card>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      <el-card shadow="hover" v-for="(step, index) in workflowSteps" :key="index">
+        <template #header>
+          <div class="flex items-center">
+            <el-icon class="mr-2">
+              <component :is="step.icon"/>
+            </el-icon>
+            <span>{{ step.title }}</span>
+          </div>
+        </template>
+        <div class="h-32 flex flex-col justify-between">
+          <p class="text-gray-600">{{ step.description }}</p>
+          <router-link :to="step.path">
+            <el-button text class="mt-2 text-blue-500">
+              前往
+              <el-icon class="ml-1">
+                <ArrowRight/>
+              </el-icon>
+            </el-button>
+          </router-link>
+        </div>
+      </el-card>
+    </div>
+
+    <el-alert
+        title="系统提示"
+        type="info"
+        description="在开始分析前，请先导入数据文件。支持CSV、Excel、JSON等格式。"
+        show-icon
+        :closable="false"
+        class="mb-4"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+import {ElMessage} from 'element-plus'
+import {ArrowRight, DataAnalysis, HomeFilled, InfoFilled, Upload} from '@element-plus/icons-vue'
+
+// 导入数据功能
 const importData = () => {
   ElMessage.success('导入数据功能待实现')
 }
-const createNewProject = () => {
-  ElMessage.success('新建项目功能待实现')
-}
+
+// 工作流程步骤
+const workflowSteps = [
+  {
+    title: '数据预处理',
+    description: '清洗、标准化和处理原始数据，为后续分析做准备。',
+    icon: 'DataAnalysis',
+    path: '/data-processing'
+  },
+  {
+    title: '数据分析',
+    description: '使用统计和机器学习方法深入挖掘数据中的模式和关系。',
+    icon: 'Operation',
+    path: '/data-analysis'
+  },
+  {
+    title: '数据可视化',
+    description: '创建直观的图表和仪表板，帮助理解数据并传达见解。',
+    icon: 'PieChart',
+    path: '/data-visualization'
+  }
+]
 </script>
 
-<template>
-  <el-container class="h-screen bg-gray-100 md-bg-gray-200">
-    <!-- 工具栏 -->
-    <!-- <el-header class="bg-gray-700 text-white flex items-center px-4">
-      <el-button type="primary" class="mr-2" @click="createNewProject"><span class="text-lg">新建项目</span></el-button>
-      <el-button type="primary" class="mr-2"><span class="text-lg">-</span></el-button>
-      <el-button type="primary">导入数据</el-button>
-    </el-header> -->
-    <!--    主布局-->
-    <el-container>
-      <!-- 侧边栏（可折叠） -->
-      <el-aside
-        :width="isCollapsed ? '60px' : '200px'"
-        class="bg-white transition-all duration-300 md:w-[200px] lg:w-[250px]"
-      >
-        <div class="flex flex-col h-full p-4">
-          <el-button
-            @click="toggleCollapse"
-            class="mb-4 toggle-btn"
-            :icon="isCollapsed ? 'Expand' : 'fold'"
-            text
-          />
-
-          <!-- 使用 Tailwind 的过渡类和 Vue 的 Transition -->
-          <div class="flex flex-col h-full">
-            <Transition
-              enter-active-class="transition-opacity duration-300 delay-200"
-              leave-active-class="transition-opacity duration-150"
-              enter-from-class="opacity-0"
-              leave-to-class="opacity-0"
-            >
-              <div v-if="!isCollapsed" class="flex flex-col h-full bg-gray-100 !p-1">
-                <!-- 项目浏览器部分 -->
-                <div class="flex flex-col h-1/2 min-h-0">
-                  <p class="bg-gray-600 rounded !py-1 !my-1 flex items-center h-6">
-                    <span class="text-white text-sm !ml-2"> 项目浏览器 </span>
-                  </p>
-                  <div
-                    class="bg-white !p-2 border border-gray-300 mt-1 rounded flex-grow overflow-auto"
-                  >
-                    <p class="bg-blue-500 p-1 rounded flex items-center h-6">
-                      <span class="text-white text-xs !ml-2">密云监测站</span>
-                    </p>
-                    <p class="p-1 bg-gray-200 !my-1 flex items-center h-5 rounded">
-                      <span class="text-gray-500 text-xs !ml-2">暂无数据</span>
-                    </p>
-                  </div>
-                </div>
-                <!-- 数据处理步骤部分 -->
-                <div class="flex flex-col h-1/2 min-h-0 !mt-1">
-                  <p class="bg-gray-600 rounded !py-1 !my-1 flex items-center h-6">
-                    <span class="text-white text-sm !ml-2"> 数据处理步骤 </span>
-                  </p>
-                  <div
-                    class="bg-white !p-2 border border-gray-300 mt-1 rounded flex-grow overflow-auto !py-1"
-                  >
-                    <p class="p-1 bg-gray-200 !my-1 h-5 flex items-center rounded">
-                      <span class="text-gray-500 text-xs !ml-2">导入数据</span>
-                    </p>
-                    <p>数据预处理</p>
-                    <p>数据分析</p>
-                    <p>数据可视化</p>
-                    <p>数据导出</p>
-                  </div>
-                </div>
-              </div>
-            </Transition>
-          </div>
-        </div>
-      </el-aside>
-      <el-main class="bg-white p-4 sm:p-2 md:p-4">
-        <div class="flex flex-col items-center justify-center h-full">
-          <div
-            class="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center transform transition-transform hover:scale-105"
-          >
-            <span class="text-5xl text-gray-400">+</span>
-          </div>
-          <h2 class="text-gray-500">密云监测站</h2>
-          <p class="text-gray-500 mt-2">请导入数据以开始分析</p>
-          <el-button
-            type="primary"
-            class="mt-4 transform transition-transform hover:scale-105"
-            @click="importData"
-            >导入数据
-          </el-button>
-        </div>
-      </el-main>
-    </el-container>
-  </el-container>
-</template>
-
 <style scoped>
-.el-header {
-  height: 40px !important;
-}
-.el-aside {
-  border-right: 1px solid #e0e0e0;
-}
-.toggle-btn {
-  font-size: 20px;
-  justify-content: start;
+.welcome-card {
+  background-color: #f8fafc;
+  border-left: 4px solid #3b82f6;
 }
 </style>

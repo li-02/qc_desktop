@@ -2,19 +2,10 @@
 import GlobalDialogs from "./components/dialogs/index.vue";
 import emitter from "./utils/eventBus";
 import {onMounted} from "vue";
-// 为了TypeScript能够识别window.electronAPI
-declare global {
-  interface Window {
-    electronAPI?: {
-      sendMessage: (channel: string, data: any) => void;
-      receiveMessage: (channel: string, func: (...args: any[]) => void) => void;
-      onOpenCreateProjectDialog: (callback: () => void) => void;
-      onOpenImportDataDialog: (callback: () => void) => void;
-    };
-  }
-}
+
 onMounted(() => {
   if (window.electronAPI) {
+    // 事件转发到Vue事件总线
     window.electronAPI.onOpenCreateProjectDialog(() => {
       emitter.emit("open-create-project-dialog");
     });

@@ -1,162 +1,83 @@
-<template>
-  <el-container class="h-screen bg-gray-100">
-    <el-container>
-      <!-- 侧边栏（固定显示） -->
-      <el-aside
-        :width="isCollapsed ? '40px' : '200px'"
-        class="bg-white transition-all duration-300 md:w-[200px] lg:w-[250px] border-r border-gray-200 relative overflow-hidden">
-        <!-- 侧边栏内容容器 -->
-        <div class="flex flex-col h-full">
-          <!-- 固定位置的按钮容器 -->
-          <div class="py-4 pl-4 relative z-10">
-            <el-button
-              @click="toggleCollapse"
-              class="!p-0 !w-8 !h-8 flex items-center justify-center"
-              :icon="isCollapsed ? 'Expand' : 'Fold'"
-              text />
-          </div>
-
-          <!-- 使用 Tailwind 的过渡类和 Vue 的 Transition -->
-          <div class="flex flex-col flex-grow overflow-hidden">
-            <Transition
-              enter-active-class="transition-opacity duration-300 delay-200"
-              leave-active-class="transition-opacity duration-150"
-              enter-from-class="opacity-0"
-              leave-to-class="opacity-0">
-              <div v-if="!isCollapsed" class="flex flex-col h-full bg-gray-100 !p-1">
-                <!-- 项目浏览器部分 -->
-                <div class="flex flex-col h-1/2 min-h-0">
-                  <p class="bg-gray-600 rounded !py-1 !my-1 flex items-center h-6">
-                    <span class="text-white text-sm !ml-2"> 项目浏览器 </span>
-                    <el-button
-                      type="primary"
-                      size="small"
-                      text
-                      class="ml-auto"
-                      @click="loadProjects"
-                      title="刷新项目列表"
-                      :loading="loading"
-                      icon="Refresh"></el-button>
-                  </p>
-                  <div class="bg-white !p-2 border border-gray-300 mt-1 rounded flex-grow overflow-auto">
-                    <div v-if="projects.length === 0" class="p-1 bg-gray-200 !my-1 flex items-center h-5 rounded">
-                      <span class="text-gray-500 text-xs !ml-2">暂无项目</span>
-                    </div>
-                    <div v-else>
-                      <div v-for="project in projects" :key="project.id" class="mb-2">
-                        <p class="bg-blue-500 p-1 rounded flex items-center h-6">
-                          <span class="text-white text-xs !ml-2">{{ project.name }}</span>
-                          <span class="text-white text-xs ml-2 opacity-70">
-                            ({{ new Date(project.createdAt).toLocaleDateString() }})
-                          </span>
-                          <el-button
-                            type="danger"
-                            size="small"
-                            icon="Delete"
-                            circle
-                            plain
-                            class="!h-5 !2-5 !p-1 !mr-1"
-                            @click.stop="confirmDeleteProject(project)"
-                            title="删除项目"></el-button>
-                        </p>
-                      </div>
-                    </div>
-
-                    <!--                    <p class="bg-blue-500 p-1 rounded flex items-center h-6">-->
-                    <!--                      <span class="text-white text-xs !ml-2">密云监测站</span>-->
-                    <!--                    </p>-->
-                    <!--                    <p class="p-1 bg-gray-200 !my-1 flex items-center h-5 rounded">-->
-                    <!--                      <span class="text-gray-500 text-xs !ml-2">暂无数据</span>-->
-                    <!--                    </p>-->
-                  </div>
-                </div>
-                <!-- 数据处理步骤部分 -->
-                <div class="flex flex-col h-1/2 min-h-0 !mt-1">
-                  <p class="bg-gray-600 rounded !py-1 !my-1 flex items-center h-6">
-                    <span class="text-white text-sm !ml-2"> 数据处理步骤 </span>
-                  </p>
-                  <div class="bg-white !p-2 border border-gray-300 mt-1 rounded flex-grow overflow-auto !py-1">
-                    <p class="p-1 bg-gray-200 !my-1 h-5 flex items-center rounded">
-                      <span class="text-gray-500 text-xs !ml-2">导入数据</span>
-                    </p>
-                    <p>数据预处理</p>
-                    <p>数据分析</p>
-                    <p>数据可视化</p>
-                    <p>数据导出</p>
-                  </div>
-                </div>
-              </div>
-            </Transition>
-          </div>
-        </div>
-      </el-aside>
-
-      <!-- 右侧内容区域 -->
-      <el-container class="flex flex-col overflow-hidden">
-        <!-- 顶部导航条 - 使用 Element Plus 的 el-menu 组件 -->
-        <el-header class="p-0 bg-white border-b border-gray-200 shadow-sm">
-          <el-menu
-            :default-active="activeIndex"
-            mode="horizontal"
-            router
-            class="flex-1"
-            @select="handleSelect"
-            background-color="#ffffff"
-            text-color="#606266"
-            active-text-color="#409EFF">
-            <el-menu-item v-for="item in menuItems" :key="item.path" :index="item.path">
-              <el-icon>
-                <component :is="item.icon" />
-              </el-icon>
-              <span>{{ item.name }}</span>
-            </el-menu-item>
-          </el-menu>
-        </el-header>
-
-        <!-- 主内容区域 -->
-        <el-main class="bg-gray-50 p-4 sm:p-2 md:p-4 overflow-auto">
-          <!-- 路由内容将在这里显示 -->
-          <router-view></router-view>
-        </el-main>
-      </el-container>
-    </el-container>
-  </el-container>
-</template>
-
 <script setup lang="ts">
-import {onMounted, onUnmounted, ref, watch} from "vue";
-import {useRoute} from "vue-router";
+import {computed, onMounted, onUnmounted, ref} from "vue";
+import {useRoute, useRouter} from "vue-router";
 import emitter from "../utils/eventBus.ts";
 import {ElMessage, ElMessageBox} from "element-plus";
 import type {ProjectInfo} from "@/types/electron";
+import {
+  DataAnalysis,
+  Delete,
+  DocumentCopy,
+  Folder,
+  HomeFilled,
+  MoreFilled,
+  Operation,
+  PieChart,
+  Plus,
+  Refresh,
+  Upload,
+} from "@element-plus/icons-vue";
 
+// 项目状态
 const projects = ref<ProjectInfo[]>([]);
+const selectedProject = ref<ProjectInfo | null>(null);
 const loading = ref(false);
+
+// 侧边栏状态
 const isCollapsed = ref(false);
 const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value;
 };
 
-// 获取当前路由
+// 路由相关
 const route = useRoute();
-const activeIndex = ref(route.path);
+const router = useRouter();
+const activeIndex = computed(() => route.path);
+const currentRouteName = computed(() => {
+  const matchedRoute = router.resolve(route.path).matched[1]; // 获取当前激活的路由
+  return matchedRoute?.name || "";
+});
 
-// 监听路由变化，更新激活的菜单项
-watch(
-  () => route.path,
-  newPath => {
-    activeIndex.value = newPath;
-  }
-);
-
-// 菜单项数据
-const menuItems = [
-  {name: "首页", path: "/", icon: "HomeFilled"},
-  {name: "数据预处理", path: "/data-processing", icon: "DataAnalysis"},
-  {name: "数据分析", path: "/data-analysis", icon: "Operation"},
-  {name: "数据可视化", path: "/data-visualization", icon: "PieChart"},
-  {name: "数据导出", path: "/data-export", icon: "Document"},
+// 主菜单项
+const mainMenuItems = [
+  {name: "首页", path: "/", icon: HomeFilled},
+  {name: "数据预处理", path: "/data-processing", icon: DataAnalysis},
+  {name: "数据分析", path: "/data-analysis", icon: Operation},
+  {name: "数据可视化", path: "/data-visualization", icon: PieChart},
+  {name: "数据导出", path: "/data-export", icon: DocumentCopy},
 ];
+
+// 格式化日期
+const formatDate = (timestamp: number): string => {
+  return new Date(timestamp).toLocaleDateString();
+};
+
+// 选择项目
+const selectProject = (project: ProjectInfo) => {
+  selectedProject.value = project;
+  // 触发项目选择的事件
+  emitter.emit("project-selected", project);
+
+  // 如果当前在首页，自动跳转到数据预处理页面
+  if (route.path === "/") {
+    router.push("/data-processing");
+  }
+};
+
+// 创建新项目
+const createNewProject = () => {
+  emitter.emit("open-create-project-dialog");
+};
+
+// 处理项目命令
+const handleProjectCommand = (command: string, project: ProjectInfo) => {
+  if (command === "import") {
+    handleImportData(project);
+  } else if (command === "delete") {
+    confirmDeleteProject(project);
+  }
+};
+
 // 加载项目列表
 const loadProjects = async () => {
   if (!window.electronAPI) {
@@ -169,34 +90,49 @@ const loadProjects = async () => {
     projects.value = await window.electronAPI.getProjects();
     // 按创建时间降序排序（最新的在前面）
     projects.value.sort((a, b) => b.createdAt - a.createdAt);
+
+    // 如果有选中的项目，更新一下选中的项目信息
+    if (selectedProject.value) {
+      const updated = projects.value.find(p => p.id === selectedProject.value?.id);
+      if (updated) {
+        selectedProject.value = updated;
+      } else {
+        // 如果当前选中的项目已被删除，则清空选择
+        selectedProject.value = null;
+      }
+    }
+
+    // 如果有项目但没有选中项目，自动选择第一个
+    if (projects.value.length > 0 && !selectedProject.value) {
+      selectedProject.value = projects.value[0];
+    }
   } catch (error) {
     console.error("Failed to load projects:", error);
+    ElMessage.error("加载项目列表失败");
   } finally {
     loading.value = false;
   }
 };
-// 监听项目刷新事件
-const handleRefreshProjects = () => {
-  loadProjects();
-};
-onMounted(() => {
-  // 首次加载项目列表
-  loadProjects();
 
-  // 监听刷新项目列表事件
-  emitter.on("refresh-projects", handleRefreshProjects);
-});
+// 处理导入数据点击事件
+const handleImportData = (project?: ProjectInfo) => {
+  // 如果提供了特定项目，先选中它
+  if (project) {
+    selectedProject.value = project;
+  }
 
-onUnmounted(() => {
-  // 移除事件监听
-  emitter.off("refresh-projects", handleRefreshProjects);
-});
-// 菜单选择处理
-const handleSelect = (key: string) => {
-  console.log("选择的菜单项:", key);
+  // 检查是否有选中的项目
+  if (!selectedProject.value) {
+    ElMessage.warning("请先选择一个项目");
+    return;
+  }
+
+  console.log("导入数据到项目:", selectedProject.value.name);
+  emitter.emit("open-import-data-dialog");
 };
+
 // 确认删除项目
-const confirmDeleteProject = (project: Project) => {
+const confirmDeleteProject = (project: ProjectInfo) => {
   ElMessageBox.confirm(`确定要删除项目 "${project.name}" 吗? 此操作不可恢复。`, "删除项目", {
     confirmButtonText: "确定",
     cancelButtonText: "取消",
@@ -206,9 +142,10 @@ const confirmDeleteProject = (project: Project) => {
       await deleteProject(project.id);
     })
     .catch(() => {
-      // do noting;
+      // do nothing
     });
 };
+
 // 删除项目
 const deleteProject = async (projectId: string) => {
   if (!window.electronAPI) {
@@ -222,6 +159,12 @@ const deleteProject = async (projectId: string) => {
 
     if (result.success) {
       ElMessage.success("项目删除成功");
+
+      // 如果删除的是当前选中的项目，则清空选择
+      if (selectedProject.value?.id === projectId) {
+        selectedProject.value = null;
+      }
+
       // 刷新项目列表
       loadProjects();
     } else {
@@ -234,48 +177,432 @@ const deleteProject = async (projectId: string) => {
     loading.value = false;
   }
 };
+
+// 监听项目刷新事件
+const handleRefreshProjects = () => {
+  loadProjects();
+};
+
+onMounted(() => {
+  // 首次加载项目列表
+  loadProjects();
+
+  // 监听刷新项目列表事件
+  emitter.on("refresh-projects", handleRefreshProjects);
+
+  // 监听项目创建成功事件
+  emitter.on("project-created", project => {
+    loadProjects().then(() => {
+      // 自动选择新创建的项目
+      const newProject = projects.value.find(p => p.id === project.id);
+      if (newProject) {
+        selectProject(newProject);
+      }
+    });
+  });
+});
+
+onUnmounted(() => {
+  // 移除事件监听
+  emitter.off("refresh-projects", handleRefreshProjects);
+  emitter.off("project-created");
+});
 </script>
+<template>
+  <!-- 应用窗口 -->
+  <div class="w-full h-full flex mx-auto overflow-hidden bg-white">
+    <!-- 侧边栏 -->
+    <div
+      :class="[
+        isCollapsed ? 'w-16' : 'w-54',
+        'h-full flex flex-col bg-gray-800 text-white transition-[width] duration-300 ease-in-out',
+      ]">
+      <!-- 应用标题区 -->
+      <div class="h-15 px-4 flex items-center justify-between border-b border-gray-700">
+        <h1 v-if="!isCollapsed" class="text-lg font-semibold truncate m-0">数据处理</h1>
+        <div :class="isCollapsed ? 'w-full flex justify-center' : ''">
+          <el-button @click="toggleCollapse" circle text class="text-white" :icon="isCollapsed ? 'Expand' : 'Fold'" />
+        </div>
+      </div>
+
+      <!-- 主导航菜单 -->
+      <el-menu
+        :default-active="activeIndex"
+        class="border-none transition-all duration-300 ease-in-out"
+        :collapse="isCollapsed"
+        background-color="#1F2937"
+        text-color="#E5E7EB"
+        active-text-color="#FFFFFF"
+        router>
+        <el-menu-item v-for="item in mainMenuItems" :key="item.path" :index="item.path">
+          <el-icon>
+            <component :is="item.icon" />
+          </el-icon>
+          <template #title>{{ item.name }}</template>
+        </el-menu-item>
+      </el-menu>
+
+      <!-- 项目管理部分 -->
+      <div class="projects-section" v-if="!isCollapsed">
+        <div class="projects-header">
+          <h2>项目</h2>
+          <div class="projects-actions">
+            <el-tooltip content="刷新项目列表" placement="top">
+              <el-button circle text size="small" :loading="loading" @click="loadProjects" :icon="Refresh" />
+            </el-tooltip>
+            <el-tooltip content="新建项目" placement="top">
+              <el-button circle text size="small" @click="createNewProject" :icon="Plus" />
+            </el-tooltip>
+          </div>
+        </div>
+
+        <!-- 项目列表 -->
+        <div class="projects-list">
+          <el-empty v-if="projects.length === 0" description="暂无项目" :image-size="48" />
+          <div
+            v-for="project in projects"
+            :key="project.id"
+            class="project-item"
+            :class="{active: selectedProject?.id === project.id}"
+            @click="selectProject(project)">
+            <div class="project-info">
+              <p class="project-name">{{ project.name }}</p>
+              <p class="project-date">{{ formatDate(project.createdAt) }}</p>
+            </div>
+            <el-dropdown trigger="click" @command="handleProjectCommand($event, project)">
+              <el-button circle text size="small" :icon="MoreFilled" class="project-menu-btn" />
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="import">
+                    <el-icon>
+                      <Upload />
+                    </el-icon>
+                    <span>导入数据</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item command="delete" divided>
+                    <el-icon class="text-danger">
+                      <Delete />
+                    </el-icon>
+                    <span class="text-danger">删除项目</span>
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
+        </div>
+      </div>
+
+      <!-- 折叠状态下项目图标 -->
+      <div v-if="isCollapsed" class="collapsed-projects">
+        <el-tooltip content="项目管理" placement="right">
+          <el-button circle text size="large" :icon="Folder" @click="isCollapsed = false" />
+        </el-tooltip>
+      </div>
+    </div>
+
+    <!-- 主内容区域 -->
+    <div class="main-content">
+      <!-- 顶部工具栏 -->
+      <div class="toolbar">
+        <!-- 面包屑导航 -->
+        <el-breadcrumb separator="/">
+          <el-breadcrumb-item :to="{path: '/'}">首页</el-breadcrumb-item>
+          <el-breadcrumb-item v-if="currentRouteName">{{ currentRouteName }}</el-breadcrumb-item>
+          <el-breadcrumb-item v-if="selectedProject">{{ selectedProject.name }}</el-breadcrumb-item>
+        </el-breadcrumb>
+
+        <!-- 工具按钮 -->
+        <div class="tools">
+          <el-button-group>
+            <el-button @click="handleImportData" :icon="Upload" size="default">导入数据</el-button>
+            <el-button type="primary" @click="createNewProject" :icon="Plus" size="default">新建项目</el-button>
+          </el-button-group>
+        </div>
+      </div>
+
+      <!-- 内容区域 -->
+      <div class="content-area">
+        <router-view v-if="selectedProject || $route.path === '/'" />
+        <div v-else class="select-project-hint">
+          <el-empty description="请先选择一个项目" :image-size="128">
+            <el-button type="primary" @click="createNewProject">新建项目</el-button>
+          </el-empty>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
 
 <style scoped>
-.el-header {
-  height: auto !important;
-  padding: 0;
+/* 应用窗口 */
+.app-window {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
-/* 修改 el-menu 样式，使其填满整个 header 并允许右侧操作按钮 */
-:deep(.el-menu) {
-  display: flex;
-  border-bottom: none !important;
+/* 侧边栏 */
+.sidebar {
+  //width: 220px;
+  //height: 100%;
+  background-color: #1f2937;
+  //display: flex;
+  //flex-direction: column;
+  transition: width 0.3s ease;
+  color: #ffffff;
 }
 
-:deep(.el-menu--horizontal > .el-menu-item) {
-  height: 56px;
-  line-height: 56px;
+.sidebar.collapsed {
+  width: 64px;
 }
 
-/* 自定义弹性布局 */
-.flex-1 {
+/* 应用标题区 */
+.app-title {
+  //height: 60px;
+  //padding: 0 16px;
+  //display: flex;
+  //align-items: center;
+  //justify-content: space-between;
+  border-bottom: 1px solid #374151;
+}
+
+.app-title h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.collapse-btn {
+  color: #ffffff;
+}
+
+/* 主菜单 */
+.main-menu {
+  border-right: none !important;
+}
+
+:deep(.el-menu-item) {
+  height: 48px;
+  line-height: 48px;
+}
+
+:deep(.el-menu-item.is-active) {
+  background-color: #4b5563 !important;
+}
+
+:deep(.el-menu-item:hover) {
+  background-color: #374151 !important;
+}
+
+:deep(.el-menu--collapse) {
+  width: 64px;
+}
+
+/* 项目管理部分 */
+.projects-section {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-top: 16px;
+  overflow: hidden;
 }
 
-/* 自定义按钮容器样式 */
-:deep(.el-menu--horizontal) .flex.items-center {
-  height: 56px;
+.projects-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  margin-bottom: 8px;
 }
 
-/* 增强滚动条样式 */
-.el-main::-webkit-scrollbar {
+.projects-header h2 {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: #9ca3af;
+}
+
+.projects-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.projects-actions button {
+  color: #9ca3af;
+}
+
+.projects-actions button:hover {
+  color: #ffffff;
+}
+
+/* 项目列表 */
+.projects-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px;
+}
+
+.projects-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.projects-list::-webkit-scrollbar-thumb {
+  background-color: #4b5563;
+  border-radius: 2px;
+}
+
+.projects-list::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+.project-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  margin-bottom: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.project-item:hover {
+  background-color: #374151;
+}
+
+.project-item.active {
+  background-color: #3b82f6;
+}
+
+.project-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-date {
+  margin: 0;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.project-item.active .project-date {
+  color: #e5e7eb;
+}
+
+.project-menu-btn {
+  opacity: 0;
+  color: #9ca3af;
+  transition: opacity 0.2s ease;
+}
+
+.project-item:hover .project-menu-btn {
+  opacity: 1;
+}
+
+.project-menu-btn:hover {
+  color: #ffffff;
+}
+
+/* 折叠状态下项目图标 */
+.collapsed-projects {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 0;
+  gap: 8px;
+}
+
+.collapsed-projects button {
+  color: #9ca3af;
+}
+
+.collapsed-projects button:hover {
+  color: #ffffff;
+}
+
+/* 主内容区域 */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 顶部工具栏 */
+.toolbar {
+  height: 60px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #e5e7eb;
+  background-color: #ffffff;
+}
+
+.tools {
+  display: flex;
+  gap: 8px;
+}
+
+/* 内容区域 */
+.content-area {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  background-color: #f9fafb;
+}
+
+.content-area::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
-.el-main::-webkit-scrollbar-thumb {
-  background: #ccc;
+.content-area::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
   border-radius: 3px;
 }
 
-.el-main::-webkit-scrollbar-track {
-  background: #f1f1f1;
+.content-area::-webkit-scrollbar-track {
+  background-color: #f3f4f6;
   border-radius: 3px;
+}
+
+/* 选择项目提示 */
+.select-project-hint {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 辅助类 */
+.text-danger {
+  color: #ef4444;
+}
+
+/* Element Plus 自定义样式 */
+:deep(.el-breadcrumb__item) {
+  display: inline-flex;
+  align-items: center;
+}
+
+:deep(.el-empty__image) {
+  opacity: 0.8;
+}
+
+:deep(.el-menu) {
+  border-right: none !important;
+  transition: all 0.3s ease-in-out;
 }
 </style>

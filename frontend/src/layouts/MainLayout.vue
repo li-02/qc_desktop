@@ -166,7 +166,7 @@ const deleteProject = async (projectId: string) => {
       }
 
       // 刷新项目列表
-      loadProjects();
+      await loadProjects();
     } else {
       throw new Error(result.error || "删除项目失败");
     }
@@ -224,23 +224,6 @@ onUnmounted(() => {
           <el-button @click="toggleCollapse" circle text class="text-white" :icon="isCollapsed ? 'Expand' : 'Fold'" />
         </div>
       </div>
-
-      <!-- 主导航菜单 -->
-      <el-menu
-        :default-active="activeIndex"
-        class="border-none transition-all duration-300 ease-in-out"
-        :collapse="isCollapsed"
-        background-color="#1F2937"
-        text-color="#E5E7EB"
-        active-text-color="#FFFFFF"
-        router>
-        <el-menu-item v-for="item in mainMenuItems" :key="item.path" :index="item.path">
-          <el-icon>
-            <component :is="item.icon" />
-          </el-icon>
-          <template #title>{{ item.name }}</template>
-        </el-menu-item>
-      </el-menu>
 
       <!-- 项目管理部分 -->
       <div class="projects-section" v-if="!isCollapsed">
@@ -301,29 +284,52 @@ onUnmounted(() => {
     </div>
 
     <!-- 主内容区域 -->
-    <div class="main-content">
+    <div class="flex-1 flex flex-col overflow-hidden">
       <!-- 顶部工具栏 -->
-      <div class="toolbar">
-        <!-- 面包屑导航 -->
-        <el-breadcrumb separator="/">
-          <el-breadcrumb-item :to="{path: '/'}">首页</el-breadcrumb-item>
-          <el-breadcrumb-item v-if="currentRouteName">{{ currentRouteName }}</el-breadcrumb-item>
-          <el-breadcrumb-item v-if="selectedProject">{{ selectedProject.name }}</el-breadcrumb-item>
-        </el-breadcrumb>
+      <div class="border-b border-gray-200 bg-white">
+        <!-- 主导航菜单 -->
+        <el-menu
+          mode="horizontal"
+          :default-active="activeIndex"
+          class="w-full justify-start border-none transition-all duration-300 ease-in-out"
+          :collapse="isCollapsed"
+          background-color="#1F2937"
+          text-color="#E5E7EB"
+          active-text-color="#FFFFFF"
+          router>
+          <el-menu-item v-for="item in mainMenuItems" :key="item.path" :index="item.path">
+            <el-icon>
+              <component :is="item.icon" />
+            </el-icon>
+            <template #title>{{ item.name }}</template>
+          </el-menu-item>
+        </el-menu>
 
-        <!-- 工具按钮 -->
-        <div class="tools">
-          <el-button-group>
-            <el-button @click="handleImportData" :icon="Upload" size="default">导入数据</el-button>
-            <el-button type="primary" @click="createNewProject" :icon="Plus" size="default">新建项目</el-button>
-          </el-button-group>
+        <!-- 第二行：面包屑 + 工具按钮 -->
+        <div class="px-4 py-3">
+          <div class="flex justify-between items-center w-full">
+            <!-- 面包屑导航 -->
+            <el-breadcrumb separator="/">
+              <el-breadcrumb-item :to="{path: '/'}">首页</el-breadcrumb-item>
+              <el-breadcrumb-item v-if="currentRouteName">{{ currentRouteName }}</el-breadcrumb-item>
+              <el-breadcrumb-item v-if="selectedProject">{{ selectedProject.name }}</el-breadcrumb-item>
+            </el-breadcrumb>
+
+            <!-- 工具按钮 -->
+            <div class="flex">
+              <el-button-group>
+                <el-button @click="handleImportData" :icon="Upload" size="default">导入数据</el-button>
+                <el-button type="primary" @click="createNewProject" :icon="Plus" size="default">新建项目</el-button>
+              </el-button-group>
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- 内容区域 -->
-      <div class="content-area">
+      <div class="flex-1 p-6 overflow-y-auto bg-gray-50">
         <router-view v-if="selectedProject || $route.path === '/'" />
-        <div v-else class="select-project-hint">
+        <div v-else class="h-full flex items-center justify-center">
           <el-empty description="请先选择一个项目" :image-size="128">
             <el-button type="primary" @click="createNewProject">新建项目</el-button>
           </el-empty>
@@ -334,52 +340,10 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* 应用窗口 */
-.app-window {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-}
-
-/* 侧边栏 */
-.sidebar {
-  //width: 220px;
-  //height: 100%;
-  background-color: #1f2937;
-  //display: flex;
-  //flex-direction: column;
-  transition: width 0.3s ease;
-  color: #ffffff;
-}
-
-.sidebar.collapsed {
-  width: 64px;
-}
-
-/* 应用标题区 */
-.app-title {
-  //height: 60px;
-  //padding: 0 16px;
-  //display: flex;
-  //align-items: center;
-  //justify-content: space-between;
-  border-bottom: 1px solid #374151;
-}
-
-.app-title h1 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.collapse-btn {
-  color: #ffffff;
-}
-
-/* 主菜单 */
-.main-menu {
-  border-right: none !important;
+/* 主导航菜单样式 */
+:deep(.el-menu--horizontal) {
+  justify-content: flex-start !important;
+  padding-left: 0;
 }
 
 :deep(.el-menu-item) {
@@ -393,6 +357,42 @@ onUnmounted(() => {
 
 :deep(.el-menu-item:hover) {
   background-color: #374151 !important;
+}
+
+/* Element Plus 样式覆盖 */
+:deep(.el-breadcrumb__item) {
+  display: inline-flex;
+  align-items: center;
+}
+
+:deep(.el-breadcrumb__inner) {
+  font-weight: normal;
+  color: #4b5563;
+}
+
+:deep(.el-breadcrumb__inner.is-link:hover) {
+  color: #3b82f6;
+}
+
+:deep(.el-button-group .el-button) {
+  margin-left: 0;
+}
+
+:deep(.el-button-group .el-button:first-child) {
+  border-right: none;
+}
+
+:deep(.el-button-group .el-button + .el-button) {
+  margin-left: -1px;
+}
+
+.app-title h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 :deep(.el-menu--collapse) {
@@ -529,25 +529,6 @@ onUnmounted(() => {
 
 .collapsed-projects button:hover {
   color: #ffffff;
-}
-
-/* 主内容区域 */
-.main-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* 顶部工具栏 */
-.toolbar {
-  height: 60px;
-  padding: 0 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid #e5e7eb;
-  background-color: #ffffff;
 }
 
 .tools {

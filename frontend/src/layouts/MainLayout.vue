@@ -8,7 +8,6 @@ import {
   DataAnalysis,
   Delete,
   DocumentCopy,
-  Folder,
   HomeFilled,
   MoreFilled,
   Operation,
@@ -25,6 +24,9 @@ const loading = ref(false);
 
 // 侧边栏状态
 const isCollapsed = ref(false);
+const tooltipText = computed(() => {
+  return isCollapsed.value ? "点击展开" : "点击折叠";
+});
 const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value;
 };
@@ -216,12 +218,19 @@ onUnmounted(() => {
       :class="[
         isCollapsed ? 'w-16' : 'w-54',
         'h-full flex flex-col bg-gray-800 text-white transition-[width] duration-300 ease-in-out',
-      ]">
+      ]"
+      @transitionstart="onTransitionStart"
+      @transitionend="onTransitionEnd">
       <!-- 应用标题区 -->
-      <div class="h-15 px-4 flex items-center justify-between border-b border-gray-700">
-        <h1 v-if="!isCollapsed" class="text-lg font-semibold truncate m-0">数据处理</h1>
-        <div :class="isCollapsed ? 'w-full flex justify-center' : ''">
-          <el-button @click="toggleCollapse" circle text class="text-white" :icon="isCollapsed ? 'Expand' : 'Fold'" />
+      <div class="w-16 flex items-center">
+        <div class="w-16 flex justify-center">
+          <el-tooltip :content="tooltipText" :show-after="300" placement="right">
+            <el-button
+              @click="toggleCollapse"
+              text
+              class="!p-0 w-10 h-10 flex items-center justify-center no-hover-bg"
+              :icon="isCollapsed ? 'Expand' : 'Fold'" />
+          </el-tooltip>
         </div>
       </div>
 
@@ -274,13 +283,6 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
-
-      <!-- 折叠状态下项目图标 -->
-      <div v-if="isCollapsed" class="collapsed-projects">
-        <el-tooltip content="项目管理" placement="right">
-          <el-button circle text size="large" :icon="Folder" @click="isCollapsed = false" />
-        </el-tooltip>
-      </div>
     </div>
 
     <!-- 主内容区域 -->
@@ -292,7 +294,6 @@ onUnmounted(() => {
           mode="horizontal"
           :default-active="activeIndex"
           class="w-full justify-start border-none transition-all duration-300 ease-in-out"
-          :collapse="isCollapsed"
           background-color="#1F2937"
           text-color="#E5E7EB"
           active-text-color="#FFFFFF"
@@ -340,15 +341,13 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+:deep(.no-hover-bg:hover) {
+  background-color: transparent !important;
+}
 /* 主导航菜单样式 */
 :deep(.el-menu--horizontal) {
   justify-content: flex-start !important;
   padding-left: 0;
-}
-
-:deep(.el-menu-item) {
-  height: 48px;
-  line-height: 48px;
 }
 
 :deep(.el-menu-item.is-active) {

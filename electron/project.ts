@@ -158,6 +158,10 @@ export class ProjectManager {
             throw err;
         }
     }
+
+    public importData(projectId: string, dataInfo: any) {
+        console.log('import_data');
+    }
 }
 
 // 导出类

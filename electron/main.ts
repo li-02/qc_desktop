@@ -98,7 +98,7 @@ function setupIPC() {
     } catch (err: any) {
       return {success: false, error: err.message};
     }
-  })
+  });
   // 删除项目
   ipcMain.handle('delete-project', async (event, projectId) => {
     try {
@@ -107,7 +107,17 @@ function setupIPC() {
     } catch (e: any) {
       return {success: false, error: e.message};
     }
-  })
+  });
+
+  // 导入数据
+  ipcMain.handle('import-data', async (event, projectId, dataInfo) => {
+    try {
+      projectManager.importData(projectId, dataInfo);
+      return {success: true}
+    } catch (e: any) {
+      return {success: false, error: e.message}
+    }
+  });
 }
 
 app.on('window-all-closed', () => {

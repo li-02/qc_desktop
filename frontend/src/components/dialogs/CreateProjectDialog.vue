@@ -130,7 +130,12 @@ const handleSubmitError = (err: any) => {
   loading.value = false;
 };
 const handleReset = () => {
-  console.log("handleReset");
+  projectInfo.value = {
+    siteName: "",
+    longitude: "",
+    latitude: "",
+    altitude: "",
+  };
 };
 // 监听siteName
 watch(
@@ -178,6 +183,67 @@ const validateSiteName = (rule: any, value: string, callback: any) => {
   }
   callback();
 };
+const validateGeoLocation = (rule: any, value: string, callback: any, source: any) => {
+  const {longitude, latitude} = source;
+
+  if (!longitude && !latitude) {
+    if (!longitude) {
+      callback(new Error("请输入经度"));
+    } else {
+      callback(new Error("请输入纬度"));
+    }
+    return;
+  }
+
+  const lon = parseFloat(longitude);
+  const lat = parseFloat(latitude);
+
+  if (isNaN(lon) || isNaN(lat)) {
+    if (isNaN(lon)) {
+      callback(new Error("经度必须是合法数字"));
+    } else {
+      callback(new Error("纬度必须是合法数字"));
+    }
+    return;
+  }
+
+  if (lon < -180 || lon > 180) {
+    callback(new Error("经度范围应在 -180 到 180 之间"));
+    return;
+  }
+
+  if (lat < -90 || lat > 90) {
+    callback(new Error("纬度范围应在 -90 到 90 之间"));
+    return;
+  }
+
+  callback();
+};
+const validateHeight = (rule: any, value: string, callback: any) => {
+  if (!value) {
+    callback(new Error("请输入高度"));
+    return;
+  }
+
+  const height = parseFloat(value);
+
+  if (isNaN(height)) {
+    callback(new Error("请输入有效的数字"));
+    return;
+  }
+
+  // 全球真实海拔范围
+  const minHeight = -431; // 死海
+  const maxHeight = 8848.86; // 珠穆朗玛峰
+
+  if (height < minHeight || height > maxHeight) {
+    callback(new Error(`高度应在 ${minHeight} 米 到 ${maxHeight} 米 之间（全球真实海拔范围）`));
+    return;
+  }
+
+  // 校验通过
+  callback();
+};
 const rules = {
   siteName: [
     {
@@ -186,6 +252,9 @@ const rules = {
       trigger: "blur",
     },
   ],
+  longitude: [{required: true, trigger: "blur", validator: validateGeoLocation}],
+  latitude: [{required: true, trigger: "blur", validator: validateGeoLocation}],
+  altitude: [{required: true, trigger: "blur", validator: validateHeight}],
 };
 
 // 暴露方法给父组件
@@ -207,30 +276,20 @@ defineExpose({
         label-width="100px"
         label-position="right"
         @change="handleChange"
-        @submit="handleSubmit"
         @submit-error="handleSubmitError"
-        @reset="handleReset" />
-      <!-- 站点名称检查状态提示 -->
-      <div v-if="projectInfo.siteName && nameCheckStatus.checking" class="mt-2 ml-24 text-blue-500 text-sm">
-        正在检查站点名称...
-      </div>
-      <div v-else-if="projectInfo.siteName && !nameCheckStatus.valid" class="mt-2 ml-24 text-red-500 text-sm">
-        {{ nameCheckStatus.message }}
-      </div>
-      <div v-else-if="projectInfo.siteName && nameCheckStatus.valid" class="mt-2 ml-24 text-green-500 text-sm">
-        站点名称可用
-      </div>
+        :has-footer="false" />
 
       <template #footer>
         <span>
           <el-button @click="close">取消</el-button>
+          <el-button @click="handleReset" type="warning">重置</el-button>
           <el-button
             type="primary"
             @click="handleSubmit(projectInfo)"
             :loading="loading"
             :disabled="nameCheckStatus.checking || !nameCheckStatus.valid"
-            >确定</el-button
-          >
+            >确定
+          </el-button>
         </span>
       </template>
     </el-dialog>

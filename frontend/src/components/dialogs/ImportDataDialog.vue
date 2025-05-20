@@ -1,20 +1,114 @@
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, ref} from "vue";
 import {ElMessage} from "element-plus";
-import {Delete, Document, Upload} from "@element-plus/icons-vue";
+import {UploadFilled} from "@element-plus/icons-vue";
 import type {ProjectInfo} from "@/types/electron";
 import emitter from "@/utils/eventBus";
+import {PlusStepsForm} from "plus-pro-components";
+import PureTable from "@pureadmin/table";
+import {processCSV, processExcel} from "@/utils/fileProcessors";
 
 // 对话框状态
 const dialogVisible = ref(false);
 const loading = ref(false);
 const uploadRef = ref(null);
+// 文件处理状态
+const fileProcessing = ref(false);
 
+const selectedDataType = ref("flux");
+const dataOptions = [
+  {
+    value: "flux",
+    label: "通量数据",
+    description: "碳/水等通量观测数据",
+  },
+  {
+    value: "aqi",
+    label: "空气质量数据",
+    description: "大气污染物数据",
+  },
+  {
+    value: "nai",
+    label: "负氧离子数据",
+    description: "负氧离子浓度监测数据",
+  },
+  {
+    value: "sapflow",
+    label: "茎流数据",
+    description: "茎流量",
+  },
+  {
+    value: "mecrometelogy",
+    label: "微气象数据",
+    description: "微气象数据",
+  },
+];
+
+// 表格相关数据
+const tableData = ref([]);
+const columns = ref([]);
+const totalRowCount = ref(0);
+
+const missingValues = ref("");
 // 选择的项目和文件
 const selectedProject = ref<ProjectInfo | null>(null);
 const selectedFile = ref<File | null>(null);
+const fileList = ref<any[]>([]); //用于控制上传组件显示的文件列表
 const fileSelected = computed(() => selectedFile.value !== null);
+const active = ref(1);
+const stepForm = ref([
+  {
+    title: "选择数据类型",
+  },
+  {
+    title: "上传文件",
+  },
+  {
+    title: "配置参数",
+  },
+]);
 
+const isAdding = ref(false);
+const missingTypes = ref([]);
+const missingTypesList = ref([
+  {
+    value: "nan",
+    label: "nan",
+  },
+  {
+    value: "NAN",
+    label: "NAN",
+  },
+  {
+    value: "NaN",
+    label: "NaN",
+  },
+  {
+    value: "",
+    label: "空值",
+  },
+]);
+const optionName = ref("");
+const onAddOption = () => {
+  isAdding.value = true;
+};
+const onConfirm = () => {
+  if (optionName.value) {
+    missingTypesList.value.push({
+      label: optionName.value,
+      value: optionName.value,
+    });
+    clearInputOption();
+  }
+};
+const clearInputOption = () => {
+  optionName.value = "";
+  isAdding.value = false;
+};
+const next = (actives: number, values: any) => {
+  active.value = actives;
+  console.log(actives, values, stepForm.value);
+};
 // 格式化日期
 const formatDate = (timestamp: number): string => {
   return new Date(timestamp).toLocaleDateString();
@@ -31,7 +125,73 @@ const formatFileSize = (bytes: number): string => {
 
 // 文件选择处理
 const handleFileChange = (file: any) => {
-  selectedFile.value = file.raw;
+  console.log("handleFileChange-file-upload", file);
+  if (file.raw) {
+    const fileType = file.name.split(".").pop()?.toLowerCase();
+    if (!["csv", "xlsx", "xls"].includes(fileType || "")) {
+      ElMessage.error("只支持CSV,Excel(xlsx/xls)文件");
+      return;
+    }
+    selectedFile.value = file.raw;
+    // 更新文件列表
+    fileList.value = [
+      {
+        name: file.name,
+        size: file.size,
+        raw: file.raw,
+        uid: file.uid,
+      },
+    ];
+    processFile(file.raw, fileType || "");
+  }
+};
+/**
+ * 文件处理方法
+ * @param file
+ * @param fileType
+ */
+const processFile = async (file: File, fileType: string) => {
+  console.log("processFile-file-upload", file, fileType);
+  fileProcessing.value = true;
+  tableData.value = [];
+  columns.value = [];
+  totalRowCount.value = 0;
+  try {
+    const reader = new FileReader();
+    reader.onload = async e => {
+      const fileContent = e.target?.result;
+      if (!fileContent) {
+        throw new Error("读取文件失败");
+      }
+      if (!window.electronAPI) {
+        throw new Error("Electron API不可用");
+      }
+      const type = fileType === "csv" ? "csv" : "excel";
+      console.log("ready in parseFilePreview");
+      const result = await window.electronAPI.parseFilePreview(type, fileContent, 20);
+      console.log("parseFilePreview-result", result);
+      if (!result.success) {
+        throw new Error(result.error || "解析文件失败");
+      }
+      columns.value = result.data.columns;
+      tableData.value = result.data.tableData;
+      totalRowCount.value = result.data.totalRows;
+
+      fileProcessing.value = false;
+    };
+    reader.onerror = () => {
+      throw new Error("读取文件失败");
+    };
+    if (fileType === "csv") {
+      reader.readAsText(file);
+    } else {
+      reader.readAsArrayBuffer(file);
+    }
+  } catch (err) {
+    console.error("处理文件时出错:", err);
+    ElMessage.error(err.message || "处理文件时出错");
+    fileProcessing.value = false;
+  }
 };
 
 // 超出文件限制处理
@@ -42,14 +202,14 @@ const handleExceed = () => {
 // 移除文件处理
 const handleRemove = () => {
   selectedFile.value = null;
+  fileList.value = [];
+  columns.value = [];
+  tableData.value = [];
 };
 
 // 手动移除文件
 const handleRemoveFile = () => {
-  if (uploadRef.value) {
-    uploadRef.value.clearFiles();
-  }
-  selectedFile.value = null;
+  handleRemove();
 };
 
 // 确认导入
@@ -133,163 +293,204 @@ defineExpose({
 </script>
 
 <template>
-  <el-dialog v-model="dialogVisible" title="导入数据" width="480px" destroy-on-close @closed="handleClosed">
-    <div class="import-data-form">
-      <div class="selected-project-info" v-if="selectedProject">
-        <div class="info-label">当前选中项目:</div>
-        <div class="project-badge">
-          <span class="project-name">{{ selectedProject.name }}</span>
-          <span class="project-date">{{ formatDate(selectedProject.createdAt) }}</span>
+  <el-dialog
+    v-model="dialogVisible"
+    title="导入数据"
+    width="600px"
+    class="fixed-steps-dialog"
+    destroy-on-close
+    @closed="handleClosed">
+    <PlusStepsForm v-model="active" :data="stepForm" @next="next">
+      <template #step-1>
+        <div class="step-content">
+          <el-radio-group v-model="selectedDataType" class="space-y-2.5 w-full flex flex-col">
+            <div
+              v-for="(option, index) in dataOptions"
+              :key="index"
+              class="flex w-full h-[60px] cursor-pointer rounded transition-all duration-200 !my-1"
+              :class="[
+                selectedDataType === option.value
+                  ? 'border-2 border-blue-500'
+                  : 'border border-gray-300 hover:border-blue-400 hover:shadow-md',
+              ]"
+              @click="selectedDataType = option.value">
+              <el-radio :value="option.value" class="flex w-full">
+                <div class="flex justify-between items-center w-full">
+                  <span class="text-base font-medium text-gray-800">{{ option.label }}</span>
+                  <span class="text-sm text-gray-500 !mr-2.5">{{ option.description }}</span>
+                </div>
+              </el-radio>
+            </div>
+          </el-radio-group>
         </div>
-      </div>
-
-      <el-divider content-position="left">选择数据文件</el-divider>
-
-      <el-upload
-        ref="uploadRef"
-        action="#"
-        :auto-upload="false"
-        :limit="1"
-        :on-change="handleFileChange"
-        :on-exceed="handleExceed"
-        :on-remove="handleRemove">
-        <template #trigger>
-          <el-button type="primary" :icon="Upload">选择文件</el-button>
-        </template>
-        <template #tip>
-          <div class="upload-tip">支持 CSV, Excel(xlsx/xls), JSON 格式文件，单次最大 50MB</div>
-        </template>
-      </el-upload>
-
-      <div v-if="fileSelected" class="file-preview">
-        <div class="file-info">
-          <el-icon class="file-icon">
-            <Document />
-          </el-icon>
-          <div class="file-details">
-            <div class="file-name">{{ selectedFile.name }}</div>
-            <div class="file-size">{{ formatFileSize(selectedFile.size) }}</div>
+      </template>
+      <template #step-2>
+        <div class="step-content">
+          <el-upload
+            ref="uploadRef"
+            class="h-70"
+            action="#"
+            :auto-upload="false"
+            :limit="1"
+            drag
+            :file-list="fileList"
+            :on-change="handleFileChange"
+            :on-exceed="handleExceed"
+            :on-remove="handleRemove">
+            <el-icon class="el-icon--upload">
+              <upload-filled />
+            </el-icon>
+            <div class="el-upload__text">托拽文件至此处或<em>点击上传</em></div>
+            <template #tip>
+              <div class="el-upload__tip">支持 CSV, Excel(xlsx/xls), JSON 格式文件，单次最大 50MB</div>
+            </template>
+          </el-upload>
+        </div>
+      </template>
+      <template #step-3>
+        <div class="step-content flex flex-col">
+          <div class="bg-blue-500 text-white px-4 py-2">
+            <span>当前文件：{{ fileList[0]?.name }}</span>
+            <span v-if="totalRowCount > 0" class="text-sm">
+              总行数: {{ totalRowCount }} (显示前 {{ tableData.length }} 行)
+            </span>
+          </div>
+          <div class="bg-blue-500 text-white px-4 py-1 border-t border-blue-600">
+            <span>文件预览</span>
+          </div>
+          <!--表格预览部分-->
+          <div class="p-4 bg-gray-50 relative">
+            <div
+              v-if="fileProcessing"
+              class="absolute inset-0 bg-white bg-opacity-70 flex items-center justify-center z-10">
+              <el-progress type="circle" :precentage="100" status="warning" indeterminate />
+              <span class="ml-2 text-gray-700">解析文件中,请稍候</span>
+            </div>
+            <div v-if="columns.length > 0" class="overflow-x-auto">
+              <pure-table :data="tableData" :columns="columns" height="300" />
+            </div>
+            <!-- 无数据时显示的提示 -->
+            <div v-else-if="!fileProcessing" class="h-48 flex items-center justify-center text-gray-500">
+              请上传文件以预览数据
+            </div>
+          </div>
+          <div class="p-4">
+            <h2 class="text-base font-semibold text-gray-800 mb-2">配置参数</h2>
+            <div class="flex items-center border border-gray-300 rounded p-2">
+              <label class="text-sm text-gray-700">缺失值表示:</label>
+              <div class="relative flex-1 ml-2">
+                <el-select v-model="missingTypes" placeholder="缺失值示例" class="w-full" multiple>
+                  <el-option
+                    v-for="item in missingTypesList"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value" />
+                  <template #footer>
+                    <el-button v-if="!isAdding" text bg size="small" @click="onAddOption"> 新增示例</el-button>
+                    <el-button v-else>
+                      <el-input v-model="optionName" class="option-input" placeholder="输入新示例" size="small" />
+                      <el-button type="primary" size="small" @click="onConfirm">确认</el-button>
+                      <el-button size="small" @click="clearInputOption">取消</el-button>
+                    </el-button>
+                  </template>
+                </el-select>
+              </div>
+            </div>
           </div>
         </div>
-        <el-button type="danger" :icon="Delete" circle plain size="small" @click="handleRemoveFile"></el-button>
-      </div>
-
-      <el-alert
-        v-if="!selectedProject"
-        title="请先选择项目"
-        type="warning"
-        description="导入数据需要先选择一个项目作为数据目标"
-        show-icon
-        :closable="false"
-        class="project-warning" />
-    </div>
-
-    <template #footer>
-      <div class="dialog-footer">
-        <el-button @click="close">取消</el-button>
-        <el-button
-          type="primary"
-          @click="confirmImport"
-          :loading="loading"
-          :disabled="!fileSelected || !selectedProject">
-          导入数据
-        </el-button>
-      </div>
-    </template>
+      </template>
+    </PlusStepsForm>
   </el-dialog>
 </template>
 
 <style scoped>
-.import-data-form {
-  padding: 0 20px;
+.fixed-steps-dialog :deep(.el-dialog__body) {
+  padding: 20px;
+  height: 510px; /* 设置固定高度 */
 }
 
-.selected-project-info {
-  margin-bottom: 16px;
-}
-
-.info-label {
-  font-size: 14px;
-  color: #606266;
-  margin-bottom: 8px;
-}
-
-.project-badge {
-  display: inline-flex;
-  flex-direction: column;
-  padding: 6px 12px;
-  background-color: #ebf5ff;
-  border-radius: 4px;
-  border-left: 3px solid #409eff;
-}
-
-.project-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: #303133;
-}
-
-.project-date {
-  font-size: 12px;
-  color: #909399;
-}
-
-.upload-tip {
-  font-size: 12px;
-  color: #909399;
-  margin-top: 8px;
-}
-
-.file-preview {
-  margin-top: 16px;
-  padding: 12px;
-  border-radius: 4px;
-  border: 1px solid #dcdfe6;
-  background-color: #f5f7fa;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.file-info {
-  display: flex;
-  align-items: center;
-}
-
-.file-icon {
-  font-size: 24px;
-  color: #909399;
-  margin-right: 12px;
-}
-
-.file-details {
+/* 关键样式：调整PlusStepsForm组件内部布局 */
+.fixed-steps-dialog :deep(.plus-steps-form) {
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
-.file-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: #303133;
+/* 内容区域样式，使其可滚动 */
+.fixed-steps-dialog :deep(.steps-content) {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 70px; /* 为底部按钮预留空间 */
 }
 
-.file-size {
-  font-size: 12px;
-  color: #909399;
+/* 步骤内容区域 */
+.step-content {
+  min-height: 350px;
+  width: 100%;
 }
 
-.project-warning {
-  margin-top: 16px;
-}
-
-.dialog-footer {
+/* 按钮区域固定在底部 */
+.fixed-steps-dialog :deep(.steps-action) {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: calc(100% - 40px);
+  background-color: white;
+  padding-top: 10px;
+  border-top: 1px solid #ebeef5;
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
+}
+
+:deep(.el-upload-dragger) {
+  height: 280px;
+}
+
+:deep(.el-upload-dragger .el-icon--upload) {
+  margin-top: 35px;
 }
 
 :deep(.el-divider__text) {
   font-size: 14px;
   color: #909399;
+}
+
+:deep(.el-radio) {
+  width: 100%;
+  height: 100%;
+  margin: 0 10px;
+  padding: 0;
+}
+
+:deep(.el-radio__input) {
+  height: 24px;
+  width: 24px;
+}
+
+:deep(.el-radio__inner) {
+  width: 24px;
+  height: 24px;
+  background-color: #ecf0f1;
+}
+
+:deep(.el-radio__input.is-checked .el-radio__inner) {
+  background-color: #3498db;
+  border-color: #3498db;
+}
+
+:deep(.el-radio__input.is-checked .el-radio__inner::after) {
+  transform: translate(-50%, -50%) scale(1);
+  content: "✓";
+  background-color: transparent;
+  color: white;
+  font-size: 12px;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+}
+
+:deep(.el-radio__label) {
+  padding-left: 10px;
+  width: 100%;
 }
 </style>

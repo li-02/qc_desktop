@@ -32,6 +32,16 @@ interface ElectronAPI {
   }) => Promise<{success: boolean; project?: ProjectInfo; error?: string}>;
   checkProjectName: (name: string) => Promise<{success: boolean; isAvailable: boolean; error?: string}>;
   deleteProject: (projectId: string) => Promise<{success: boolean; error?: string}>;
+  // 解析文件
+  parseFilePreview:(fileType:"csv"|"excel",fileContent:string|ArrayBuffer,maxRows?:number)=>Promise<{
+    success:boolean;
+    data?:{
+      columns:TableColumn[];
+      tableData:any[];
+      totalRows:number;
+    };
+    error?:string;
+  }>;
 }
 
 declare global {

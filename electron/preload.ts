@@ -24,7 +24,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("delete-project", projectId),
   // -------------------------
   // 文件
-  parseFilePreview: (fileType: string, fileContent: any, maxRows = 20) => {
-    ipcRenderer.invoke("parse-file-preview", fileType, fileContent, maxRows);
-  },
+  parseFilePreview: (
+    fileType: string,
+    fileContent: string | ArrayBuffer,
+    maxRows = 20
+  ) => ipcRenderer.invoke("parse-file-preview", fileType, fileContent, maxRows),
 });

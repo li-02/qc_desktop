@@ -3,6 +3,7 @@ import * as path from "path";
 import { ProjectManager } from "./project";
 import { Worker } from "worker_threads";
 import { rejects } from "assert";
+import { IPCChannels } from "../shared/types";
 
 // 保持窗口对象的全局引用，避免JavaScript对象被垃圾回收时窗口关闭
 let mainWindow: BrowserWindow | null = null;
@@ -132,46 +133,73 @@ function setupIPC() {
     return projectManager.getProjects();
   });
   // 创建新项目
-  ipcMain.handle("create-project", async (event, projectInfo) => {
-    try {
-      const project = projectManager.createProject(projectInfo);
-      return { success: true, project };
-    } catch (err: any) {
-      return { success: false, error: err.message };
+  ipcMain.handle(
+    "create-project",
+    async (event, projectInfo: IPCChannels["create-project"]["request"]) => {
+      try {
+        const project = projectManager.createProject(projectInfo);
+        return {
+          success: true,
+          project,
+        };
+      } catch (err: any) {
+        return {
+          success: false,
+          error: err.message,
+        };
+      }
     }
-  });
+  );
   // 检查项目名
-  ipcMain.handle("check-project-name", async (event, name) => {
-    try {
-      const isAvailable = projectManager.checkProjectName(name);
-      return { success: true, isAvailable };
-    } catch (err: any) {
-      return { success: false, error: err.message };
+  ipcMain.handle(
+    "check-project-name",
+    async (event, name: IPCChannels["check-project-name"]["request"]) => {
+      try {
+        const isAvailable = projectManager.checkProjectName(name);
+        return { success: true, isAvailable };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
     }
-  });
+  );
   // 删除项目
-  ipcMain.handle("delete-project", async (event, projectId) => {
-    try {
-      projectManager.deleteProject(projectId);
-      return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e.message };
+  ipcMain.handle(
+    "delete-project",
+    async (event, projectId: IPCChannels["delete-project"]["request"]) => {
+      try {
+        projectManager.deleteProject(projectId);
+        return { success: true };
+      } catch (e: any) {
+        return { success: false, error: e.message };
+      }
     }
-  });
+  );
 
   // 导入数据
-  ipcMain.handle("import-data", async (event, projectId, dataInfo) => {
-    try {
-      projectManager.importData(projectId, dataInfo);
-      return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e.message };
+  ipcMain.handle(
+    "import-data",
+    async (
+      event,
+      projectId: IPCChannels["import-data"]["request"]["projectId"],
+      importOptions: IPCChannels["import-data"]["request"]["importOption"]
+    ) => {
+      try {
+        projectManager.importData(projectId, importOptions);
+        return { success: true };
+      } catch (e: any) {
+        return { success: false, error: e.message };
+      }
     }
-  });
+  );
 
   ipcMain.handle(
     "parse-file-preview",
-    async (event, fileType, fileContent, maxRows = 20) => {
+    async (
+      event,
+      fileType: IPCChannels["parse-file-preview"]["request"]["fileType"],
+      fileContent: IPCChannels["parse-file-preview"]["request"]["fileContent"],
+      maxRows: IPCChannels["parse-file-preview"]["request"]["maxRows"] = 20
+    ) => {
       try {
         const result = await parseFileWithWorker(
           fileType,

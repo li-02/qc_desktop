@@ -1,19 +1,39 @@
 {
-  "files": [],
-  "references": [
-    { "path": "./tsconfig.app.json" },
-    { "path": "./tsconfig.node.json" }
-  ],
+  "extends": "@vue/tsconfig/tsconfig.dom.json",
   "compilerOptions": {
-    "typeRoots": [
-      "./node_modules/@type",
-      "./src/types"
-    ]
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    /* 路径解析 */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@shared/*": [
+        "../shared/*"
+      ]
+    },
+    /* Vue 相关 */
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    /* 严格检查 */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
   },
   "include": [
     "src/**/*.ts",
-    "src/**/*.d.ts",
+    "src/**/*.vue",
     "src/**/*.tsx",
-    "src/**/*.vue"
+    "../shared/**/*.ts",
+    "vite.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
   ]
 }

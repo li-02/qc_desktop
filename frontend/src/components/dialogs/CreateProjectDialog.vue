@@ -4,7 +4,7 @@ import {ref, watch} from "vue";
 import "plus-pro-components/es/components/form/style/css";
 import {type FieldValues, type PlusColumn, PlusForm} from "plus-pro-components";
 import {ElMessage} from "element-plus";
-import emitter from "@/utils/eventBus.ts";
+import emitter from "@/utils/eventBus";
 
 const dialogVisible = ref(false);
 const projectInfo = ref<FieldValues>({

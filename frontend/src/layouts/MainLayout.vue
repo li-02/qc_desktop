@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, ref} from "vue";
 import {useRoute, useRouter} from "vue-router";
-import emitter from "../utils/eventBus.ts";
+import emitter from "@/utils/eventBus";
 import {ElMessage, ElMessageBox} from "element-plus";
 import type {ProjectInfo} from "@/types/electron";
 import {

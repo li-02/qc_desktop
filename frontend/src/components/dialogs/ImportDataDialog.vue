@@ -2,20 +2,40 @@
 import {computed, onMounted, onUnmounted, ref} from "vue";
 import {ElMessage} from "element-plus";
 import {UploadFilled} from "@element-plus/icons-vue";
-import type {ProjectInfo} from "@/types/electron";
+import type {ProjectInfo} from "@shared/types/projectInterface";
 import emitter from "@/utils/eventBus";
-import {PlusStepsForm} from "plus-pro-components";
+import type {ElectronWindow} from "@shared/types/window";
+import type {TableColumns} from "@pureadmin/table";
 import PureTable from "@pureadmin/table";
-import {processCSV, processExcel} from "@/utils/fileProcessors";
+
+const electronAPI = (window as ElectronWindow).electronAPI;
 
 // 对话框状态
 const dialogVisible = ref(false);
 const loading = ref(false);
-const uploadRef = ref(null);
+const currentStep = ref(0);
+const stepForm = ref([
+  {
+    title: "选择数据类型",
+  },
+  {
+    title: "上传文件",
+  },
+  {
+    title: "配置参数",
+  },
+]);
+// 选择的项目和文件
+const selectedProject = ref<ProjectInfo>();
+// 表单需要的所有数据
+const datasetName = ref("");
+const selectedDataType = ref("flux"); // 默认选中第一个数据类型
+const selectedFile = ref<File>();
+const missingValueTypes = ref([]); // 选中的缺失值类型
 // 文件处理状态
 const fileProcessing = ref(false);
 
-const selectedDataType = ref("flux");
+// 第二步 选择数据类型
 const dataOptions = [
   {
     value: "flux",
@@ -38,7 +58,7 @@ const dataOptions = [
     description: "茎流量",
   },
   {
-    value: "mecrometelogy",
+    value: "micrometology",
     label: "微气象数据",
     description: "微气象数据",
   },
@@ -46,30 +66,14 @@ const dataOptions = [
 
 // 表格相关数据
 const tableData = ref([]);
-const columns = ref([]);
-const totalRowCount = ref(0);
+const columns = ref<TableColumns[]>([]);
+const totalRowCount = ref<number>(0);
 
-const missingValues = ref("");
-// 选择的项目和文件
-const selectedProject = ref<ProjectInfo | null>(null);
-const selectedFile = ref<File | null>(null);
+// 第三步 上传文件
+const uploadRef = ref(null);
 const fileList = ref<any[]>([]); //用于控制上传组件显示的文件列表
-const fileSelected = computed(() => selectedFile.value !== null);
-const active = ref(1);
-const stepForm = ref([
-  {
-    title: "选择数据类型",
-  },
-  {
-    title: "上传文件",
-  },
-  {
-    title: "配置参数",
-  },
-]);
 
-const isAdding = ref(false);
-const missingTypes = ref([]);
+// 第四步 确定缺失值类型
 const missingTypesList = ref([
   {
     value: "nan",
@@ -88,10 +92,48 @@ const missingTypesList = ref([
     label: "空值",
   },
 ]);
+const isAdding = ref(false);
 const optionName = ref("");
+// 优化列定义，确保每列有合理宽度
+const optimizedColumns = computed(() => {
+  return columns.value.map(column => {
+    // 原始列定义复制
+    const optimizedColumn = {...column};
+
+    // 如果是对象，添加width和minWidth属性
+    if (typeof optimizedColumn === "object") {
+      // 根据列标题长度动态设置最小宽度
+      const titleLength = optimizedColumn.label?.toString().length || 0;
+      const minColWidth = Math.max(150, titleLength * 10); // 最小150px，或者按标题字符数*10的宽度
+
+      // 设置列宽属性
+      optimizedColumn.width = minColWidth;
+      optimizedColumn.minWidth = minColWidth;
+
+      // 添加单元格样式，确保内容不溢出
+      optimizedColumn.cellStyle = {
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        maxWidth: `${minColWidth}px`,
+      };
+
+      // 添加tooltip，当文本被截断时显示完整内容
+      optimizedColumn.showOverflowTooltip = true;
+    }
+
+    return optimizedColumn;
+  });
+});
+/**
+ * 点击增加缺失值类型
+ */
 const onAddOption = () => {
   isAdding.value = true;
 };
+/**
+ * 确认添加缺失值类型
+ */
 const onConfirm = () => {
   if (optionName.value) {
     missingTypesList.value.push({
@@ -101,26 +143,80 @@ const onConfirm = () => {
     clearInputOption();
   }
 };
+/**
+ * 清空添加的缺失值类型
+ */
 const clearInputOption = () => {
   optionName.value = "";
   isAdding.value = false;
 };
-const next = (actives: number, values: any) => {
-  active.value = actives;
-  console.log(actives, values, stepForm.value);
+const prevStep = () => {
+  if (currentStep.value > 0) {
+    currentStep.value--;
+  }
 };
-// 格式化日期
-const formatDate = (timestamp: number): string => {
-  return new Date(timestamp).toLocaleDateString();
+const nextStep = () => {
+  if (currentStep.value < stepForm.value.length - 1) {
+    currentStep.value++;
+  }
 };
+/**
+ * 提交导入选项
+ */
+const submitImportOption = async () => {
+  console.log("submitImportOption");
+  const missingFields: string[] = [];
 
-// 格式化文件大小
-const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return "0 Bytes";
-  const k = 1024;
-  const sizes = ["Bytes", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  if (!selectedProject.value) {
+    missingFields.push("项目");
+  }
+
+  if (!datasetName.value.trim()) {
+    missingFields.push("数据集名称");
+  }
+
+  if (!selectedDataType.value) {
+    missingFields.push("数据类型");
+  }
+
+  if (!selectedFile.value) {
+    missingFields.push("上传文件");
+  }
+
+  // 可根据需要判断 missingValueTypes 是否必须
+  if (missingValueTypes.value.length === 0) {
+    missingFields.push("缺失值类型");
+  }
+
+  if (missingFields.length > 0) {
+    ElMessage.error(`请填写以下必填项：${missingFields.join("、")}`);
+    return;
+  }
+
+  // 所有字段都填写了，继续执行提交逻辑
+  console.log("提交导入配置", {
+    project: selectedProject.value,
+    datasetName: datasetName.value,
+    dataType: selectedDataType.value,
+    file: selectedFile.value,
+    missingValueTypes: missingValueTypes.value,
+  });
+
+  // 这里可以调用 API 提交数据
+  try {
+    loading.value = true;
+    const result = await electronAPI?.importData(selectedProject.value.id, {
+      type: selectedDataType.value,
+      file: selectedFile.value,
+      datasetName: datasetName.value,
+      missingValueTypes: missingValueTypes.value,
+      rows: tableData.value.length,
+      columns: columns.value.map((col: any) => col.label),
+    });
+  } catch (error: any) {
+    console.error("导入数据失败:", error);
+    ElMessage.error(error.message || "导入数据失败");
+  }
 };
 
 // 文件选择处理
@@ -163,12 +259,12 @@ const processFile = async (file: File, fileType: string) => {
       if (!fileContent) {
         throw new Error("读取文件失败");
       }
-      if (!window.electronAPI) {
+      if (!electronAPI) {
         throw new Error("Electron API不可用");
       }
       const type = fileType === "csv" ? "csv" : "excel";
       console.log("ready in parseFilePreview");
-      const result = await window.electronAPI.parseFilePreview(type, fileContent, 20);
+      const result = await electronAPI.parseFilePreview(type, fileContent, 20);
       console.log("parseFilePreview-result", result);
       if (!result.success) {
         throw new Error(result.error || "解析文件失败");
@@ -188,7 +284,7 @@ const processFile = async (file: File, fileType: string) => {
       reader.readAsArrayBuffer(file);
     }
   } catch (err) {
-    console.error("处理文件时出错:", err);
+    console.log("处理文件时出错:", err);
     ElMessage.error(err.message || "处理文件时出错");
     fileProcessing.value = false;
   }
@@ -205,11 +301,6 @@ const handleRemove = () => {
   fileList.value = [];
   columns.value = [];
   tableData.value = [];
-};
-
-// 手动移除文件
-const handleRemoveFile = () => {
-  handleRemove();
 };
 
 // 确认导入
@@ -259,6 +350,18 @@ const open = () => {
 // 关闭对话框
 const close = () => {
   dialogVisible.value = false;
+  // 清除导入选项
+  datasetName.value = "";
+  selectedDataType.value = "flux";
+  selectedFile.value = null;
+  missingValueTypes.value = [];
+  fileList.value = [];
+  columns.value = [];
+  tableData.value = [];
+  totalRowCount.value = 0;
+  fileProcessing.value = false;
+  loading.value = false;
+  currentStep.value = 0;
 };
 
 // 关闭时重置状态
@@ -296,110 +399,159 @@ defineExpose({
   <el-dialog
     v-model="dialogVisible"
     title="导入数据"
-    width="600px"
+    width="700px"
     class="fixed-steps-dialog"
     destroy-on-close
     @closed="handleClosed">
-    <PlusStepsForm v-model="active" :data="stepForm" @next="next">
-      <template #step-1>
-        <div class="step-content">
-          <el-radio-group v-model="selectedDataType" class="space-y-2.5 w-full flex flex-col">
-            <div
-              v-for="(option, index) in dataOptions"
-              :key="index"
-              class="flex w-full h-[60px] cursor-pointer rounded transition-all duration-200 !my-1"
-              :class="[
-                selectedDataType === option.value
-                  ? 'border-2 border-blue-500'
-                  : 'border border-gray-300 hover:border-blue-400 hover:shadow-md',
-              ]"
-              @click="selectedDataType = option.value">
-              <el-radio :value="option.value" class="flex w-full">
-                <div class="flex justify-between items-center w-full">
-                  <span class="text-base font-medium text-gray-800">{{ option.label }}</span>
-                  <span class="text-sm text-gray-500 !mr-2.5">{{ option.description }}</span>
-                </div>
-              </el-radio>
+    <el-steps class="w-full" :space="200" :active="currentStep" finish-status="success">
+      <el-step title="选择数据型" />
+      <el-step title="上传文件" />
+      <el-step title="配置参数" />
+    </el-steps>
+
+    <div v-if="currentStep === 0">
+      <h1>选择数据类型</h1>
+      <el-radio-group v-model="selectedDataType" class="space-y-2.5 w-full flex flex-col">
+        <div
+          v-for="(option, index) in dataOptions"
+          :key="index"
+          class="flex w-full h-[60px] cursor-pointer rounded transition-all duration-200 !my-1"
+          :class="[
+            selectedDataType === option.value
+              ? 'border-2 border-blue-500'
+              : 'border border-gray-300 hover:border-blue-400 hover:shadow-md',
+          ]"
+          @click="selectedDataType = option.value">
+          <el-radio :value="option.value" class="flex w-full">
+            <div class="flex justify-between items-center w-full">
+              <span class="text-base font-medium text-gray-800">{{ option.label }}</span>
+              <span class="text-sm text-gray-500 !mr-2.5">{{ option.description }}</span>
             </div>
-          </el-radio-group>
+          </el-radio>
         </div>
-      </template>
-      <template #step-2>
-        <div class="step-content">
-          <el-upload
-            ref="uploadRef"
-            class="h-70"
-            action="#"
-            :auto-upload="false"
-            :limit="1"
-            drag
-            :file-list="fileList"
-            :on-change="handleFileChange"
-            :on-exceed="handleExceed"
-            :on-remove="handleRemove">
-            <el-icon class="el-icon--upload">
-              <upload-filled />
-            </el-icon>
-            <div class="el-upload__text">托拽文件至此处或<em>点击上传</em></div>
-            <template #tip>
-              <div class="el-upload__tip">支持 CSV, Excel(xlsx/xls), JSON 格式文件，单次最大 50MB</div>
-            </template>
-          </el-upload>
-        </div>
-      </template>
-      <template #step-3>
-        <div class="step-content flex flex-col">
-          <div class="bg-blue-500 text-white px-4 py-2">
-            <span>当前文件：{{ fileList[0]?.name }}</span>
-            <span v-if="totalRowCount > 0" class="text-sm">
+      </el-radio-group>
+    </div>
+
+    <div v-if="currentStep === 1">
+      <el-upload
+        ref="uploadRef"
+        class="upload-demo"
+        action="#"
+        :auto-upload="false"
+        :limit="1"
+        drag
+        :file-list="fileList"
+        :on-change="handleFileChange"
+        :on-exceed="handleExceed"
+        :on-remove="handleRemove">
+        <el-icon class="el-icon--upload">
+          <upload-filled />
+        </el-icon>
+        <div class="el-upload__text">托拽文件至此处或<em>点击上传</em></div>
+        <template #tip>
+          <div class="el-upload__tip">支持 CSV, Excel(xlsx/xls), JSON 格式文件，单次最大 50MB</div>
+        </template>
+      </el-upload>
+    </div>
+
+    <div v-if="currentStep === 2">
+      <div class="step-content flex flex-col">
+        <div class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden mb-4">
+          <!-- 文件信息区域-->
+          <div class="bg-blue-500 text-white px-4 py-3 flex justify-between items-center">
+            <span class="font-medium">当前文件：{{ fileList[0]?.name }}</span>
+            <span v-if="totalRowCount > 0" class="text-sm bg-blue-600 px-2 py-0.5 rounded">
               总行数: {{ totalRowCount }} (显示前 {{ tableData.length }} 行)
             </span>
           </div>
-          <div class="bg-blue-500 text-white px-4 py-1 border-t border-blue-600">
-            <span>文件预览</span>
-          </div>
-          <!--表格预览部分-->
+
+          <!-- 表格预览部分，保持内容但使用卡片内部样式 -->
           <div class="p-4 bg-gray-50 relative">
+            <div v-if="columns.length > 0" class="table-container overflow-auto">
+              <!-- 表格样式优化：添加圆角和边框 -->
+              <pure-table
+                :data="tableData"
+                :columns="optimizedColumns"
+                height="300"
+                stripe
+                class="border border-gray-200 rounded-md data-preview-table"
+                :header-cell-style="{
+                  backgroundColor: '#f8fafc',
+                  color: '#4b5563',
+                  fontWeight: '600',
+                }" />
+            </div>
+
+            <!-- 无数据时显示的提示，使用更统一的空状态样式 -->
             <div
-              v-if="fileProcessing"
-              class="absolute inset-0 bg-white bg-opacity-70 flex items-center justify-center z-10">
-              <el-progress type="circle" :precentage="100" status="warning" indeterminate />
-              <span class="ml-2 text-gray-700">解析文件中,请稍候</span>
+              v-else-if="!fileProcessing"
+              class="h-48 flex flex-col items-center justify-center text-gray-500 bg-gray-50 border border-dashed border-gray-300 rounded-md">
+              <el-icon class="text-3xl mb-2">
+                <document />
+              </el-icon>
+              <span>请上传文件以预览数据</span>
             </div>
-            <div v-if="columns.length > 0" class="overflow-x-auto">
-              <pure-table :data="tableData" :columns="columns" height="300" />
-            </div>
-            <!-- 无数据时显示的提示 -->
-            <div v-else-if="!fileProcessing" class="h-48 flex items-center justify-center text-gray-500">
-              请上传文件以预览数据
-            </div>
+          </div>
+        </div>
+
+        <!-- 参数配置区域，使用相同的卡片风格 -->
+        <div class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+          <div class="bg-blue-500 text-white px-4 py-2">
+            <span class="font-medium">配置参数</span>
           </div>
           <div class="p-4">
-            <h2 class="text-base font-semibold text-gray-800 mb-2">配置参数</h2>
-            <div class="flex items-center border border-gray-300 rounded p-2">
-              <label class="text-sm text-gray-700">缺失值表示:</label>
+            <div class="flex items-center bg-gray-50 border border-gray-300 rounded p-3">
+              <label class="text-sm text-gray-700 font-medium min-w-24">缺失值表示:</label>
               <div class="relative flex-1 ml-2">
-                <el-select v-model="missingTypes" placeholder="缺失值示例" class="w-full" multiple>
+                <el-select v-model="missingValueTypes" placeholder="缺失值示例" class="w-full" multiple>
                   <el-option
                     v-for="item in missingTypesList"
                     :key="item.value"
                     :label="item.label"
                     :value="item.value" />
                   <template #footer>
-                    <el-button v-if="!isAdding" text bg size="small" @click="onAddOption"> 新增示例</el-button>
-                    <el-button v-else>
-                      <el-input v-model="optionName" class="option-input" placeholder="输入新示例" size="small" />
-                      <el-button type="primary" size="small" @click="onConfirm">确认</el-button>
-                      <el-button size="small" @click="clearInputOption">取消</el-button>
+                    <el-button
+                      v-if="!isAdding"
+                      text
+                      bg
+                      size="small"
+                      @click="onAddOption"
+                      class="text-blue-500 hover:bg-blue-50">
+                      <el-icon class="mr-1">
+                        <plus />
+                      </el-icon>
+                      新增示例
                     </el-button>
+                    <div v-else class="p-2">
+                      <el-input v-model="optionName" class="option-input mb-2" placeholder="输入新示例" size="small" />
+                      <div class="flex gap-2">
+                        <el-button type="primary" size="small" @click="onConfirm">确认</el-button>
+                        <el-button size="small" @click="clearInputOption">取消</el-button>
+                      </div>
+                    </div>
                   </template>
                 </el-select>
               </div>
             </div>
           </div>
         </div>
-      </template>
-    </PlusStepsForm>
+      </div>
+    </div>
+
+    <template #footer>
+      <div class="dialog-footer">
+        <el-button @click="close">取消</el-button>
+        <el-button @click="prevStep" :disabled="currentStep === 0">上一步</el-button>
+        <el-button @click="nextStep" :disabled="currentStep === 2">下一步</el-button>
+        <el-button
+          type="primary"
+          :loading="loading"
+          :disabled="currentStep !== 2 || loading"
+          @click="submitImportOption">
+          确认导入
+        </el-button>
+      </div>
+    </template>
   </el-dialog>
 </template>
 
@@ -442,17 +594,64 @@ defineExpose({
   justify-content: flex-end;
 }
 
+/* 表格容器样式，确保水平滚动正常工作 */
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  position: relative;
+}
+
+/* 表格样式优化 */
+:deep(.data-preview-table) {
+  width: 100%;
+  table-layout: fixed; /* 固定表格布局，更好地控制列宽 */
+  box-shadow: none;
+  border-radius: 6px;
+}
+
+:deep(.data-preview-table .table-header) {
+  background-color: #f8fafc;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+:deep(.data-preview-table th) {
+  font-weight: 600;
+  color: #4b5563;
+  padding: 10px 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:deep(.data-preview-table tr) {
+  transition: background-color 0.2s ease;
+}
+
+:deep(.data-preview-table tr:hover) {
+  background-color: #f1f5f9;
+}
+
+:deep(.data-preview-table td) {
+  color: #334155;
+  padding: 8px 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 确保水平滚动条显示正常 */
+:deep(.pure-table .el-scrollbar__wrap) {
+  overflow-x: auto !important;
+}
+
 :deep(.el-upload-dragger) {
   height: 280px;
 }
 
 :deep(.el-upload-dragger .el-icon--upload) {
   margin-top: 35px;
-}
-
-:deep(.el-divider__text) {
-  font-size: 14px;
-  color: #909399;
 }
 
 :deep(.el-radio) {

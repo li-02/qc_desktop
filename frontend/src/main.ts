@@ -13,6 +13,9 @@ import "animate.css";
 // 引入路由
 import router from "./router";
 import PureTable from "@pureadmin/table";
+import {createPinia} from "pinia";
+
+const pinia = createPinia();
 
 const app = createApp(App);
 app.use(ElementPlus, {
@@ -24,4 +27,5 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
 }
 app.use(PureTable, {locale: "zhCn"});
 app.use(router);
+app.use(pinia);
 app.mount("#app");

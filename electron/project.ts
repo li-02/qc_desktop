@@ -350,12 +350,16 @@ export class ProjectManager {
   public importData(
     projectId: string,
     importOptions: {
-      file: File;
+      type: string;
+      file: {
+        name: string;
+        size: number;
+        content: string | ArrayBuffer;
+      };
       datasetName: string;
-      type: string; // 数据类型 flux aqi ...
-      missingValueTypes: string[]; // 缺失值类型
-      rows: number; // 行数
-      columns: string[]; // 列名
+      missingValueTypes: string[];
+      rows: number;
+      columns: string[];
     }
   ) {
     try {
@@ -375,20 +379,30 @@ export class ProjectManager {
       if (!fs.existsSync(datasetPath)) {
         fs.mkdirSync(datasetPath, { recursive: true });
       }
-      // 复制原始文件
+
+      // 保存原始文件
       const originalExt = path.extname(importOptions.file.name);
       const originalFilePath = path.join(datasetPath, `original${originalExt}`);
-      fs.copyFileSync(importOptions.file.path, originalFilePath);
 
-      // 生成数据集元祖信息
+      // 根据内容类型写入文件
+      if (typeof importOptions.file.content === "string") {
+        fs.writeFileSync(originalFilePath, importOptions.file.content, "utf8");
+      } else {
+        fs.writeFileSync(
+          originalFilePath,
+          Buffer.from(importOptions.file.content as ArrayBuffer)
+        );
+      }
+
+      // 生成数据集元数据信息
       const metadata = {
         id: datasetId,
         name: datasetName,
-        type: importOptions.type, // 数据类型 flux aqi ...
+        type: importOptions.type,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         belongTo: projectId,
-        dirPath: datasetPath, // 数据集目录
+        dirPath: datasetPath,
         missingValueTypes: [...importOptions.missingValueTypes],
         originalFile: {
           name: importOptions.file.name,
@@ -399,6 +413,7 @@ export class ProjectManager {
         },
         processedFiles: [],
       };
+
       this.saveDatasetConfig(metadata);
       const datasetBaseInfo: DatasetBaseInfo = this.toDatasetBaseInfo(metadata);
 
@@ -409,6 +424,7 @@ export class ProjectManager {
       project.lastUpdated = Date.now();
       this.saveProjectConfig(project);
       this.saveProjectsIndex();
+
       return {
         datasetId,
         datasetName,

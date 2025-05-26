@@ -61,7 +61,11 @@ export interface DatasetInfo {
 }
 export interface ImportOption {
   type: string;
-  file: File;
+  file: {
+    name: string;
+    filePath: string;
+    size: number;
+  };
   datasetName: string;
   missingValueTypes: string[];
   rows: number;

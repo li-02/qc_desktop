@@ -1,43 +1,31 @@
-// electron/preload.ts
-import {contextBridge, ipcRenderer} from "electron";
-// 暴露安全的API到渲染进程
-contextBridge.exposeInMainWorld("electronAPI", {
-  // 这里可以添加你需要在渲染进程中使用的函数
-  // 监听“新建项目”菜单项的点击事件
-  onOpenCreateProjectDialog: (callback: () => void) => {
-    ipcRenderer.on("open-create-project-dialog", callback);
+import { contextBridge, ipcRenderer } from "electron";
+
+// 统一的IPC调用接口
+const electronAPI = {
+  // 统一的IPC调用方法
+  invoke: async (channel: string, args?: any) => {
+    try {
+      const result = await ipcRenderer.invoke("ipc-invoke", channel, args);
+      return result;
+    } catch (error: any) {
+      console.error("IPC调用失败:", error);
+      return { success: false, error: error.message };
+    }
   },
-  // 监听“导入数据”菜单项的点击事件
-  onOpenImportDataDialog: (callback: () => void) => {
-    ipcRenderer.on("open-import-data-dialog", callback);
+
+  // 监听主进程事件
+  on: (channel: string, callback: (...args: any[]) => void) => {
+    ipcRenderer.on(channel, callback);
   },
-  // -------------------------
-  // 项目管理功能
-  getProjects: () => ipcRenderer.invoke("get-projects"),
-  createProject: (projectInfo: any) =>
-    ipcRenderer.invoke("create-project", projectInfo),
-  checkProjectName: (name: string) =>
-    ipcRenderer.invoke("check-project-name", name),
-  deleteProject: (projectId: string) =>
-    ipcRenderer.invoke("delete-project", projectId),
-  // -------------------------
-  // 文件
-  parseFilePreview: (
-    fileType: string,
-    fileContent: string | ArrayBuffer,
-    maxRows = 20
-  ) => ipcRenderer.invoke("parse-file-preview", fileType, fileContent, maxRows),
 
-  // 导入数据
-  importData: (projectId:string,importOptions:any) =>
-      ipcRenderer.invoke("import-data", projectId, importOptions),
+  // 移除事件监听
+  removeListener: (channel: string, callback: (...args: any[]) => void) => {
+    ipcRenderer.removeListener(channel, callback);
+  },
+};
 
-  getProjectDatasets: (projectId: string) =>
-      ipcRenderer.invoke("get-project-datasets", projectId),
+// 暴露API到渲染进程
+contextBridge.exposeInMainWorld("electronAPI", electronAPI);
 
-  deleteDataset: (projectId: string, datasetId: string) =>
-      ipcRenderer.invoke("delete-dataset", { projectId, datasetId }),
-
-  getDatasetInfo: (projectId: string, datasetId: string) =>
-      ipcRenderer.invoke("get-dataset-info", { projectId, datasetId }),
-});
+// 添加调试日志
+console.log("Preload script loaded, electronAPI:", electronAPI);

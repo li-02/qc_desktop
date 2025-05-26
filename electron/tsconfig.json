@@ -7,21 +7,13 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    /* 输出配置 */
-    "outDir": "../dist/electron",
+    "outDir": "../dist",
     "sourceMap": true,
-    /* 路径解析 */
     "baseUrl": "./",
     "paths": {
-      "@shared/*": [
-        "./shared/*"
-      ]
+      "@shared/*": ["../shared/*"]
     }
   },
-  "include": [
-    "**/*",
-    "../shared/**/*",
-    "../global.d.ts"
-  ],
-  "copy": ["workers/**/*"]
+  "include": ["./**/*"],
+  "exclude": ["node_modules", "../dist"]
 }

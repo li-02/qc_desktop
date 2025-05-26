@@ -1,12 +1,11 @@
 import {defineStore} from "pinia";
 import {ref, computed, watch} from "vue";
-import type {DatasetBaseInfo, DatasetInfo, ImportOption} from "@shared/types/projectInterface";
+import type {DatasetBaseInfo, ImportOption} from "@shared/types/projectInterface";
 import {useProjectStore} from "./useProjectStore";
 import {ElMessage} from "element-plus";
+import {API_ROUTES} from "@shared/constants/apiRoutes";
 
 export const useDatasetStore = defineStore("dataset", () => {
-  // 仅保存简要信息
-  // 获取项目 store
   const projectStore = useProjectStore();
 
   // 状态
@@ -16,12 +15,9 @@ export const useDatasetStore = defineStore("dataset", () => {
 
   // 计算属性
   const hasDatasets = computed(() => datasets.value.length > 0);
-
   const datasetsSortedByDate = computed(() => {
     return [...datasets.value].sort((a, b) => a.createdAt - b.createdAt);
   });
-
-  // 当前项目的数据集
   const currentProjectDatasets = computed(() => {
     if (!projectStore.currentProject) return [];
     return datasets.value.filter(d => d.belongTo === projectStore.currentProject?.id);
@@ -37,7 +33,6 @@ export const useDatasetStore = defineStore("dataset", () => {
     }
     try {
       loading.value = true;
-      // 从当前项目中获取数据集信息
       const project = projectStore.projects.find(p => p.id === targetProjectId);
       if (project) {
         datasets.value = project.datasets.map(d => ({
@@ -69,13 +64,13 @@ export const useDatasetStore = defineStore("dataset", () => {
 
     try {
       loading.value = true;
-
-      const result = await window.electronAPI.importData(projectStore.currentProject.id, importOptions);
+      const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.IMPORT, {
+        projectId: projectStore.currentProject.id,
+        importOption: importOptions,
+      });
 
       if (result.success) {
-        // 刷新项目列表以获取最新的数据集信息
         await projectStore.loadProjects();
-        // 重新加载数据集
         await loadDatasets();
         return true;
       } else {
@@ -95,7 +90,11 @@ export const useDatasetStore = defineStore("dataset", () => {
     }
     try {
       loading.value = true;
-      const result = await window.electronAPI.deleteDataset(projectStore.currentProject.id, datasetId);
+      const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.DELETE, {
+        projectId: projectStore.currentProject.id,
+        datasetId,
+      });
+
       if (result.success) {
         if (currentDataset.value?.id === datasetId) {
           currentDataset.value = null;
@@ -135,12 +134,10 @@ export const useDatasetStore = defineStore("dataset", () => {
     datasets,
     currentDataset,
     loading,
-
     // 计算属性
     hasDatasets,
     datasetsSortedByDate,
     currentProjectDatasets,
-
     // Actions
     loadDatasets,
     setCurrentDataset,

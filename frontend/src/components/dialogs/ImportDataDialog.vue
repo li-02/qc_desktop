@@ -3,14 +3,12 @@ import {computed, onMounted, onUnmounted, ref} from "vue";
 import {ElMessage} from "element-plus";
 import {UploadFilled} from "@element-plus/icons-vue";
 import type {ProjectInfo} from "@shared/types/projectInterface";
-import emitter from "@/utils/eventBus";
 // import type {ElectronWindow} from "@shared/types/window";
 import type {TableColumns} from "@pureadmin/table";
 import PureTable from "@pureadmin/table";
 import {useProjectStore} from "@/stores/useProjectStore";
 import {useDatasetStore} from "@/stores/useDatasetStore";
-
-// const electronAPI = (window as ElectronWindow).electronAPI;
+import {API_ROUTES} from "@shared/constants/apiRoutes";
 
 // 对话框状态
 const dialogVisible = ref(false);
@@ -74,7 +72,8 @@ const columns = ref<TableColumns[]>([]);
 const totalRowCount = ref<number>(0);
 
 // 第三步 上传文件
-const uploadRef = ref(null);
+import type {UploadInstance} from "element-plus";
+const uploadRef = ref<UploadInstance | null>(null);
 const fileList = ref<any[]>([]); //用于控制上传组件显示的文件列表
 
 // 第四步 确定缺失值类型
@@ -197,20 +196,12 @@ const submitImportOption = async () => {
     return;
   }
 
-  // 所有字段都填写了，继续执行提交逻辑
-  console.log("提交导入配置", {
-    project: projectStore.currentProject,
-    datasetName: datasetName.value,
-    dataType: selectedDataType.value,
-    file: selectedFile.value,
-    missingValueTypes: missingValueTypes.value,
-  });
-
   try {
+    const fileSerializable = await fileToSerializable(selectedFile.value!);
     const result = await datasetStore.importData({
       datasetName: datasetName.value,
       type: selectedDataType.value,
-      file: selectedFile.value,
+      file: fileSerializable,
       missingValueTypes: missingValueTypes.value,
       rows: totalRowCount.value,
       columns: columns.value.map(col => col.label).filter((label): label is string => typeof label === "string"),
@@ -226,7 +217,43 @@ const submitImportOption = async () => {
     ElMessage.error("数据导入失败，请稍后重试");
   }
 };
+const fileToSerializable = (
+  file: File
+): Promise<{
+  name: string;
+  size: number;
+  content: string | ArrayBuffer;
+}> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
 
+    reader.onload = e => {
+      const content = e.target?.result;
+      if (!content) {
+        reject(new Error("读取文件失败"));
+        return;
+      }
+
+      resolve({
+        name: file.name,
+        size: file.size,
+        content: content,
+      });
+    };
+
+    reader.onerror = () => {
+      reject(new Error("读取文件失败"));
+    };
+
+    // 根据文件类型选择读取方式
+    const fileType = file.name.split(".").pop()?.toLowerCase();
+    if (fileType === "csv") {
+      reader.readAsText(file);
+    } else {
+      reader.readAsArrayBuffer(file);
+    }
+  });
+};
 // 文件选择处理
 const handleFileChange = (file: any) => {
   console.log("handleFileChange-file-upload", file);
@@ -267,13 +294,12 @@ const processFile = async (file: File, fileType: string) => {
       if (!fileContent) {
         throw new Error("读取文件失败");
       }
-      if (!electronAPI) {
-        throw new Error("Electron API不可用");
-      }
       const type = fileType === "csv" ? "csv" : "excel";
-      console.log("ready in parseFilePreview");
-      const result = await electronAPI.parseFilePreview(type, fileContent, 20);
-      console.log("parseFilePreview-result", result);
+      const result = await window.electronAPI.invoke(API_ROUTES.FILES.PARSE_PREVIEW, {
+        fileType: type,
+        fileContent: fileContent,
+        maxRows: 20,
+      });
       if (!result.success) {
         throw new Error(result.error || "解析文件失败");
       }
@@ -291,7 +317,7 @@ const processFile = async (file: File, fileType: string) => {
     } else {
       reader.readAsArrayBuffer(file);
     }
-  } catch (err) {
+  } catch (err: any) {
     console.log("处理文件时出错:", err);
     ElMessage.error(err.message || "处理文件时出错");
     fileProcessing.value = false;
@@ -313,16 +339,6 @@ const handleRemove = () => {
 
 // 打开对话框
 const open = () => {
-  // // 获取当前选中的项目
-  // const handleProjectSelected = (project: ProjectInfo) => {
-  //   selectedProject.value = project;
-  //   // 移除监听器，避免重复监听
-  //   emitter.off("project-selected", handleProjectSelected);
-  // };
-
-  // // 先监听一下项目选择事件
-  // emitter.on("project-selected", handleProjectSelected);
-
   dialogVisible.value = true;
 };
 
@@ -351,21 +367,6 @@ const handleClosed = () => {
     uploadRef.value.clearFiles();
   }
 };
-
-// // 监听事件总线，获取当前选中的项目
-// onMounted(() => {
-//   // 检查是否已有选中的项目
-//   emitter.on("current-project", (project: ProjectInfo) => {
-//     selectedProject.value = project;
-//   });
-
-//   // 请求当前项目信息
-//   emitter.emit("get-current-project");
-// });
-
-// onUnmounted(() => {
-//   emitter.off("current-project");
-// });
 
 // 导出方法给父组件
 defineExpose({

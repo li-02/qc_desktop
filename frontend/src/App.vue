@@ -1,29 +1,33 @@
 <script setup lang="ts">
 import {onMounted, onUnmounted} from "vue";
 import GlobalDialogs from "./components/dialogs/index.vue";
-import emitter from "./utils/eventBus";
-import {cleanupProjectStore, setupProjectStore} from "./stores/projectStore";
-
+// import emitter from "./utils/eventBus";
+import {useProjectStore} from "./stores/useProjectStore";
+import {useDatasetStore} from "./stores/useDatasetStore";
+// import {cleanupProjectStore, setupProjectStore} from "./stores/projectStore";
+const projectStore = useProjectStore();
+const datasetStore = useDatasetStore();
 onMounted(() => {
+  projectStore.loadProjects();
   // 设置项目状态管理
-  setupProjectStore();
+  // setupProjectStore();
 
-  if (window.electronAPI) {
-    // 事件转发到Vue事件总线
-    window.electronAPI.onOpenCreateProjectDialog(() => {
-      emitter.emit("open-create-project-dialog");
-    });
+  // if (window.electronAPI) {
+  //   // 事件转发到Vue事件总线
+  //   window.electronAPI.onOpenCreateProjectDialog(() => {
+  //     emitter.emit("open-create-project-dialog");
+  //   });
 
-    window.electronAPI.onOpenImportDataDialog(() => {
-      console.log("App.vue 收到主进程的open-import-data-dialog事件，转发到事件总线");
-      emitter.emit("open-import-data-dialog");
-    });
-  }
+  //   window.electronAPI.onOpenImportDataDialog(() => {
+  //     console.log("App.vue 收到主进程的open-import-data-dialog事件，转发到事件总线");
+  //     emitter.emit("open-import-data-dialog");
+  //   });
+  // }
 });
 
 onUnmounted(() => {
   // 清理项目状态管理
-  cleanupProjectStore();
+  // cleanupProjectStore();
 });
 </script>
 

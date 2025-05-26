@@ -4,11 +4,11 @@ import {ElMessage} from "element-plus";
 import {UploadFilled} from "@element-plus/icons-vue";
 import type {ProjectInfo} from "@shared/types/projectInterface";
 import emitter from "@/utils/eventBus";
-import type {ElectronWindow} from "@shared/types/window";
+// import type {ElectronWindow} from "@shared/types/window";
 import type {TableColumns} from "@pureadmin/table";
 import PureTable from "@pureadmin/table";
 
-const electronAPI = (window as ElectronWindow).electronAPI;
+// const electronAPI = (window as ElectronWindow).electronAPI;
 
 // 对话框状态
 const dialogVisible = ref(false);
@@ -205,12 +205,12 @@ const submitImportOption = async () => {
   // 这里可以调用 API 提交数据
   try {
     loading.value = true;
-    const result = await electronAPI?.importData(selectedProject.value.id, {
+    const result = await window.electronAPI.importData(selectedProject.value.id, {
       type: selectedDataType.value,
       file: selectedFile.value,
       datasetName: datasetName.value,
       missingValueTypes: missingValueTypes.value,
-      rows: tableData.value.length,
+      rows: totalRowCount.value,
       columns: columns.value.map((col: any) => col.label),
     });
   } catch (error: any) {

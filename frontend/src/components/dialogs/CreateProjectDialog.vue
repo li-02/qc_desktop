@@ -4,21 +4,31 @@ import {ref, watch} from "vue";
 import "plus-pro-components/es/components/form/style/css";
 import {type FieldValues, type PlusColumn, PlusForm} from "plus-pro-components";
 import {ElMessage} from "element-plus";
-import emitter from "@/utils/eventBus";
+// import emitter from "@/utils/eventBus";
+import {useProjectStore} from "@/stores/useProjectStore";
 
-const dialogVisible = ref(false);
-const projectInfo = ref<FieldValues>({
+interface ProjectInfo {
+  siteName: string;
+  longitude: string;
+  latitude: string;
+  altitude: string;
+}
+const projectStore = useProjectStore();
+const dialogVisible = ref(false); // 是否显示对话框
+const projectInfo = ref<ProjectInfo>({
+  // 项目信息form
   siteName: "",
   longitude: "",
   latitude: "",
   altitude: "",
 });
 const nameCheckStatus = ref({
+  // 站点名称检查状态
   checking: false,
   valid: true,
   message: "",
 });
-const loading = ref(false);
+// plusColumns 配置
 const columns: PlusColumn[] = [
   {
     label: "站点名称",
@@ -75,6 +85,7 @@ const columns: PlusColumn[] = [
     },
   },
 ];
+// 组件dialog控制方法
 const open = () => {
   dialogVisible.value = true;
 };
@@ -89,22 +100,18 @@ const handleClosed = () => {
     altitude: "",
   };
   nameCheckStatus.value = {checking: false, valid: true, message: ""};
-  loading.value = false;
+  projectStore.loading = false;
 };
 const handleChange = (values: FieldValues, prop: PlusColumn) => {
   console.log(values, prop, "change");
 };
-const handleSubmit = async (values: FieldValues) => {
+const handleSubmit = async (values: ProjectInfo) => {
   console.log(values, "submit");
   if (nameCheckStatus.value.checking || !nameCheckStatus.value.valid) {
     ElMessage.error(nameCheckStatus.value.checking ? "正在检查站点名称，请稍后" : nameCheckStatus.value.message);
   }
   try {
-    loading.value = true;
-    if (!window.electronAPI) {
-      throw new Error("Electron API not available");
-    }
-    const result = await window.electronAPI.createProject({
+    const {success, error} = await projectStore.createProject({
       name: values.siteName,
       siteInfo: {
         longitude: values.longitude,
@@ -112,22 +119,21 @@ const handleSubmit = async (values: FieldValues) => {
         altitude: values.altitude,
       },
     });
-    if (result.success) {
+    if (success) {
       ElMessage.success("项目创建成功");
-      emitter.emit("refresh-projects");
+      // emitter.emit("refresh-projects");
       close();
     } else {
-      throw new Error(result.error || "project create failed");
+      ElMessage.error(`项目创建失败: ${error}`);
     }
   } catch (e) {
     console.error("create project failed", e);
-  } finally {
-    loading.value = false;
+    ElMessage.error("项目创建失败，请稍后重试");
   }
 };
 const handleSubmitError = (err: any) => {
   console.log(err, "err");
-  loading.value = false;
+  projectStore.loading = false;
 };
 const handleReset = () => {
   projectInfo.value = {
@@ -147,15 +153,13 @@ watch(
     }
     nameCheckStatus.value.checking = true;
     try {
-      if (window.electronAPI) {
-        const result = await window.electronAPI.checkProjectName(newName);
-        if (result.success) {
-          nameCheckStatus.value.valid = result.isAvailable;
-          nameCheckStatus.value.message = result.isAvailable ? "" : "站点名称已存在";
-        } else {
-          nameCheckStatus.value.valid = false;
-          nameCheckStatus.value.message = "检查站点名称失败";
-        }
+      const result = await projectStore.checkProjectName(newName);
+      if (result.success) {
+        nameCheckStatus.value.valid = !!result.data;
+        nameCheckStatus.value.message = result.data ? "" : "站点名称已存在";
+      } else {
+        nameCheckStatus.value.valid = false;
+        nameCheckStatus.value.message = "检查站点名称失败";
       }
     } catch (err) {
       console.error("Check project name error:", err);
@@ -286,9 +290,9 @@ defineExpose({
           <el-button
             type="primary"
             @click="handleSubmit(projectInfo)"
-            :loading="loading"
-            :disabled="nameCheckStatus.checking || !nameCheckStatus.valid"
-            >确定
+            :loading="projectStore.loading"
+            :disabled="nameCheckStatus.checking || !nameCheckStatus.valid">
+            确定
           </el-button>
         </span>
       </template>

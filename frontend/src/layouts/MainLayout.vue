@@ -3,11 +3,13 @@ import {computed, onMounted, onUnmounted, ref} from "vue";
 import {useRoute, useRouter} from "vue-router";
 import emitter from "@/utils/eventBus";
 import {ElMessage, ElMessageBox} from "element-plus";
-import type {ProjectInfo} from "@/types/electron";
 import {
+  ArrowRight,
   DataAnalysis,
   Delete,
   DocumentCopy,
+  FolderOpened, // 添加这个图标
+  Document, // 添加这个图标
   HomeFilled,
   MoreFilled,
   Operation,
@@ -16,11 +18,12 @@ import {
   Refresh,
   Upload,
 } from "@element-plus/icons-vue";
+import {useProjectStore} from "@/stores/useProjectStore";
 
-// 项目状态
-const projects = ref<ProjectInfo[]>([]);
-const selectedProject = ref<ProjectInfo | null>(null);
-const loading = ref(false);
+const projectStore = useProjectStore();
+
+// 删除重复的状态管理，只保留必要的
+const expandedProjects = ref<Set<string>>(new Set());
 
 // 侧边栏状态
 const isCollapsed = ref(false);
@@ -36,7 +39,7 @@ const route = useRoute();
 const router = useRouter();
 const activeIndex = computed(() => route.path);
 const currentRouteName = computed(() => {
-  const matchedRoute = router.resolve(route.path).matched[1]; // 获取当前激活的路由
+  const matchedRoute = router.resolve(route.path).matched[1];
   return matchedRoute?.name || "";
 });
 
@@ -49,165 +52,103 @@ const mainMenuItems = [
   {name: "数据导出", path: "/data-export", icon: DocumentCopy},
 ];
 
+// 切换项目展开状态
+const toggleProjectExpanded = (projectId: string) => {
+  if (expandedProjects.value.has(projectId)) {
+    expandedProjects.value.delete(projectId);
+  } else {
+    expandedProjects.value.add(projectId);
+  }
+};
+
+const isProjectExpanded = (projectId: string): boolean => {
+  return expandedProjects.value.has(projectId);
+};
+
 // 格式化日期
 const formatDate = (timestamp: number): string => {
   return new Date(timestamp).toLocaleDateString();
 };
 
-// 选择项目
-const selectProject = (project: ProjectInfo) => {
-  selectedProject.value = project;
-  // 触发项目选择的事件
-  emitter.emit("project-selected", project);
+// 选择项目 - 修正参数类型
+const selectProject = (projectId: string) => {
+  // 找到项目对象
+  const project = projectStore.projects.find(p => p.id === projectId);
+  if (project) {
+    projectStore.setCurrentProject(projectId);
 
-  // 如果当前在首页，自动跳转到数据预处理页面
-  if (route.path === "/") {
-    router.push("/data-processing");
+    // 如果当前在首页，自动跳转到数据预处理页面
+    if (route.path === "/") {
+      router.push("/data-processing");
+    }
   }
 };
 
-// 创建新项目
+const selectDataset = (projectId: string, dataset: any) => {
+  projectStore.setCurrentProject(projectId);
+  ElMessage.info(`已选择数据集: ${dataset.name}`);
+};
+
 const createNewProject = () => {
   emitter.emit("open-create-project-dialog");
 };
 
 // 处理项目命令
-const handleProjectCommand = (command: string, project: ProjectInfo) => {
+const handleProjectCommand = (command: string, projectId: string) => {
   if (command === "import") {
-    handleImportData(project);
+    handleImportData(projectId);
   } else if (command === "delete") {
-    confirmDeleteProject(project);
-  }
-};
-
-// 加载项目列表
-const loadProjects = async () => {
-  if (!window.electronAPI) {
-    console.error("Electron API not available");
-    return;
-  }
-
-  try {
-    loading.value = true;
-    projects.value = await window.electronAPI.getProjects();
-    // 按创建时间降序排序（最新的在前面）
-    projects.value.sort((a, b) => b.createdAt - a.createdAt);
-
-    // 如果有选中的项目，更新一下选中的项目信息
-    if (selectedProject.value) {
-      const updated = projects.value.find(p => p.id === selectedProject.value?.id);
-      if (updated) {
-        selectedProject.value = updated;
-      } else {
-        // 如果当前选中的项目已被删除，则清空选择
-        selectedProject.value = null;
-      }
-    }
-
-    // 如果有项目但没有选中项目，自动选择第一个
-    if (projects.value.length > 0 && !selectedProject.value) {
-      selectedProject.value = projects.value[0];
-    }
-  } catch (error) {
-    console.error("Failed to load projects:", error);
-    ElMessage.error("加载项目列表失败");
-  } finally {
-    loading.value = false;
+    confirmDeleteProject(projectId);
   }
 };
 
 // 处理导入数据点击事件
-const handleImportData = (project?: ProjectInfo) => {
-  // 如果提供了特定项目，先选中它
-  if (project) {
-    selectedProject.value = project;
+const handleImportData = (projectId?: string) => {
+  if (projectId) {
+    projectStore.setCurrentProject(projectId);
   }
 
-  // 检查是否有选中的项目
-  if (!selectedProject.value) {
+  if (!projectStore.currentProject) {
     ElMessage.warning("请先选择一个项目");
     return;
   }
 
-  console.log("导入数据到项目:", selectedProject.value.name);
+  console.log("导入数据到项目:", projectStore.currentProject.name);
   emitter.emit("open-import-data-dialog");
 };
 
+// 监听导入成功，自动展开项目
+const handleImportSuccess = () => {
+  if (projectStore.currentProject) {
+    expandedProjects.value.add(projectStore.currentProject.id);
+  }
+};
+
 // 确认删除项目
-const confirmDeleteProject = (project: ProjectInfo) => {
+const confirmDeleteProject = (projectId: string) => {
+  const project = projectStore.projects.find(p => p.id === projectId);
+  if (!project) return;
+
   ElMessageBox.confirm(`确定要删除项目 "${project.name}" 吗? 此操作不可恢复。`, "删除项目", {
     confirmButtonText: "确定",
     cancelButtonText: "取消",
     type: "warning",
   })
     .then(async () => {
-      await deleteProject(project.id);
+      await projectStore.deleteProject(project.id);
     })
     .catch(() => {
-      // do nothing
+      // 用户取消
     });
-};
-
-// 删除项目
-const deleteProject = async (projectId: string) => {
-  if (!window.electronAPI) {
-    console.error("Electron API not available");
-    return;
-  }
-
-  try {
-    loading.value = true;
-    const result = await window.electronAPI.deleteProject(projectId);
-
-    if (result.success) {
-      ElMessage.success("项目删除成功");
-
-      // 如果删除的是当前选中的项目，则清空选择
-      if (selectedProject.value?.id === projectId) {
-        selectedProject.value = null;
-      }
-
-      // 刷新项目列表
-      await loadProjects();
-    } else {
-      throw new Error(result.error || "删除项目失败");
-    }
-  } catch (error: any) {
-    console.error("Delete project error:", error);
-    ElMessage.error(error.message || "删除项目时出错");
-  } finally {
-    loading.value = false;
-  }
-};
-
-// 监听项目刷新事件
-const handleRefreshProjects = () => {
-  loadProjects();
 };
 
 onMounted(() => {
-  // 首次加载项目列表
-  loadProjects();
-
-  // 监听刷新项目列表事件
-  emitter.on("refresh-projects", handleRefreshProjects);
-
-  // 监听项目创建成功事件
-  emitter.on("project-created", project => {
-    loadProjects().then(() => {
-      // 自动选择新创建的项目
-      const newProject = projects.value.find(p => p.id === project.id);
-      if (newProject) {
-        selectProject(newProject);
-      }
-    });
-  });
+  projectStore.loadProjects();
+  emitter.on("data-imported", handleImportSuccess);
 });
 
 onUnmounted(() => {
-  // 移除事件监听
-  emitter.off("refresh-projects", handleRefreshProjects);
-  emitter.off("project-created");
+  emitter.off("data-imported", handleImportSuccess);
 });
 </script>
 <template>
@@ -218,9 +159,7 @@ onUnmounted(() => {
       :class="[
         isCollapsed ? 'w-16' : 'w-54',
         'h-full flex flex-col bg-gray-800 text-white transition-[width] duration-300 ease-in-out',
-      ]"
-      @transitionstart="onTransitionStart"
-      @transitionend="onTransitionEnd">
+      ]">
       <!-- 应用标题区 -->
       <div class="w-16 flex items-center">
         <div class="w-16 flex justify-center">
@@ -235,51 +174,174 @@ onUnmounted(() => {
       </div>
 
       <!-- 项目管理部分 -->
-      <div class="projects-section" v-if="!isCollapsed">
-        <div class="projects-header">
-          <h2>项目</h2>
-          <div class="projects-actions">
+      <div class="flex-1 flex flex-col mt-4 overflow-hidden" v-if="!isCollapsed">
+        <div class="flex items-center justify-between px-4 mb-2">
+          <h2 class="m-0 text-xs uppercase font-semibold text-gray-400">项目</h2>
+          <div class="flex gap-1">
             <el-tooltip content="刷新项目列表" placement="top">
-              <el-button circle text size="small" :loading="loading" @click="loadProjects" :icon="Refresh" />
+              <el-button
+                circle
+                text
+                size="small"
+                :loading="projectStore.loading"
+                @click="projectStore.loadProjects"
+                :icon="Refresh"
+                class="text-gray-400 hover:text-white" />
             </el-tooltip>
             <el-tooltip content="新建项目" placement="top">
-              <el-button circle text size="small" @click="createNewProject" :icon="Plus" />
+              <el-button
+                circle
+                text
+                size="small"
+                @click="createNewProject"
+                :icon="Plus"
+                class="text-gray-400 hover:text-white" />
             </el-tooltip>
           </div>
         </div>
 
         <!-- 项目列表 -->
-        <div class="projects-list">
-          <el-empty v-if="projects.length === 0" description="暂无项目" :image-size="48" />
-          <div
-            v-for="project in projects"
-            :key="project.id"
-            class="project-item"
-            :class="{active: selectedProject?.id === project.id}"
-            @click="selectProject(project)">
-            <div class="project-info">
-              <p class="project-name">{{ project.name }}</p>
-              <p class="project-date">{{ formatDate(project.createdAt) }}</p>
+        <div class="flex-1 overflow-y-auto px-2 custom-scrollbar">
+          <el-empty v-if="!projectStore.hasProjects" description="暂无项目" :image-size="48" />
+
+          <div v-else class="space-y-1">
+            <div v-for="project in projectStore.projectsSortedByDate" :key="project.id" class="group">
+              <!-- 项目头部 -->
+              <div
+                class="flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all duration-200 hover:bg-gray-700"
+                :class="{
+                  'bg-blue-600 hover:bg-blue-700': projectStore.currentProject?.id === project.id,
+                  'bg-transparent': projectStore.currentProject?.id !== project.id,
+                }"
+                @click="selectProject(project.id)">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2">
+                    <!-- 展开/折叠按钮 -->
+                    <button
+                      v-if="project.datasets?.length > 0"
+                      @click.stop="toggleProjectExpanded(project.id)"
+                      class="w-4 h-4 flex items-center justify-center text-gray-400 hover:text-white transition-colors duration-200">
+                      <el-icon
+                        class="transform transition-transform duration-200 text-xs"
+                        :class="{'rotate-90': isProjectExpanded(project.id)}">
+                        <ArrowRight />
+                      </el-icon>
+                    </button>
+                    <div v-else class="w-4 h-4"></div>
+
+                    <!-- 项目图标 -->
+                    <el-icon class="text-green-400 text-base flex-shrink-0">
+                      <FolderOpened />
+                    </el-icon>
+
+                    <!-- 项目名称和数据集数量 -->
+                    <span class="text-sm font-medium text-white truncate">
+                      {{ project.name }}
+                    </span>
+                    <span
+                      v-if="project.datasets?.length"
+                      class="text-xs px-2 py-0.5 bg-gray-600 text-gray-300 rounded-full flex-shrink-0">
+                      {{ project.datasets.length }}
+                    </span>
+                  </div>
+
+                  <!-- 项目创建日期 -->
+                  <p class="text-xs text-gray-400 mt-1 pl-6 truncate">
+                    {{ formatDate(project.createdAt) }}
+                  </p>
+                </div>
+
+                <!-- 项目操作菜单 -->
+                <el-dropdown trigger="click" @command="handleProjectCommand($event, project.id)" @click.stop>
+                  <el-button
+                    circle
+                    text
+                    size="small"
+                    class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-gray-400 hover:text-white ml-2"
+                    :icon="MoreFilled" />
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="import">
+                        <el-icon class="mr-2"><Upload /></el-icon>
+                        <span>导入数据</span>
+                      </el-dropdown-item>
+                      <el-dropdown-item command="delete" divided>
+                        <el-icon class="text-red-500 mr-2"><Delete /></el-icon>
+                        <span class="text-red-500">删除项目</span>
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+              </div>
+
+              <!-- 数据集列表（展开时显示） -->
+              <transition
+                enter-active-class="transition-all duration-300 ease-out"
+                enter-from-class="opacity-0 transform -translate-y-2 scale-95"
+                enter-to-class="opacity-100 transform translate-y-0 scale-100"
+                leave-active-class="transition-all duration-200 ease-in"
+                leave-from-class="opacity-100 transform translate-y-0 scale-100"
+                leave-to-class="opacity-0 transform -translate-y-2 scale-95">
+                <div v-if="isProjectExpanded(project.id)" class="ml-6 mt-2 space-y-1 border-l border-gray-600 pl-4">
+                  <!-- 有数据集时显示列表 -->
+                  <div v-if="project.datasets?.length" class="space-y-1">
+                    <div
+                      v-for="dataset in project.datasets"
+                      :key="dataset.id"
+                      @click="selectDataset(project.id, dataset)"
+                      class="flex items-center gap-3 p-2.5 rounded-md cursor-pointer transition-all duration-200 hover:bg-gray-700 group/dataset">
+                      <el-icon class="text-purple-400 text-sm flex-shrink-0">
+                        <Document />
+                      </el-icon>
+
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                          <span class="text-sm text-gray-200 truncate font-medium">
+                            {{ dataset.name }}
+                          </span>
+                          <span
+                            class="text-xs px-2 py-0.5 bg-purple-900/50 text-purple-200 rounded-full flex-shrink-0 border border-purple-700/30">
+                            {{ dataset.type }}
+                          </span>
+                        </div>
+                        <p class="text-xs text-gray-500 truncate">
+                          {{ formatDate(dataset.createdAt) }}
+                        </p>
+                      </div>
+
+                      <!-- 数据集操作指示器 -->
+                      <div class="opacity-0 group-hover/dataset:opacity-100 transition-opacity duration-200">
+                        <el-icon class="text-gray-500 text-xs">
+                          <ArrowRight />
+                        </el-icon>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 无数据集时的提示 -->
+                  <div
+                    v-else
+                    class="flex flex-col items-center gap-3 p-6 text-center bg-gray-800/30 rounded-lg border border-dashed border-gray-600">
+                    <el-icon class="text-gray-500 text-2xl">
+                      <Document />
+                    </el-icon>
+                    <div>
+                      <span class="text-sm text-gray-400 block mb-2">暂无数据集</span>
+                      <el-button
+                        text
+                        size="small"
+                        @click="handleImportData(project)"
+                        class="text-blue-400 hover:text-blue-300 hover:bg-blue-900/20 px-3 py-1 rounded-md transition-all duration-200">
+                        <el-icon class="mr-1 text-xs">
+                          <Upload />
+                        </el-icon>
+                        导入第一个数据集
+                      </el-button>
+                    </div>
+                  </div>
+                </div>
+              </transition>
             </div>
-            <el-dropdown trigger="click" @command="handleProjectCommand($event, project)">
-              <el-button circle text size="small" :icon="MoreFilled" class="project-menu-btn" />
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="import">
-                    <el-icon>
-                      <Upload />
-                    </el-icon>
-                    <span>导入数据</span>
-                  </el-dropdown-item>
-                  <el-dropdown-item command="delete" divided>
-                    <el-icon class="text-danger">
-                      <Delete />
-                    </el-icon>
-                    <span class="text-danger">删除项目</span>
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
           </div>
         </div>
       </div>
@@ -313,7 +375,9 @@ onUnmounted(() => {
             <el-breadcrumb separator="/">
               <el-breadcrumb-item :to="{path: '/'}">首页</el-breadcrumb-item>
               <el-breadcrumb-item v-if="currentRouteName">{{ currentRouteName }}</el-breadcrumb-item>
-              <el-breadcrumb-item v-if="selectedProject">{{ selectedProject.name }}</el-breadcrumb-item>
+              <el-breadcrumb-item v-if="projectStore.currentProject">
+                {{ projectStore.currentProject.name }}
+              </el-breadcrumb-item>
             </el-breadcrumb>
 
             <!-- 工具按钮 -->
@@ -329,7 +393,7 @@ onUnmounted(() => {
 
       <!-- 内容区域 -->
       <div class="flex-1 p-6 overflow-y-auto bg-gray-50">
-        <router-view v-if="selectedProject || $route.path === '/'" />
+        <router-view v-if="projectStore.currentProject || $route.path === '/'" />
         <div v-else class="h-full flex items-center justify-center">
           <el-empty description="请先选择一个项目" :image-size="128">
             <el-button type="primary" @click="createNewProject">新建项目</el-button>
@@ -341,10 +405,11 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* 只保留必要的 Element Plus 样式覆盖 */
 :deep(.no-hover-bg:hover) {
   background-color: transparent !important;
 }
-/* 主导航菜单样式 */
+
 :deep(.el-menu--horizontal) {
   justify-content: flex-start !important;
   padding-left: 0;
@@ -358,7 +423,6 @@ onUnmounted(() => {
   background-color: #374151 !important;
 }
 
-/* Element Plus 样式覆盖 */
 :deep(.el-breadcrumb__item) {
   display: inline-flex;
   align-items: center;
@@ -385,26 +449,13 @@ onUnmounted(() => {
   margin-left: -1px;
 }
 
-.app-title h1 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 :deep(.el-menu--collapse) {
   width: 64px;
 }
 
-/* 项目管理部分 */
-.projects-section {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  margin-top: 16px;
-  overflow: hidden;
+:deep(.el-menu) {
+  border-right: none !important;
+  transition: all 0.3s ease-in-out;
 }
 
 .projects-header {
@@ -413,176 +464,5 @@ onUnmounted(() => {
   justify-content: space-between;
   padding: 0 16px;
   margin-bottom: 8px;
-}
-
-.projects-header h2 {
-  margin: 0;
-  font-size: 12px;
-  text-transform: uppercase;
-  font-weight: 600;
-  color: #9ca3af;
-}
-
-.projects-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.projects-actions button {
-  color: #9ca3af;
-}
-
-.projects-actions button:hover {
-  color: #ffffff;
-}
-
-/* 项目列表 */
-.projects-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0 8px;
-}
-
-.projects-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.projects-list::-webkit-scrollbar-thumb {
-  background-color: #4b5563;
-  border-radius: 2px;
-}
-
-.projects-list::-webkit-scrollbar-track {
-  background-color: transparent;
-}
-
-.project-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  margin-bottom: 4px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-}
-
-.project-item:hover {
-  background-color: #374151;
-}
-
-.project-item.active {
-  background-color: #3b82f6;
-}
-
-.project-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.project-name {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.project-date {
-  margin: 0;
-  font-size: 12px;
-  color: #9ca3af;
-}
-
-.project-item.active .project-date {
-  color: #e5e7eb;
-}
-
-.project-menu-btn {
-  opacity: 0;
-  color: #9ca3af;
-  transition: opacity 0.2s ease;
-}
-
-.project-item:hover .project-menu-btn {
-  opacity: 1;
-}
-
-.project-menu-btn:hover {
-  color: #ffffff;
-}
-
-/* 折叠状态下项目图标 */
-.collapsed-projects {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 16px 0;
-  gap: 8px;
-}
-
-.collapsed-projects button {
-  color: #9ca3af;
-}
-
-.collapsed-projects button:hover {
-  color: #ffffff;
-}
-
-.tools {
-  display: flex;
-  gap: 8px;
-}
-
-/* 内容区域 */
-.content-area {
-  flex: 1;
-  padding: 24px;
-  overflow-y: auto;
-  background-color: #f9fafb;
-}
-
-.content-area::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.content-area::-webkit-scrollbar-thumb {
-  background-color: #d1d5db;
-  border-radius: 3px;
-}
-
-.content-area::-webkit-scrollbar-track {
-  background-color: #f3f4f6;
-  border-radius: 3px;
-}
-
-/* 选择项目提示 */
-.select-project-hint {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* 辅助类 */
-.text-danger {
-  color: #ef4444;
-}
-
-/* Element Plus 自定义样式 */
-:deep(.el-breadcrumb__item) {
-  display: inline-flex;
-  align-items: center;
-}
-
-:deep(.el-empty__image) {
-  opacity: 0.8;
-}
-
-:deep(.el-menu) {
-  border-right: none !important;
-  transition: all 0.3s ease-in-out;
 }
 </style>

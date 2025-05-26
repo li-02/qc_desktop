@@ -20,7 +20,8 @@
   },
   "include": [
     "**/*",
-    "../shared/**/*"
+    "../shared/**/*",
+    "../global.d.ts"
   ],
   "copy": ["workers/**/*"]
 }

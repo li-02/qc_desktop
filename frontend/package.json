@@ -20,6 +20,7 @@
     "element-plus": "^2.9.7",
     "mitt": "^3.0.1",
     "papaparse": "^5.5.2",
+    "pinia": "^3.0.2",
     "plus-pro-components": "^0.1.23",
     "postcss": "^8.5.3",
     "tailwindcss": "^4.1.3",

@@ -75,18 +75,14 @@ export const useDatasetStore = defineStore("dataset", () => {
       if (result.success) {
         // 刷新项目列表以获取最新的数据集信息
         await projectStore.loadProjects();
-
         // 重新加载数据集
         await loadDatasets();
-
-        ElMessage.success(`数据集 "${importOptions.datasetName}" 导入成功`);
         return true;
       } else {
         throw new Error(result.error || "导入数据失败");
       }
     } catch (error: any) {
       console.error("Import data error:", error);
-      ElMessage.error(error.message || "导入数据时出错");
       throw error;
     } finally {
       loading.value = false;

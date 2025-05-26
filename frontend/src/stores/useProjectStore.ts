@@ -54,8 +54,8 @@ export const useProjectStore = defineStore("project", () => {
     }
   };
 
-  const setCurrentProject = (project: ProjectInfo) => {
-    currentProject.value = project;
+  const setCurrentProject = (project: string) => {
+    currentProject.value = projects.value.find(p => p.id === project) || null;
   };
   // const getProjects=async(...):Promise<ProjectInfo[]>=>{}
 

@@ -7,6 +7,8 @@ import emitter from "@/utils/eventBus";
 // import type {ElectronWindow} from "@shared/types/window";
 import type {TableColumns} from "@pureadmin/table";
 import PureTable from "@pureadmin/table";
+import {useProjectStore} from "@/stores/useProjectStore";
+import {useDatasetStore} from "@/stores/useDatasetStore";
 
 // const electronAPI = (window as ElectronWindow).electronAPI;
 
@@ -27,6 +29,8 @@ const stepForm = ref([
 ]);
 // 选择的项目和文件
 const selectedProject = ref<ProjectInfo>();
+const projectStore = useProjectStore();
+const datasetStore = useDatasetStore();
 // 表单需要的所有数据
 const datasetName = ref("");
 const selectedDataType = ref("flux"); // 默认选中第一个数据类型
@@ -167,7 +171,7 @@ const submitImportOption = async () => {
   console.log("submitImportOption");
   const missingFields: string[] = [];
 
-  if (!selectedProject.value) {
+  if (!projectStore.currentProject) {
     missingFields.push("项目");
   }
 
@@ -195,27 +199,31 @@ const submitImportOption = async () => {
 
   // 所有字段都填写了，继续执行提交逻辑
   console.log("提交导入配置", {
-    project: selectedProject.value,
+    project: projectStore.currentProject,
     datasetName: datasetName.value,
     dataType: selectedDataType.value,
     file: selectedFile.value,
     missingValueTypes: missingValueTypes.value,
   });
 
-  // 这里可以调用 API 提交数据
   try {
-    loading.value = true;
-    const result = await window.electronAPI.importData(selectedProject.value.id, {
+    const result = await datasetStore.importData({
+      datasetName: datasetName.value,
       type: selectedDataType.value,
       file: selectedFile.value,
-      datasetName: datasetName.value,
       missingValueTypes: missingValueTypes.value,
       rows: totalRowCount.value,
-      columns: columns.value.map((col: any) => col.label),
+      columns: columns.value.map(col => col.label).filter((label): label is string => typeof label === "string"),
     });
-  } catch (error: any) {
-    console.error("导入数据失败:", error);
-    ElMessage.error(error.message || "导入数据失败");
+    if (result) {
+      ElMessage.success("数据导入成功");
+      close(); // 关闭对话框
+    } else {
+      ElMessage.error("数据导入失败，请稍后重试");
+    }
+  } catch (error) {
+    console.error("数据导入失败:", error);
+    ElMessage.error("数据导入失败，请稍后重试");
   }
 };
 
@@ -297,52 +305,23 @@ const handleExceed = () => {
 
 // 移除文件处理
 const handleRemove = () => {
-  selectedFile.value = null;
+  selectedFile.value = undefined;
   fileList.value = [];
   columns.value = [];
   tableData.value = [];
 };
 
-// 确认导入
-const confirmImport = async () => {
-  if (!selectedProject.value) {
-    ElMessage.warning("请先选择项目");
-    return;
-  }
-
-  if (!selectedFile.value) {
-    ElMessage.warning("请选择要导入的文件");
-    return;
-  }
-
-  try {
-    loading.value = true;
-
-    // 这里添加实际导入数据的代码
-    // 目前只是模拟导入过程
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    ElMessage.success(`成功导入数据到项目: ${selectedProject.value.name}`);
-    close();
-  } catch (error: any) {
-    console.error("导入数据失败:", error);
-    ElMessage.error(error.message || "导入数据失败");
-  } finally {
-    loading.value = false;
-  }
-};
-
 // 打开对话框
 const open = () => {
-  // 获取当前选中的项目
-  const handleProjectSelected = (project: ProjectInfo) => {
-    selectedProject.value = project;
-    // 移除监听器，避免重复监听
-    emitter.off("project-selected", handleProjectSelected);
-  };
+  // // 获取当前选中的项目
+  // const handleProjectSelected = (project: ProjectInfo) => {
+  //   selectedProject.value = project;
+  //   // 移除监听器，避免重复监听
+  //   emitter.off("project-selected", handleProjectSelected);
+  // };
 
-  // 先监听一下项目选择事件
-  emitter.on("project-selected", handleProjectSelected);
+  // // 先监听一下项目选择事件
+  // emitter.on("project-selected", handleProjectSelected);
 
   dialogVisible.value = true;
 };
@@ -353,7 +332,7 @@ const close = () => {
   // 清除导入选项
   datasetName.value = "";
   selectedDataType.value = "flux";
-  selectedFile.value = null;
+  selectedFile.value = undefined;
   missingValueTypes.value = [];
   fileList.value = [];
   columns.value = [];
@@ -366,27 +345,27 @@ const close = () => {
 
 // 关闭时重置状态
 const handleClosed = () => {
-  selectedFile.value = null;
+  selectedFile.value = undefined;
   loading.value = false;
   if (uploadRef.value) {
     uploadRef.value.clearFiles();
   }
 };
 
-// 监听事件总线，获取当前选中的项目
-onMounted(() => {
-  // 检查是否已有选中的项目
-  emitter.on("current-project", (project: ProjectInfo) => {
-    selectedProject.value = project;
-  });
+// // 监听事件总线，获取当前选中的项目
+// onMounted(() => {
+//   // 检查是否已有选中的项目
+//   emitter.on("current-project", (project: ProjectInfo) => {
+//     selectedProject.value = project;
+//   });
 
-  // 请求当前项目信息
-  emitter.emit("get-current-project");
-});
+//   // 请求当前项目信息
+//   emitter.emit("get-current-project");
+// });
 
-onUnmounted(() => {
-  emitter.off("current-project");
-});
+// onUnmounted(() => {
+//   emitter.off("current-project");
+// });
 
 // 导出方法给父组件
 defineExpose({
@@ -410,7 +389,6 @@ defineExpose({
     </el-steps>
 
     <div v-if="currentStep === 0">
-      <h1>选择数据类型</h1>
       <el-radio-group v-model="selectedDataType" class="space-y-2.5 w-full flex flex-col">
         <div
           v-for="(option, index) in dataOptions"
@@ -433,6 +411,15 @@ defineExpose({
     </div>
 
     <div v-if="currentStep === 1">
+      <div class="mb-4">
+        <el-input
+          v-model="datasetName"
+          placeholder="请输入数据集名称"
+          clearable
+          class="w-full"
+          :maxlength="50"
+          show-word-limit />
+      </div>
       <el-upload
         ref="uploadRef"
         class="upload-demo"

@@ -1,5 +1,11 @@
-import {ImportOption, ProjectBaseInfo, ProjectInfo} from "./projectInterface";
-import {TableColumn} from "./table";
+import type {
+  DatasetBaseInfo,
+  DatasetInfo,
+  ImportOption,
+  ProjectBaseInfo,
+  ProjectInfo,
+} from "./projectInterface";
+import type { TableColumn } from "./table";
 
 export interface IPCChannels {
   "get-projects": {
@@ -55,7 +61,7 @@ export interface IPCChannels {
       error?: string;
     };
   };
-
+  // 导入数据集
   "import-data": {
     request: {
       projectId: string;
@@ -63,9 +69,64 @@ export interface IPCChannels {
     };
     response: {
       success: boolean;
+      datasets?: {
+        id: string;
+        name: string;
+        type: string;
+        path: string;
+        originalFileName: string;
+        rows: number;
+        columns: string[];
+        createdAt: number;
+      };
       error?: string;
     };
   };
 
+  // 删除数据集
+  "delete-dataset": {
+    request: {
+      projectId: string;
+      datasetId: string;
+    };
+    response: {
+      success: boolean;
+      error?: string;
+    };
+  };
 
+  // 修改数据集
+  "update-data": {
+    request: {
+      projectId: string;
+      datasetId: string;
+    };
+    response: {
+      success: boolean;
+      error?: string;
+    };
+  };
+
+  // 获取项目的所有数据集
+  "get-project-datasets": {
+    request: string;
+    response: {
+      success: boolean;
+      error?: string;
+      datasets?: DatasetBaseInfo[];
+    };
+  };
+
+  // 获取单个数据集详情
+  "get-dataset-info": {
+    request: {
+      projectId: string;
+      datasetId: string;
+    };
+    response: {
+      success: boolean;
+      error?: string;
+      dataset?: DatasetInfo;
+    };
+  };
 }

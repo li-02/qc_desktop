@@ -20,6 +20,7 @@ export interface ProjectInfo extends ProjectBaseInfo {
     dirPath: string; // 数据集目录
     originalFile: string;
     createdAt: number;
+    belongTo: string; // 所属项目 id
   }[];
 }
 
@@ -30,6 +31,7 @@ export interface DatasetBaseInfo {
   dirPath: string;
   originalFile: string;
   createdAt: number;
+  belongTo: string; // 所属项目 id
 }
 
 export interface DatasetInfo {
@@ -46,7 +48,7 @@ export interface DatasetInfo {
     filePath: string;
     size: number;
     rows: number;
-    columns: number;
+    columns: string[];
   };
   // 这部分有待扩展
   processedFiles: {
@@ -54,7 +56,7 @@ export interface DatasetInfo {
     filePath: string;
     size: number;
     rows: number;
-    columns: number;
+    columns: string[];
   }[]; // 处理后的文件
 }
 export interface ImportOption {

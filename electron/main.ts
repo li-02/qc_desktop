@@ -1,9 +1,8 @@
-import { app, BrowserWindow, ipcMain, Menu } from "electron"; // 引入Menu模块
+import {app, BrowserWindow, ipcMain, Menu} from "electron"; // 引入Menu模块
 import * as path from "path";
-import { ProjectManager } from "./project";
-import { Worker } from "worker_threads";
-import { rejects } from "assert";
-import { IPCChannels } from "../shared/types";
+import {ProjectManager} from "./project";
+import {Worker} from "worker_threads";
+import {IPCChannels} from "../shared/types";
 
 // 保持窗口对象的全局引用，避免JavaScript对象被垃圾回收时窗口关闭
 let mainWindow: BrowserWindow | null = null;
@@ -184,12 +183,70 @@ function setupIPC() {
       importOptions: IPCChannels["import-data"]["request"]["importOption"]
     ) => {
       try {
-        projectManager.importData(projectId, importOptions);
-        return { success: true };
+        const result=projectManager.importData(projectId, importOptions);
+        const datasetInfo=projectManager.getDatasetInfo(projectId,result.datasetId);
+        return {
+          success: true,
+          dataset:{
+            id:result.datasetId,
+            datasetName:result.datasetName,
+            type:importOptions.type,
+            path:result.path,
+            originalFileName:importOptions.file.name,
+            rows:importOptions.rows,
+            columns:importOptions.columns,
+            createdAt:datasetInfo?.createdAt||Date.now()
+          }
+        };
       } catch (e: any) {
         return { success: false, error: e.message };
       }
     }
+  );
+
+  // 获取项目下所有数据集
+  ipcMain.handle(
+      "get-project-datasets",
+      async (event, projectId: IPCChannels["get-project-datasets"]["request"]) => {
+        try {
+          const datasets = projectManager.getProjectDatasets(projectId);
+          return { success: true, datasets };
+        } catch (err: any) {
+          console.error("获取项目数据集失败:", err);
+          return { success: false, error: err.message };
+        }
+      }
+  );
+
+  // 获取单个数据集详情
+  ipcMain.handle(
+      "get-dataset-info",
+      async (event, { projectId, datasetId }: IPCChannels["get-dataset-info"]["request"]) => {
+        try {
+          const dataset = projectManager.getDatasetInfo(projectId, datasetId);
+          if (!dataset) {
+            return { success: false, error: "数据集不存在" };
+          }
+          return { success: true, dataset };
+        } catch (err: any) {
+          console.error("获取数据集信息失败:", err);
+          return { success: false, error: err.message };
+        }
+      }
+  );
+
+  // 删除数据集
+  ipcMain.handle(
+      "delete-dataset",
+      async (event, { projectId, datasetId }: IPCChannels["delete-dataset"]["request"]) => {
+        try {
+          const success = projectManager.deleteDataset(projectId, datasetId);
+          return { success };
+        } catch (err: any) {
+          console.error("删除数据集失败:", err);
+          return { success: false, error: err.message };
+        }
+      }
   );
 
   ipcMain.handle(

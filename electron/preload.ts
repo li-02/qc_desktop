@@ -1,7 +1,5 @@
 // electron/preload.ts
-import { contextBridge, ipcRenderer } from "electron";
-import * as fs from "fs";
-import * as path from "path";
+import {contextBridge, ipcRenderer} from "electron";
 // 暴露安全的API到渲染进程
 contextBridge.exposeInMainWorld("electronAPI", {
   // 这里可以添加你需要在渲染进程中使用的函数
@@ -29,4 +27,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
     fileContent: string | ArrayBuffer,
     maxRows = 20
   ) => ipcRenderer.invoke("parse-file-preview", fileType, fileContent, maxRows),
+
+  // 导入数据
+  importData: (projectId:string,importOptions:any) =>
+      ipcRenderer.invoke("import-data", projectId, importOptions),
+
+  getProjectDatasets: (projectId: string) =>
+      ipcRenderer.invoke("get-project-datasets", projectId),
+
+  deleteDataset: (projectId: string, datasetId: string) =>
+      ipcRenderer.invoke("delete-dataset", { projectId, datasetId }),
+
+  getDatasetInfo: (projectId: string, datasetId: string) =>
+      ipcRenderer.invoke("get-dataset-info", { projectId, datasetId }),
 });

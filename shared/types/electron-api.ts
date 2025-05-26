@@ -36,4 +36,9 @@ export interface ElectronAPI {
     projectId: IPCChannels["import-data"]["request"]["projectId"],
     importOptions: IPCChannels["import-data"]["request"]["importOption"]
   ) => Promise<IPCChannels["import-data"]["response"]>;
+
+  deleteDataset: (
+    projectId: IPCChannels["delete-dataset"]["request"]["projectId"],
+    datasetId: IPCChannels["delete-dataset"]["request"]["datasetId"]
+  ) => Promise<IPCChannels["delete-dataset"]["response"]>;
 }

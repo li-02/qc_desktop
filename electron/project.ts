@@ -1,63 +1,69 @@
 import * as fs from "fs";
 import * as path from "path";
 import { v4 as uuidv4 } from "uuid";
+import type {
+  ProjectBaseInfo,
+  ProjectInfo,
+  DatasetInfo,
+  DatasetBaseInfo,
+} from "../shared/types/projectInterface";
 
-interface ProjectBaseInfo {
-  id: string;
-  name: string;
-  path: string;
-  createdAt: number;
-}
-interface DatasetBaseInfo {
-  id: string;
-  name: string;
-  type: string;
-  dirPath: string;
-  originalFile: string;
-  createdAt: number;
-}
-// 项目信息
-interface ProjectInfo extends ProjectBaseInfo {
-  lastUpdated: number;
-  siteInfo: {
-    longitude: string;
-    latitude: string;
-    altitude: string;
-  };
-  datasets: {
-    id: string;
-    name: string; //数据集名字
-    type: string;
-    dirPath: string; // 数据集目录
-    originalFile: string;
-    createdAt: number;
-  }[];
-}
-interface DatasetInfo {
-  id: string;
-  name: string;
-  type: string;
-  createdAt: number;
-  updatedAt: number;
-  belongTo: string;
-  dirPath: string;
-  missingValueTypes: string[];
-  originalFile: {
-    name: string;
-    filePath: string;
-    size: number;
-    rows: number;
-    columns: string[];
-  };
-  // 这部分有待扩展
-  processedFiles: {
-    name: string;
-    filePath: string;
-    size: number;
-    rows: number;
-    columns: string[];
-  }[]; // 处理后的文件
-}
+// interface ProjectBaseInfo {
+//   id: string;
+//   name: string;
+//   path: string;
+//   createdAt: number;
+// }
+// interface DatasetBaseInfo {
+//   id: string;
+//   name: string;
+//   type: string;
+//   dirPath: string;
+//   originalFile: string;
+//   createdAt: number;
+// }
+// // 项目信息
+// interface ProjectInfo extends ProjectBaseInfo {
+//   lastUpdated: number;
+//   siteInfo: {
+//     longitude: string;
+//     latitude: string;
+//     altitude: string;
+//   };
+//   datasets: {
+//     id: string;
+//     name: string; //数据集名字
+//     type: string;
+//     dirPath: string; // 数据集目录
+//     originalFile: string;
+//     createdAt: number;
+//   }[];
+// }
+// interface DatasetInfo {
+//   id: string;
+//   name: string;
+//   type: string;
+//   createdAt: number;
+//   updatedAt: number;
+//   belongTo: string;
+//   dirPath: string;
+//   missingValueTypes: string[];
+//   originalFile: {
+//     name: string;
+//     filePath: string;
+//     size: number;
+//     rows: number;
+//     columns: string[];
+//   };
+//   // 这部分有待扩展
+//   processedFiles: {
+//     name: string;
+//     filePath: string;
+//     size: number;
+//     rows: number;
+//     columns: string[];
+//   }[]; // 处理后的文件
+// }
 // 记录所有项目的基本信息并持久化存储
 interface ProjectsIndexFile {
   lastUpdated: number;
@@ -541,6 +547,7 @@ export class ProjectManager {
       dirPath: path.relative(this.projectsDir, dataset.dirPath), // 使用相对路径
       originalFile: path.basename(dataset.originalFile.filePath),
       createdAt: dataset.createdAt,
+      belongTo: dataset.belongTo,
     };
   }
 

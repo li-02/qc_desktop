@@ -353,8 +353,8 @@ export class ProjectManager {
       type: string;
       file: {
         name: string;
-        size: number;
-        content: string | ArrayBuffer;
+        size: string;
+        path: string;
       };
       datasetName: string;
       missingValueTypes: string[];
@@ -384,15 +384,7 @@ export class ProjectManager {
       const originalExt = path.extname(importOptions.file.name);
       const originalFilePath = path.join(datasetPath, `original${originalExt}`);
 
-      // 根据内容类型写入文件
-      if (typeof importOptions.file.content === "string") {
-        fs.writeFileSync(originalFilePath, importOptions.file.content, "utf8");
-      } else {
-        fs.writeFileSync(
-          originalFilePath,
-          Buffer.from(importOptions.file.content as ArrayBuffer)
-        );
-      }
+      fs.copyFileSync(importOptions.file.path, originalFilePath);
 
       // 生成数据集元数据信息
       const metadata = {

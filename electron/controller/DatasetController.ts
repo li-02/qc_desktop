@@ -18,8 +18,8 @@ export class DatasetController extends BaseController {
         type: string;
         file: {
           name: string;
-          size: number;
-          content: string | ArrayBuffer;
+          size: string;
+          path: string;
         };
         datasetName: string;
         missingValueTypes: string[];
@@ -29,27 +29,16 @@ export class DatasetController extends BaseController {
     },
     event: IpcMainInvokeEvent
   ) {
+    console.log("进入 importData 方法", args);
     return this.handleAsync(async () => {
       const result = this.projectManager.importData(
         args.projectId,
         args.importOption
       );
-      const datasetInfo = this.projectManager.getDatasetInfo(
-        args.projectId,
-        result.datasetId
-      );
-
       return {
-        dataset: {
-          id: result.datasetId,
-          datasetName: result.datasetName,
-          type: args.importOption.type,
-          path: result.path,
-          originalFileName: args.importOption.file.name,
-          rows: args.importOption.rows,
-          columns: args.importOption.columns,
-          createdAt: datasetInfo?.createdAt || Date.now(),
-        },
+        datasetId: result.datasetId,
+        datasetName: result.datasetName,
+        path: result.path,
       };
     });
   }

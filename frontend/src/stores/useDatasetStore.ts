@@ -66,7 +66,14 @@ export const useDatasetStore = defineStore("dataset", () => {
       loading.value = true;
       const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.IMPORT, {
         projectId: projectStore.currentProject.id,
-        importOption: importOptions,
+        importOption: {
+          datasetName: importOptions.datasetName,
+          type: importOptions.type,
+          file: importOptions.file,
+          missingValueTypes: importOptions.missingValueTypes,
+          rows: importOptions.rows,
+          columns: importOptions.columns,
+        },
       });
 
       if (result.success) {

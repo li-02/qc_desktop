@@ -46,7 +46,7 @@ export interface DatasetInfo {
   originalFile: {
     name: string;
     filePath: string;
-    size: number;
+    size: string;
     rows: number;
     columns: string[];
   };
@@ -54,7 +54,7 @@ export interface DatasetInfo {
   processedFiles: {
     name: string;
     filePath: string;
-    size: number;
+    size: string;
     rows: number;
     columns: string[];
   }[]; // 处理后的文件
@@ -63,8 +63,8 @@ export interface ImportOption {
   type: string;
   file: {
     name: string;
-    filePath: string;
-    size: number;
+    path: string;
+    size: string;
   };
   datasetName: string;
   missingValueTypes: string[];

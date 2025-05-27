@@ -197,15 +197,25 @@ const submitImportOption = async () => {
   }
 
   try {
-    const fileSerializable = await fileToSerializable(selectedFile.value!);
-    const result = await datasetStore.importData({
-      datasetName: datasetName.value,
-      type: selectedDataType.value,
-      file: fileSerializable,
-      missingValueTypes: missingValueTypes.value,
-      rows: totalRowCount.value,
-      columns: columns.value.map(col => col.label).filter((label): label is string => typeof label === "string"),
-    });
+    const pureData = {
+      projectId: projectStore.currentProject!.id,
+      importOption: {
+        datasetName: String(datasetName.value),
+        type: String(selectedDataType.value),
+        file: {
+          name: String(selectedFile.value!.name),
+          size: String(selectedFile.value!.size),
+          path: String((selectedFile.value as any).path),
+        },
+        missingValueTypes: missingValueTypes.value.map(v => String(v)),
+        rows: Number(totalRowCount.value),
+        columns: columns.value
+          .map(col => col.label)
+          .filter((label): label is string => typeof label === "string")
+          .map(str => String(str)),
+      },
+    };
+    const result = await datasetStore.importData(pureData.importOption);
     if (result) {
       ElMessage.success("数据导入成功");
       close(); // 关闭对话框
@@ -217,46 +227,9 @@ const submitImportOption = async () => {
     ElMessage.error("数据导入失败，请稍后重试");
   }
 };
-const fileToSerializable = (
-  file: File
-): Promise<{
-  name: string;
-  size: number;
-  content: string | ArrayBuffer;
-}> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
 
-    reader.onload = e => {
-      const content = e.target?.result;
-      if (!content) {
-        reject(new Error("读取文件失败"));
-        return;
-      }
-
-      resolve({
-        name: file.name,
-        size: file.size,
-        content: content,
-      });
-    };
-
-    reader.onerror = () => {
-      reject(new Error("读取文件失败"));
-    };
-
-    // 根据文件类型选择读取方式
-    const fileType = file.name.split(".").pop()?.toLowerCase();
-    if (fileType === "csv") {
-      reader.readAsText(file);
-    } else {
-      reader.readAsArrayBuffer(file);
-    }
-  });
-};
 // 文件选择处理
 const handleFileChange = (file: any) => {
-  console.log("handleFileChange-file-upload", file);
   if (file.raw) {
     const fileType = file.name.split(".").pop()?.toLowerCase();
     if (!["csv", "xlsx", "xls"].includes(fileType || "")) {
@@ -264,6 +237,7 @@ const handleFileChange = (file: any) => {
       return;
     }
     selectedFile.value = file.raw;
+    const filePath = (file.raw as any).path;
     // 更新文件列表
     fileList.value = [
       {
@@ -271,6 +245,7 @@ const handleFileChange = (file: any) => {
         size: file.size,
         raw: file.raw,
         uid: file.uid,
+        path: filePath,
       },
     ];
     processFile(file.raw, fileType || "");

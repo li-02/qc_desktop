@@ -46,10 +46,9 @@ const currentRouteName = computed(() => {
 // 主菜单项
 const mainMenuItems = [
   {name: "首页", path: "/", icon: HomeFilled},
-  {name: "数据预处理", path: "/data-processing", icon: DataAnalysis},
-  {name: "数据分析", path: "/data-analysis", icon: Operation},
-  {name: "数据可视化", path: "/data-visualization", icon: PieChart},
-  {name: "数据导出", path: "/data-export", icon: DocumentCopy},
+  {name: "数据视图", path: "/data-view", icon: DataAnalysis},
+  {name: "异常值检测", path: "/outlier-detection", icon: Operation},
+  {name: "缺失值插补", path: "/missing-value-imputation", icon: PieChart},
 ];
 
 // 切换项目展开状态

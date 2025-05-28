@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import {computed, onMounted, onUnmounted, ref} from "vue";
+import {computed, ref} from "vue";
+// 第三步 上传文件
+import type {UploadInstance} from "element-plus";
 import {ElMessage} from "element-plus";
 import {UploadFilled} from "@element-plus/icons-vue";
-import type {ProjectInfo} from "@shared/types/projectInterface";
 // import type {ElectronWindow} from "@shared/types/window";
 import type {TableColumns} from "@pureadmin/table";
 import PureTable from "@pureadmin/table";
@@ -25,8 +26,6 @@ const stepForm = ref([
     title: "配置参数",
   },
 ]);
-// 选择的项目和文件
-const selectedProject = ref<ProjectInfo>();
 const projectStore = useProjectStore();
 const datasetStore = useDatasetStore();
 // 表单需要的所有数据
@@ -71,8 +70,6 @@ const tableData = ref([]);
 const columns = ref<TableColumns[]>([]);
 const totalRowCount = ref<number>(0);
 
-// 第三步 上传文件
-import type {UploadInstance} from "element-plus";
 const uploadRef = ref<UploadInstance | null>(null);
 const fileList = ref<any[]>([]); //用于控制上传组件显示的文件列表
 
@@ -257,7 +254,6 @@ const handleFileChange = (file: any) => {
  * @param fileType
  */
 const processFile = async (file: File, fileType: string) => {
-  console.log("processFile-file-upload", file, fileType);
   fileProcessing.value = true;
   tableData.value = [];
   columns.value = [];

@@ -1,6 +1,6 @@
 import {defineStore} from "pinia";
 import {ref, computed, watch} from "vue";
-import type {DatasetBaseInfo, ImportOption} from "@shared/types/projectInterface";
+import type {DatasetBaseInfo, DatasetInfo, ImportOption} from "@shared/types/projectInterface";
 import {useProjectStore} from "./useProjectStore";
 import {ElMessage} from "element-plus";
 import {API_ROUTES} from "@shared/constants/apiRoutes";
@@ -10,7 +10,7 @@ export const useDatasetStore = defineStore("dataset", () => {
 
   // 状态
   const datasets = ref<DatasetBaseInfo[]>([]);
-  const currentDataset = ref<DatasetBaseInfo | null>(null);
+  const currentDataset = ref<DatasetInfo | null>(null);
   const loading = ref(false);
 
   // 计算属性
@@ -53,8 +53,26 @@ export const useDatasetStore = defineStore("dataset", () => {
     }
   };
 
-  const setCurrentDataset = (dataset: DatasetBaseInfo | null) => {
-    currentDataset.value = dataset;
+  const setCurrentDataset = async (datasetId: string) => {
+    if (projectStore.currentProject && datasetId) {
+      currentDataset.value = await getCurrentDatasetInfo(projectStore.currentProject.id, datasetId);
+    } else {
+      currentDataset.value = null;
+    }
+  };
+
+  const getCurrentDatasetInfo = async (projectId: string, datasetId: string): Promise<DatasetInfo | null> => {
+    console.log("获取数据集信息", projectId, datasetId);
+    const pureData = {
+      projectId: String(projectId),
+      datasetId: String(datasetId),
+    };
+    const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.GET_INFO, pureData);
+    if (result.success) {
+      return result.data;
+    } else {
+      throw new Error(result.error || "获取数据集信息失败");
+    }
   };
 
   const importData = async (importOptions: ImportOption) => {

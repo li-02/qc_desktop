@@ -1,3 +1,7 @@
+export interface ProjectsIndexFile {
+  lastUpdated: number;
+  projects: ProjectBaseInfo[];
+}
 // 项目基本信息
 export interface ProjectBaseInfo {
   id: string;
@@ -59,6 +63,16 @@ export interface DatasetInfo {
     columns: string[];
   }[]; // 处理后的文件
 }
+
+// 创建项目的请求参数
+export interface CreateProjectRequest {
+  name: string;
+  siteInfo: {
+    longitude: string;
+    latitude: string;
+    altitude: string;
+  };
+}
 export interface ImportOption {
   type: string;
   file: {
@@ -70,4 +84,32 @@ export interface ImportOption {
   missingValueTypes: string[];
   rows: number;
   columns: string[];
+}
+// 导入数据集的请求参数
+export interface ImportDatasetRequest {
+  projectId: string;
+  datasetName: string;
+  type: string;
+  file: {
+    name: string;
+    size: string;
+    path: string;
+  };
+  missingValueTypes: string[];
+  rows: number;
+  columns: string[];
+}
+
+// 统一的响应格式
+export interface ServiceResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+// 文件系统操作接口
+export interface FileSystemOperation {
+  path: string;
+  operation: "read" | "write" | "delete" | "exists";
+  data?: any;
 }

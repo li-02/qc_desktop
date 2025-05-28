@@ -14,6 +14,11 @@ const routes: Array<RouteRecordRaw> = [
         component: HomePage,
       },
       {
+        path: "data-view",
+        name: "DataView",
+        component: () => import("../views/data-view/index.vue"),
+      },
+      {
         path: "data-processing",
         name: "DataProcessing",
         component: DataProcessingPage,

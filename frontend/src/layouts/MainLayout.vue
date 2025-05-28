@@ -19,8 +19,10 @@ import {
   Upload,
 } from "@element-plus/icons-vue";
 import {useProjectStore} from "@/stores/useProjectStore";
+import {useDatasetStore} from "@/stores/useDatasetStore";
 
 const projectStore = useProjectStore();
+const datasetStore = useDatasetStore();
 
 // 删除重复的状态管理，只保留必要的
 const expandedProjects = ref<Set<string>>(new Set());
@@ -75,17 +77,15 @@ const selectProject = (projectId: string) => {
   const project = projectStore.projects.find(p => p.id === projectId);
   if (project) {
     projectStore.setCurrentProject(projectId);
-
-    // 如果当前在首页，自动跳转到数据预处理页面
-    if (route.path === "/") {
-      router.push("/data-processing");
-    }
   }
+  console.log("已选择项目:", projectStore.currentProject?.name || "未知项目");
 };
 
-const selectDataset = (projectId: string, dataset: any) => {
+const selectDataset = (projectId: string, datasetId: string) => {
   projectStore.setCurrentProject(projectId);
-  ElMessage.info(`已选择数据集: ${dataset.name}`);
+  datasetStore.setCurrentDataset(datasetId);
+  ElMessage.info(`已选择数据集: ${datasetId}`);
+  router.push("/data-view");
 };
 
 const createNewProject = () => {
@@ -287,7 +287,7 @@ onUnmounted(() => {
                     <div
                       v-for="dataset in project.datasets"
                       :key="dataset.id"
-                      @click="selectDataset(project.id, dataset)"
+                      @click="selectDataset(project.id, dataset.id)"
                       class="flex items-center gap-3 p-2.5 rounded-md cursor-pointer transition-all duration-200 hover:bg-gray-700 group/dataset">
                       <el-icon class="text-purple-400 text-sm flex-shrink-0">
                         <Document />
@@ -373,7 +373,7 @@ onUnmounted(() => {
             <!-- 面包屑导航 -->
             <el-breadcrumb separator="/">
               <el-breadcrumb-item :to="{path: '/'}">首页</el-breadcrumb-item>
-              <el-breadcrumb-item v-if="currentRouteName">{{ currentRouteName }}</el-breadcrumb-item>
+              <!-- <el-breadcrumb-item v-if="currentRouteName">{{ currentRouteName }}</el-breadcrumb-item> -->
               <el-breadcrumb-item v-if="projectStore.currentProject">
                 {{ projectStore.currentProject.name }}
               </el-breadcrumb-item>

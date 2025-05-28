@@ -6,7 +6,8 @@ import {DataAnalysis, Upload, Plus, View, TrendCharts, ArrowRight, Document, His
 import {useProjectStore} from "@/stores/useProjectStore";
 import {useDatasetStore} from "@/stores/useDatasetStore";
 import emitter from "@/utils/eventBus";
-
+import ProjectInfoCard from "../../components/homepage/ProjectInfoCard.vue";
+import DatasetInfoCard from "../../components/homepage/DatasetInfoCard.vue";
 const router = useRouter();
 const projectStore = useProjectStore();
 const datasetStore = useDatasetStore();
@@ -160,32 +161,7 @@ onMounted(() => {
 <template>
   <div class="h-full bg-gradient-to-br from-slate-50 to-green-50 flex flex-col overflow-hidden">
     <!-- 顶部项目信息 -->
-    <div class="flex items-center justify-between !m-2">
-      <!-- 左侧项目名 地理信息 -->
-      <div class="flex items-center gap-4">
-        <div
-          class="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
-          <el-icon class="text-white text-xl">
-            <DataAnalysis />
-          </el-icon>
-        </div>
-        <div>
-          <h1 class="text-xl font-bold text-gray-800">密云监测站</h1>
-          <p class="text-sm text-gray-600">地理位置: 北京市密云区 海拔: 1000米</p>
-        </div>
-      </div>
-      <!-- 右侧项目下数据集个数 总记录数 -->
-      <div class="flex items-center gap-6 text-sm">
-        <div class="text-center">
-          <div class="text-lg font-semibold text-blue-600">1</div>
-          <div class="text-gray-600">数据集</div>
-        </div>
-        <div class="text-center">
-          <div class="text-lg font-semibold text-green-600">20k</div>
-          <div class="text-gray-600">总记录数</div>
-        </div>
-      </div>
-    </div>
+    <ProjectInfoCard />
 
     <!-- 主内容区域 -->
     <div class="flex-1 flex gap-6 p-6 overflow-hidden">
@@ -204,17 +180,14 @@ onMounted(() => {
           </el-button>
         </div>
         <!-- dataset list -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 flex-1 overflow-hidden">
+        <!-- <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div class="p-4 space-y-3 h-full overflow-y-auto">
-            <!--list-->
             <div
               v-for="dataset in datasets"
               :key="dataset.id"
               class="h-20 group border border-gray-100 rounded-xl p-4 !m-1 hover:shadow-md transition-all duration-200 hover:border-green-200 cursor-pointer"
               @click="selectDataset(dataset.id)">
-              <!--icon and dataset info-->
               <div class="flex h-full">
-                <!--icon-->
                 <div class="flex items-center mr-4 !mx-2">
                   <div
                     :class="[
@@ -226,16 +199,12 @@ onMounted(() => {
                     </el-icon>
                   </div>
                 </div>
-                <!--右侧内容-->
                 <div class="flex-1 flex flex-col h-full">
-                  <!--dataset info-->
                   <div class="flex items-center flex-[2]">
                     <h3 class="font-semibold text-lg text-gray-800">{{ dataset.name }}</h3>
                   </div>
                   <div class="flex flex-[1] justify-between items-center !mr-2">
-                    <!-- filename -->
                     <p class="text-sm text-gray-500 truncate">{{ dataset.fileName }}</p>
-                    <!-- 记录数 -->
                     <span class="text-sm text-gray-600">
                       记录数: <span class="font-xs">{{ dataset.records }}</span>
                     </span>
@@ -243,21 +212,9 @@ onMounted(() => {
                 </div>
               </div>
             </div>
-            <!-- 添加数据集区域 -->
-            <div
-              class="w-full items-center border-2 border-dashed border-gray-200 rounded-xl p-6 text-center hover:border-green-300 hover:bg-green-50/30 transition-all cursor-pointer group"
-              @click="handleImportData">
-              <div
-                class="w-11 h-11 bg-green-100 rounded-full flex items-center justify-center !mx-auto !mt-1 group-hover:scale-110 transition-transform">
-                <el-icon class="text-green-600" :size="20">
-                  <Plus />
-                </el-icon>
-              </div>
-              <h3 class="font-medium text-gray-800 mb-1">添加新数据集</h3>
-              <p class="text-sm text-gray-500">支持 CSV、Excel 格式</p>
-            </div>
           </div>
-        </div>
+        </div> -->
+        <DatasetInfoCard />
       </div>
       <!-- 右侧：数据处理工作流 -->
       <div class="w-1/2 flex flex-col !mr-2">

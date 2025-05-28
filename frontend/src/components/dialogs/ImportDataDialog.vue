@@ -59,7 +59,7 @@ const dataOptions = [
     description: "茎流量",
   },
   {
-    value: "micrometology",
+    value: "micrometeorology",
     label: "微气象数据",
     description: "微气象数据",
   },

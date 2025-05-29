@@ -62,7 +62,6 @@ export const useDatasetStore = defineStore("dataset", () => {
   };
 
   const getCurrentDatasetInfo = async (projectId: string, datasetId: string): Promise<DatasetInfo | null> => {
-    console.log("获取数据集信息", projectId, datasetId);
     const pureData = {
       projectId: String(projectId),
       datasetId: String(datasetId),

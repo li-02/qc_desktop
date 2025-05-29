@@ -134,7 +134,7 @@ export class DatasetController extends BaseController {
         throw new Error(result.error || "获取数据集信息失败");
       }
 
-      return { dataset: result.data };
+      return result.data;
     });
   }
 

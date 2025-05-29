@@ -213,17 +213,11 @@ export class DatasetRepository {
     dataset: DatasetInfo,
     projectPath: string
   ): DatasetBaseInfo {
-    // 获取数据集目录相对于项目目录的相对路径
-    // 例如：dataset.dirPath = "/projects/测试2/数据集1"
-    //      projectPath = "/projects/测试2"
-    //      结果应该是：数据集1
-    const relativePath = path.relative(projectPath, dataset.dirPath);
-
     return {
       id: dataset.id,
       name: dataset.name,
       type: dataset.type,
-      dirPath: relativePath, // 使用相对路径
+      dirPath: dataset.dirPath,
       originalFile: path.basename(dataset.originalFile.filePath),
       createdAt: dataset.createdAt,
       belongTo: dataset.belongTo,
@@ -237,13 +231,7 @@ export class DatasetRepository {
     projectPath: string,
     datasetBaseInfo: DatasetBaseInfo
   ): string {
-    // 如果dirPath已经是绝对路径，直接返回
-    if (path.isAbsolute(datasetBaseInfo.dirPath)) {
-      return datasetBaseInfo.dirPath;
-    }
-
-    // 否则拼接相对路径
-    return path.join(projectPath, datasetBaseInfo.dirPath);
+    return datasetBaseInfo.dirPath;
   }
 
   /**

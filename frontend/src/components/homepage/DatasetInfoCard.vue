@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import {ElMessage} from "element-plus";
-import {computed, ref} from "vue";
-import {useProjectStore} from "@/stores/useProjectStore";
+import { ElMessage } from "element-plus";
+import { computed, ref } from "vue";
+import { useProjectStore } from "@/stores/useProjectStore";
 
 const projectStore = useProjectStore();
 const datasets = computed(() => projectStore.currentProject?.datasets || []);
@@ -12,14 +12,14 @@ const selectDataset = (dataset: any) => {
 };
 
 const getColorClasses = (color: string) => {
-  const colorMap: Record<string, {bg: string; text: string}> = {
-    flux: {bg: "bg-blue-100", text: "!text-blue-600"},
-    micrometeorology: {bg: "bg-orange-100", text: "!text-orange-600"},
-    aqi: {bg: "bg-purple-100", text: "!text-purple-600"},
-    sapflow: {bg: "bg-green-100", text: "!text-green-600"},
-    red: {bg: "bg-red-100", text: "!text-red-600"},
+  const colorMap: Record<string, { bg: string; text: string }> = {
+    flux: { bg: "bg-blue-100", text: "!text-blue-600" },
+    micrometeorology: { bg: "bg-orange-100", text: "!text-orange-600" },
+    aqi: { bg: "bg-purple-100", text: "!text-purple-600" },
+    sapflow: { bg: "bg-green-100", text: "!text-green-600" },
+    red: { bg: "bg-red-100", text: "!text-red-600" },
   };
-  return colorMap[color] || {bg: "bg-gray-50", text: "!text-gray-600"};
+  return colorMap[color] || { bg: "bg-gray-50", text: "!text-gray-600" };
 };
 const getIconName = (type: string) => {
   const iconMap: Record<string, string> = {

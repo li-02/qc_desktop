@@ -23,7 +23,7 @@ export class FileController extends BaseController {
     });
 
     // 处理worker错误
-    this.fileParserWorker.on("error", (err) => {
+    this.fileParserWorker.on("error", err => {
       console.error("文件解析worker错误:", err);
       this.fileParserWorker = null;
     });
@@ -34,11 +34,7 @@ export class FileController extends BaseController {
   /**
    * 使用Worker解析文件
    */
-  private parseFileWithWorker(
-    type: string,
-    data: any,
-    maxRows: number = 20
-  ): Promise<any> {
+  private parseFileWithWorker(type: string, data: any, maxRows: number = 20): Promise<any> {
     return new Promise((resolve, reject) => {
       const worker = this.createFileParserWorker();
 
@@ -70,11 +66,7 @@ export class FileController extends BaseController {
     event: IpcMainInvokeEvent
   ) {
     return this.handleAsync(async () => {
-      const result = await this.parseFileWithWorker(
-        args.fileType,
-        args.fileContent,
-        args.maxRows || 20
-      );
+      const result = await this.parseFileWithWorker(args.fileType, args.fileContent, args.maxRows || 20);
       return result;
     });
   }

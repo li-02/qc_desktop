@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {onMounted, onUnmounted, ref} from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import CreateProjectDialog from "./CreateProjectDialog.vue";
 import ImportDataDialog from "./ImportDataDialog.vue";
 import emitter from "../../utils/eventBus";

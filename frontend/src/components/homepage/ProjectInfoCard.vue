@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import {DataAnalysis} from "@element-plus/icons-vue";
-import {useProjectStore} from "@/stores/useProjectStore";
-import {computed} from "vue";
+import { DataAnalysis } from "@element-plus/icons-vue";
+import { useProjectStore } from "@/stores/useProjectStore";
+import { computed } from "vue";
 
 const projectStore = useProjectStore();
 const projectName = computed(() => projectStore.currentProject?.name);

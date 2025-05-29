@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import {onMounted, onUnmounted} from "vue";
+import { onMounted, onUnmounted } from "vue";
 import GlobalDialogs from "./components/dialogs/index.vue";
 // import emitter from "./utils/eventBus";
-import {useProjectStore} from "./stores/useProjectStore";
-import {useDatasetStore} from "./stores/useDatasetStore";
+import { useProjectStore } from "./stores/useProjectStore";
+import { useDatasetStore } from "./stores/useDatasetStore";
 // import {cleanupProjectStore, setupProjectStore} from "./stores/projectStore";
 const projectStore = useProjectStore();
 const datasetStore = useDatasetStore();

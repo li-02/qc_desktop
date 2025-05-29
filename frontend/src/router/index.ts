@@ -1,4 +1,4 @@
-import {createRouter, createWebHashHistory, type RouteRecordRaw} from "vue-router";
+import { createRouter, createWebHashHistory, type RouteRecordRaw } from "vue-router";
 import MainLayout from "../layouts/MainLayout.vue";
 import HomePage from "../views/home-page/index.vue";
 import DataProcessingPage from "../views//data-processing-page/index.vue";

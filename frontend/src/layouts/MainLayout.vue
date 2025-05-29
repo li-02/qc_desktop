@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import {computed, onMounted, onUnmounted, ref} from "vue";
-import {useRoute, useRouter} from "vue-router";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import emitter from "@/utils/eventBus";
-import {ElMessage, ElMessageBox} from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import {
   ArrowRight,
   DataAnalysis,
@@ -18,8 +18,8 @@ import {
   Refresh,
   Upload,
 } from "@element-plus/icons-vue";
-import {useProjectStore} from "@/stores/useProjectStore";
-import {useDatasetStore} from "@/stores/useDatasetStore";
+import { useProjectStore } from "@/stores/useProjectStore";
+import { useDatasetStore } from "@/stores/useDatasetStore";
 
 const projectStore = useProjectStore();
 const datasetStore = useDatasetStore();
@@ -47,10 +47,10 @@ const currentRouteName = computed(() => {
 
 // 主菜单项
 const mainMenuItems = [
-  {name: "首页", path: "/", icon: HomeFilled},
-  {name: "数据视图", path: "/data-view", icon: DataAnalysis},
-  {name: "异常值检测", path: "/outlier-detection", icon: Operation},
-  {name: "缺失值插补", path: "/missing-value-imputation", icon: PieChart},
+  { name: "首页", path: "/", icon: HomeFilled },
+  { name: "数据视图", path: "/data-view", icon: DataAnalysis },
+  { name: "异常值检测", path: "/outlier-detection", icon: Operation },
+  { name: "缺失值插补", path: "/missing-value-imputation", icon: PieChart },
 ];
 
 // 切换项目展开状态
@@ -223,7 +223,7 @@ onUnmounted(() => {
                       class="w-4 h-4 flex items-center justify-center text-gray-400 hover:text-white transition-colors duration-200">
                       <el-icon
                         class="transform transition-transform duration-200 text-xs"
-                        :class="{'rotate-90': isProjectExpanded(project.id)}">
+                        :class="{ 'rotate-90': isProjectExpanded(project.id) }">
                         <ArrowRight />
                       </el-icon>
                     </button>
@@ -373,7 +373,7 @@ onUnmounted(() => {
           <div class="flex justify-between items-center w-full">
             <!-- 面包屑导航 -->
             <el-breadcrumb separator="/">
-              <el-breadcrumb-item :to="{path: '/'}">首页</el-breadcrumb-item>
+              <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
               <!-- <el-breadcrumb-item v-if="currentRouteName">{{ currentRouteName }}</el-breadcrumb-item> -->
               <el-breadcrumb-item v-if="projectStore.currentProject">
                 {{ projectStore.currentProject.name }}

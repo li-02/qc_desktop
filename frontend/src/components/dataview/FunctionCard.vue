@@ -74,9 +74,9 @@
 </template>
 
 <script setup lang="ts">
-import {ref, computed, watch} from "vue";
-import {ElMessage} from "element-plus";
-import type {DatasetInfo} from "@shared/types/projectInterface";
+import { ref, computed, watch } from "vue";
+import { ElMessage } from "element-plus";
+import type { DatasetInfo } from "@shared/types/projectInterface";
 import DataOverviewPanel from "./panels/DataOverviewPanel.vue";
 import OutlierDetectionPanel from "./OutlierDetectionPanel.vue";
 import MissingValuePanel from "./MissingValuePanel.vue";
@@ -214,7 +214,7 @@ watch(
       emit("tabChange", "overview");
     }
   },
-  {immediate: true}
+  { immediate: true }
 );
 
 // Expose methods

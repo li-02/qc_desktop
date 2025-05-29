@@ -224,10 +224,10 @@
 </template>
 
 <script setup lang="ts">
-import {ref, computed, watch, onMounted} from "vue";
-import {ElMessage} from "element-plus";
-import {Loading, Refresh, Search, InfoFilled, TrendCharts, DocumentDelete, Connection} from "@element-plus/icons-vue";
-import type {DatasetInfo} from "@shared/types/projectInterface.ts";
+import { ref, computed, watch, onMounted } from "vue";
+import { ElMessage } from "element-plus";
+import { Loading, Refresh, Search, InfoFilled, TrendCharts, DocumentDelete, Connection } from "@element-plus/icons-vue";
+import type { DatasetInfo } from "@shared/types/projectInterface.ts";
 
 // Props
 interface Props {
@@ -251,7 +251,7 @@ const selectedColumn = ref("");
 const chartType = ref("histogram");
 const chartLoading = ref(false);
 const correlationLoading = ref(false);
-const correlationMatrix = ref<Array<{name: string; values: number[]}>>([]);
+const correlationMatrix = ref<Array<{ name: string; values: number[] }>>([]);
 const correlationHeaders = ref<string[]>([]);
 
 // Mock column data - 实际应该从API获取
@@ -402,7 +402,7 @@ watch(
       selectedColumn.value = numericColumns.value[0].name;
     }
   },
-  {immediate: true}
+  { immediate: true }
 );
 
 // Lifecycle

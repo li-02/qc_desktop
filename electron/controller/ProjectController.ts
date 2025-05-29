@@ -110,10 +110,7 @@ export class ProjectController extends BaseController {
       const cleanUpdates: any = {};
 
       if (args.updates.name !== undefined) {
-        if (
-          typeof args.updates.name !== "string" ||
-          args.updates.name.trim().length === 0
-        ) {
+        if (typeof args.updates.name !== "string" || args.updates.name.trim().length === 0) {
           throw new Error("项目名称不能为空");
         }
         cleanUpdates.name = args.updates.name.trim();
@@ -134,10 +131,7 @@ export class ProjectController extends BaseController {
         }
       }
 
-      const result = await this.projectService.updateProject(
-        args.projectId,
-        cleanUpdates
-      );
+      const result = await this.projectService.updateProject(args.projectId, cleanUpdates);
 
       if (!result.success) {
         throw new Error(result.error || "更新项目失败");
@@ -185,9 +179,7 @@ export class ProjectController extends BaseController {
       if (trimmedName.length === 0) {
         throw new Error("项目名称不能为空");
       }
-      const result = await this.projectService.checkProjectNameAvailable(
-        trimmedName
-      );
+      const result = await this.projectService.checkProjectNameAvailable(trimmedName);
       if (!result.success) {
         throw new Error(result.error || "检查项目名称失败");
       }
@@ -236,11 +228,7 @@ export class ProjectController extends BaseController {
     }
 
     // 基础格式验证
-    if (
-      longitude.trim().length === 0 ||
-      latitude.trim().length === 0 ||
-      altitude.trim().length === 0
-    ) {
+    if (longitude.trim().length === 0 || latitude.trim().length === 0 || altitude.trim().length === 0) {
       return "地理信息不能为空";
     }
 

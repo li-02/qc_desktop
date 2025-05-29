@@ -1,12 +1,12 @@
 import Papa from "papaparse";
-import type {TableColumn} from "@/types";
+import type { TableColumn } from "@/types";
 
 /**
  * 处理CSV文件
  * @param content CSV文件内容
  * @returns 包含表头和数据的对象
  */
-export const processCSV = (content: string): Promise<{columns: TableColumn[]; tableData: any[]}> => {
+export const processCSV = (content: string): Promise<{ columns: TableColumn[]; tableData: any[] }> => {
   return new Promise((resolve, reject) => {
     Papa.parse(content, {
       header: true,
@@ -32,7 +32,7 @@ export const processCSV = (content: string): Promise<{columns: TableColumn[]; ta
             tableData = results.data;
           }
 
-          resolve({columns, tableData});
+          resolve({ columns, tableData });
         } catch (error) {
           reject(new Error(`解析CSV文件时出错: ${error}`));
         }

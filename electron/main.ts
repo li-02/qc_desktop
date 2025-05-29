@@ -52,9 +52,7 @@ function createWindow(): void {
     appState.mainWindow.webContents.openDevTools();
   } else {
     console.log("生产环境：加载打包后的文件");
-    appState.mainWindow.loadFile(
-      path.join(__dirname, "../../frontend/dist/index.html")
-    );
+    appState.mainWindow.loadFile(path.join(__dirname, "../../frontend/dist/index.html"));
   }
 
   // 窗口事件监听
@@ -92,14 +90,9 @@ function setupWindowEvents(): void {
   });
 
   // 页面加载错误处理
-  appState.mainWindow.webContents.on(
-    "did-fail-load",
-    (event, errorCode, errorDescription, validatedURL) => {
-      console.error(
-        `页面加载失败: ${errorDescription} (${errorCode}) - ${validatedURL}`
-      );
-    }
-  );
+  appState.mainWindow.webContents.on("did-fail-load", (event, errorCode, errorDescription, validatedURL) => {
+    console.error(`页面加载失败: ${errorDescription} (${errorCode}) - ${validatedURL}`);
+  });
 }
 
 /**
@@ -115,9 +108,7 @@ function createApplicationMenu(): void {
           accelerator: "CmdOrCtrl+N",
           click: () => {
             if (appState.mainWindow) {
-              appState.mainWindow.webContents.send(
-                "open-create-project-dialog"
-              );
+              appState.mainWindow.webContents.send("open-create-project-dialog");
             }
           },
         },
@@ -321,7 +312,7 @@ app.on("activate", () => {
 app.on("before-quit", onBeforeQuit);
 
 // 未处理的异常
-process.on("uncaughtException", (error) => {
+process.on("uncaughtException", error => {
   console.error("未处理的异常:", error);
 });
 

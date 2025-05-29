@@ -171,10 +171,10 @@
 </template>
 
 <script setup lang="ts">
-import {ref, computed, reactive} from "vue";
-import {ElMessage, ElMessageBox} from "element-plus";
-import {Lightning, Setting} from "@element-plus/icons-vue";
-import type {DatasetInfo} from "@shared/types/projectInterface";
+import { ref, computed, reactive } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { Lightning, Setting } from "@element-plus/icons-vue";
+import type { DatasetInfo } from "@shared/types/projectInterface";
 import ActionButton from "./ActionButton.vue";
 
 // Props

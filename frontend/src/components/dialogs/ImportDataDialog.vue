@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import {computed, ref} from "vue";
+import { computed, ref } from "vue";
 // 第三步 上传文件
-import type {UploadInstance} from "element-plus";
-import {ElMessage} from "element-plus";
-import {UploadFilled} from "@element-plus/icons-vue";
+import type { UploadInstance } from "element-plus";
+import { ElMessage } from "element-plus";
+import { UploadFilled } from "@element-plus/icons-vue";
 // import type {ElectronWindow} from "@shared/types/window";
-import type {TableColumns} from "@pureadmin/table";
+import type { TableColumns } from "@pureadmin/table";
 import PureTable from "@pureadmin/table";
-import {useProjectStore} from "@/stores/useProjectStore";
-import {useDatasetStore} from "@/stores/useDatasetStore";
-import {API_ROUTES} from "@shared/constants/apiRoutes";
+import { useProjectStore } from "@/stores/useProjectStore";
+import { useDatasetStore } from "@/stores/useDatasetStore";
+import { API_ROUTES } from "@shared/constants/apiRoutes";
 
 // 对话框状态
 const dialogVisible = ref(false);
@@ -98,7 +98,7 @@ const optionName = ref("");
 const optimizedColumns = computed(() => {
   return columns.value.map(column => {
     // 原始列定义复制
-    const optimizedColumn = {...column};
+    const optimizedColumn = { ...column };
 
     // 如果是对象，添加width和minWidth属性
     if (typeof optimizedColumn === "object") {

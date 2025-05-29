@@ -4,12 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import * as path from "path";
 import { DatasetRepository } from "../repository/DatasetRepository";
 import { ProjectRepository } from "../repository/ProjectRepository";
-import {
-  DatasetInfo,
-  ImportDatasetRequest,
-  ServiceResponse,
-  ProjectInfo,
-} from "@shared/types/projectInterface";
+import { DatasetInfo, ImportDatasetRequest, ServiceResponse, ProjectInfo } from "@shared/types/projectInterface";
 
 /**
  * 数据集业务逻辑层
@@ -19,10 +14,7 @@ export class DatasetService {
   private datasetRepository: DatasetRepository;
   private projectRepository: ProjectRepository;
 
-  constructor(
-    datasetRepository: DatasetRepository,
-    projectRepository: ProjectRepository
-  ) {
+  constructor(datasetRepository: DatasetRepository, projectRepository: ProjectRepository) {
     this.datasetRepository = datasetRepository;
     this.projectRepository = projectRepository;
   }
@@ -57,16 +49,11 @@ export class DatasetService {
       const project = projectResult.data!;
 
       // 3. 检查数据集名称是否已存在
-      const nameCheckResult = await this.checkDatasetNameAvailable(
-        project,
-        request.datasetName
-      );
+      const nameCheckResult = await this.checkDatasetNameAvailable(project, request.datasetName);
       if (!nameCheckResult.success || !nameCheckResult.data) {
         return {
           success: false,
-          error:
-            nameCheckResult.error ||
-            `数据集名称 "${request.datasetName}" 已存在`,
+          error: nameCheckResult.error || `数据集名称 "${request.datasetName}" 已存在`,
         };
       }
 
@@ -76,8 +63,7 @@ export class DatasetService {
       const now = Date.now();
 
       // 5. 创建数据集目录
-      const createDirResult =
-        await this.datasetRepository.createDatasetDirectory(datasetPath);
+      const createDirResult = await this.datasetRepository.createDatasetDirectory(datasetPath);
       if (!createDirResult.success) {
         return { success: false, error: createDirResult.error };
       }
@@ -86,10 +72,7 @@ export class DatasetService {
       const originalExt = path.extname(request.file.name);
       const originalFilePath = path.join(datasetPath, `original${originalExt}`);
 
-      const copyFileResult = await this.datasetRepository.copyOriginalFile(
-        request.file.path,
-        originalFilePath
-      );
+      const copyFileResult = await this.datasetRepository.copyOriginalFile(request.file.path, originalFilePath);
       if (!copyFileResult.success) {
         // 回滚：删除已创建的目录
         await this.datasetRepository.deleteDatasetDirectory(datasetPath);
@@ -117,8 +100,7 @@ export class DatasetService {
       };
 
       // 8. 保存数据集元数据
-      const saveMetadataResult =
-        await this.datasetRepository.writeDatasetMetadata(metadata);
+      const saveMetadataResult = await this.datasetRepository.writeDatasetMetadata(metadata);
       if (!saveMetadataResult.success) {
         // 回滚：删除目录和文件
         await this.datasetRepository.deleteDatasetDirectory(datasetPath);
@@ -126,10 +108,7 @@ export class DatasetService {
       }
 
       // 9. 更新项目配置
-      const updateProjectResult = await this.updateProjectWithNewDataset(
-        project,
-        metadata
-      );
+      const updateProjectResult = await this.updateProjectWithNewDataset(project, metadata);
       if (!updateProjectResult.success) {
         // 回滚：删除数据集目录
         await this.datasetRepository.deleteDatasetDirectory(datasetPath);
@@ -159,15 +138,11 @@ export class DatasetService {
   /**
    * 获取项目的所有数据集
    */
-  async getProjectDatasets(
-    projectId: string
-  ): Promise<ServiceResponse<DatasetInfo[]>> {
+  async getProjectDatasets(projectId: string): Promise<ServiceResponse<DatasetInfo[]>> {
     try {
       // 1. 获取项目信息
       const projectPath = await this.getProjectPathById(projectId);
-      const projectResult = await this.projectRepository.readProjectConfig(
-        projectPath
-      );
+      const projectResult = await this.projectRepository.readProjectConfig(projectPath);
       if (!projectResult.success) {
         return { success: false, error: "项目不存在或无法访问" };
       }
@@ -177,38 +152,28 @@ export class DatasetService {
 
       // 2. 遍历项目中的数据集基本信息，加载完整数据集信息
       for (const datasetBaseInfo of project.datasets) {
-        const datasetDirPath = this.datasetRepository.buildDatasetPath(
-          project.path,
-          datasetBaseInfo
-        );
+        const datasetDirPath = this.datasetRepository.buildDatasetPath(project.path, datasetBaseInfo);
 
         // 检查数据集目录是否存在
-        const dirExists = await this.datasetRepository.datasetDirectoryExists(
-          datasetDirPath
-        );
+        const dirExists = await this.datasetRepository.datasetDirectoryExists(datasetDirPath);
         if (!dirExists) {
           console.warn(`数据集目录不存在，跳过: ${datasetDirPath}`);
           continue;
         }
 
         // 检查元数据文件是否存在
-        const metadataExists =
-          await this.datasetRepository.datasetMetadataExists(datasetDirPath);
+        const metadataExists = await this.datasetRepository.datasetMetadataExists(datasetDirPath);
         if (!metadataExists) {
           console.warn(`数据集元数据不存在，跳过: ${datasetDirPath}`);
           continue;
         }
 
         // 读取数据集完整信息
-        const datasetResult = await this.datasetRepository.readDatasetMetadata(
-          datasetDirPath
-        );
+        const datasetResult = await this.datasetRepository.readDatasetMetadata(datasetDirPath);
         if (datasetResult.success) {
           datasets.push(datasetResult.data!);
         } else {
-          console.warn(
-            `读取数据集元数据失败，跳过: ${datasetBaseInfo.name} - ${datasetResult.error}`
-          );
+          console.warn(`读取数据集元数据失败，跳过: ${datasetBaseInfo.name} - ${datasetResult.error}`);
         }
       }
 
@@ -227,17 +192,14 @@ export class DatasetService {
   /**
    * 获取单个数据集信息
    */
-  async getDatasetInfo(
-    projectId: string,
-    datasetId: string
-  ): Promise<ServiceResponse<DatasetInfo>> {
+  async getDatasetInfo(projectId: string, datasetId: string): Promise<ServiceResponse<DatasetInfo>> {
     try {
       const datasetsResult = await this.getProjectDatasets(projectId);
       if (!datasetsResult.success) {
         return { success: false, error: datasetsResult.error };
       }
 
-      const dataset = datasetsResult.data!.find((d) => d.id === datasetId);
+      const dataset = datasetsResult.data!.find(d => d.id === datasetId);
       if (!dataset) {
         return {
           success: false,
@@ -261,10 +223,7 @@ export class DatasetService {
   /**
    * 删除数据集
    */
-  async deleteDataset(
-    projectId: string,
-    datasetId: string
-  ): Promise<ServiceResponse<void>> {
+  async deleteDataset(projectId: string, datasetId: string): Promise<ServiceResponse<void>> {
     try {
       // 1. 获取数据集信息
       const datasetResult = await this.getDatasetInfo(projectId, datasetId);
@@ -275,17 +234,13 @@ export class DatasetService {
       const dataset = datasetResult.data!;
 
       // 2. 删除数据集目录
-      const deleteDirResult =
-        await this.datasetRepository.deleteDatasetDirectory(dataset.dirPath);
+      const deleteDirResult = await this.datasetRepository.deleteDatasetDirectory(dataset.dirPath);
       if (!deleteDirResult.success) {
         return { success: false, error: deleteDirResult.error };
       }
 
       // 3. 从项目配置中移除数据集
-      const updateProjectResult = await this.removeDatasetFromProject(
-        projectId,
-        datasetId
-      );
+      const updateProjectResult = await this.removeDatasetFromProject(projectId, datasetId);
       if (!updateProjectResult.success) {
         return { success: false, error: updateProjectResult.error };
       }
@@ -319,22 +274,16 @@ export class DatasetService {
       // 2. 如果更新了数据集名称，需要验证名称可用性
       if (updates.name && updates.name !== currentDataset.name) {
         const projectPath = await this.getProjectPathById(projectId);
-        const projectResult = await this.projectRepository.readProjectConfig(
-          projectPath
-        );
+        const projectResult = await this.projectRepository.readProjectConfig(projectPath);
         if (!projectResult.success) {
           return { success: false, error: "项目不存在或无法访问" };
         }
 
-        const nameCheckResult = await this.checkDatasetNameAvailable(
-          projectResult.data!,
-          updates.name
-        );
+        const nameCheckResult = await this.checkDatasetNameAvailable(projectResult.data!, updates.name);
         if (!nameCheckResult.success || !nameCheckResult.data) {
           return {
             success: false,
-            error:
-              nameCheckResult.error || `数据集名称 "${updates.name}" 已存在`,
+            error: nameCheckResult.error || `数据集名称 "${updates.name}" 已存在`,
           };
         }
       }
@@ -350,19 +299,14 @@ export class DatasetService {
       };
 
       // 4. 保存更新后的元数据
-      const saveResult = await this.datasetRepository.writeDatasetMetadata(
-        updatedDataset
-      );
+      const saveResult = await this.datasetRepository.writeDatasetMetadata(updatedDataset);
       if (!saveResult.success) {
         return { success: false, error: saveResult.error };
       }
 
       // 5. 如果名称变化，需要更新项目配置中的数据集基本信息
       if (updates.name) {
-        const updateProjectResult = await this.updateDatasetInProject(
-          projectId,
-          updatedDataset
-        );
+        const updateProjectResult = await this.updateDatasetInProject(projectId, updatedDataset);
         if (!updateProjectResult.success) {
           return { success: false, error: updateProjectResult.error };
         }
@@ -384,9 +328,7 @@ export class DatasetService {
   /**
    * 验证导入数据集的请求参数
    */
-  private async validateImportRequest(
-    request: ImportDatasetRequest
-  ): Promise<ServiceResponse<void>> {
+  private async validateImportRequest(request: ImportDatasetRequest): Promise<ServiceResponse<void>> {
     // 验证项目ID
     if (!request.projectId || request.projectId.trim().length === 0) {
       return { success: false, error: "项目ID不能为空" };
@@ -431,9 +373,7 @@ export class DatasetService {
     datasetName: string
   ): Promise<ServiceResponse<boolean>> {
     try {
-      const nameExists = project.datasets.some(
-        (dataset) => dataset.name.toLowerCase() === datasetName.toLowerCase()
-      );
+      const nameExists = project.datasets.some(dataset => dataset.name.toLowerCase() === datasetName.toLowerCase());
 
       return { success: true, data: !nameExists };
     } catch (error: any) {
@@ -455,9 +395,7 @@ export class DatasetService {
       throw new Error("无法读取项目索引");
     }
 
-    const projectBase = indexResult.data!.projects.find(
-      (p) => p.id === projectId
-    );
+    const projectBase = indexResult.data!.projects.find(p => p.id === projectId);
     if (!projectBase) {
       throw new Error(`找不到ID为 "${projectId}" 的项目`);
     }
@@ -473,10 +411,7 @@ export class DatasetService {
     dataset: DatasetInfo
   ): Promise<ServiceResponse<void>> {
     try {
-      const datasetBaseInfo = this.datasetRepository.toDatasetBaseInfo(
-        dataset,
-        project.path
-      );
+      const datasetBaseInfo = this.datasetRepository.toDatasetBaseInfo(dataset, project.path);
 
       project.datasets.push(datasetBaseInfo);
       project.lastUpdated = Date.now();
@@ -493,21 +428,16 @@ export class DatasetService {
   /**
    * 从项目配置中移除数据集
    */
-  private async removeDatasetFromProject(
-    projectId: string,
-    datasetId: string
-  ): Promise<ServiceResponse<void>> {
+  private async removeDatasetFromProject(projectId: string, datasetId: string): Promise<ServiceResponse<void>> {
     try {
       const projectPath = await this.getProjectPathById(projectId);
-      const projectResult = await this.projectRepository.readProjectConfig(
-        projectPath
-      );
+      const projectResult = await this.projectRepository.readProjectConfig(projectPath);
       if (!projectResult.success) {
         return { success: false, error: "项目不存在或无法访问" };
       }
 
       const project = projectResult.data!;
-      project.datasets = project.datasets.filter((d) => d.id !== datasetId);
+      project.datasets = project.datasets.filter(d => d.id !== datasetId);
       project.lastUpdated = Date.now();
 
       return await this.projectRepository.writeProjectConfig(project);
@@ -522,27 +452,19 @@ export class DatasetService {
   /**
    * 在项目配置中更新数据集基本信息
    */
-  private async updateDatasetInProject(
-    projectId: string,
-    dataset: DatasetInfo
-  ): Promise<ServiceResponse<void>> {
+  private async updateDatasetInProject(projectId: string, dataset: DatasetInfo): Promise<ServiceResponse<void>> {
     try {
       const projectPath = await this.getProjectPathById(projectId);
-      const projectResult = await this.projectRepository.readProjectConfig(
-        projectPath
-      );
+      const projectResult = await this.projectRepository.readProjectConfig(projectPath);
       if (!projectResult.success) {
         return { success: false, error: "项目不存在或无法访问" };
       }
 
       const project = projectResult.data!;
-      const datasetIndex = project.datasets.findIndex(
-        (d) => d.id === dataset.id
-      );
+      const datasetIndex = project.datasets.findIndex(d => d.id === dataset.id);
 
       if (datasetIndex !== -1) {
-        project.datasets[datasetIndex] =
-          this.datasetRepository.toDatasetBaseInfo(dataset, project.path);
+        project.datasets[datasetIndex] = this.datasetRepository.toDatasetBaseInfo(dataset, project.path);
         project.lastUpdated = Date.now();
 
         return await this.projectRepository.writeProjectConfig(project);

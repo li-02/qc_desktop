@@ -2,12 +2,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import {
-  DatasetInfo,
-  DatasetBaseInfo,
-  ServiceResponse,
-  ProjectInfo,
-} from "@shared/types/projectInterface";
+import { DatasetInfo, DatasetBaseInfo, ServiceResponse, ProjectInfo } from "@shared/types/projectInterface";
 
 /**
  * 数据集数据访问层
@@ -19,9 +14,7 @@ export class DatasetRepository {
   /**
    * 读取数据集元数据文件
    */
-  async readDatasetMetadata(
-    datasetDirPath: string
-  ): Promise<ServiceResponse<DatasetInfo>> {
+  async readDatasetMetadata(datasetDirPath: string): Promise<ServiceResponse<DatasetInfo>> {
     try {
       const metadataPath = path.join(datasetDirPath, "metadata.json");
 
@@ -47,9 +40,7 @@ export class DatasetRepository {
   /**
    * 写入数据集元数据文件
    */
-  async writeDatasetMetadata(
-    datasetInfo: DatasetInfo
-  ): Promise<ServiceResponse<void>> {
+  async writeDatasetMetadata(datasetInfo: DatasetInfo): Promise<ServiceResponse<void>> {
     try {
       const metadataPath = path.join(datasetInfo.dirPath, "metadata.json");
       datasetInfo.updatedAt = Date.now();
@@ -73,9 +64,7 @@ export class DatasetRepository {
   /**
    * 创建数据集目录
    */
-  async createDatasetDirectory(
-    datasetDirPath: string
-  ): Promise<ServiceResponse<void>> {
+  async createDatasetDirectory(datasetDirPath: string): Promise<ServiceResponse<void>> {
     try {
       if (fs.existsSync(datasetDirPath)) {
         return {
@@ -97,9 +86,7 @@ export class DatasetRepository {
   /**
    * 删除数据集目录
    */
-  async deleteDatasetDirectory(
-    datasetDirPath: string
-  ): Promise<ServiceResponse<void>> {
+  async deleteDatasetDirectory(datasetDirPath: string): Promise<ServiceResponse<void>> {
     try {
       if (fs.existsSync(datasetDirPath)) {
         fs.rmSync(datasetDirPath, { recursive: true, force: true });
@@ -135,10 +122,7 @@ export class DatasetRepository {
   /**
    * 复制原始文件到数据集目录
    */
-  async copyOriginalFile(
-    sourcePath: string,
-    targetPath: string
-  ): Promise<ServiceResponse<void>> {
+  async copyOriginalFile(sourcePath: string, targetPath: string): Promise<ServiceResponse<void>> {
     try {
       if (!fs.existsSync(sourcePath)) {
         return {
@@ -209,10 +193,7 @@ export class DatasetRepository {
   /**
    * 将DatasetInfo转换为DatasetBaseInfo
    */
-  toDatasetBaseInfo(
-    dataset: DatasetInfo,
-    projectPath: string
-  ): DatasetBaseInfo {
+  toDatasetBaseInfo(dataset: DatasetInfo, projectPath: string): DatasetBaseInfo {
     return {
       id: dataset.id,
       name: dataset.name,
@@ -227,19 +208,14 @@ export class DatasetRepository {
   /**
    * 根据项目路径和数据集基本信息构建完整路径
    */
-  buildDatasetPath(
-    projectPath: string,
-    datasetBaseInfo: DatasetBaseInfo
-  ): string {
+  buildDatasetPath(projectPath: string, datasetBaseInfo: DatasetBaseInfo): string {
     return datasetBaseInfo.dirPath;
   }
 
   /**
    * 获取数据集的所有文件列表
    */
-  async getDatasetFiles(
-    datasetDirPath: string
-  ): Promise<ServiceResponse<string[]>> {
+  async getDatasetFiles(datasetDirPath: string): Promise<ServiceResponse<string[]>> {
     try {
       if (!fs.existsSync(datasetDirPath)) {
         return {
@@ -248,7 +224,7 @@ export class DatasetRepository {
         };
       }
 
-      const files = fs.readdirSync(datasetDirPath).filter((file) => {
+      const files = fs.readdirSync(datasetDirPath).filter(file => {
         const filePath = path.join(datasetDirPath, file);
         return fs.statSync(filePath).isFile();
       });
@@ -288,9 +264,7 @@ export class DatasetRepository {
       if (hasMetadata) {
         const metadataResult = await this.readDatasetMetadata(datasetDirPath);
         if (metadataResult.success) {
-          hasOriginalFile = fs.existsSync(
-            metadataResult.data!.originalFile.filePath
-          );
+          hasOriginalFile = fs.existsSync(metadataResult.data!.originalFile.filePath);
         }
       }
 

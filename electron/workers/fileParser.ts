@@ -7,7 +7,7 @@ if (parentPort) {
   // 接收消息并处理
   const messagePort = parentPort;
   console.log("in parentPort");
-  messagePort.on("message", async (message) => {
+  messagePort.on("message", async message => {
     const { type, data, maxRows } = message;
 
     try {
@@ -48,7 +48,7 @@ function parseCSV(content: any, maxRows = 20) {
     const columns: { prop: string; label: string }[] = [];
     // 设置表头
     if (results.meta.fields && results.meta.fields.length > 0) {
-      results.meta.fields.forEach((field) => {
+      results.meta.fields.forEach(field => {
         columns.push({
           prop: field,
           label: field,
@@ -103,10 +103,10 @@ function parseExcel(buffer: ArrayBuffer | Uint8Array | Buffer, maxRows = 20) {
 
     if (data && data.length > 0) {
       // 第一行作为表头
-      const headers: any[] = data[0].map((h) => String(h));
+      const headers: any[] = data[0].map(h => String(h));
 
       if (headers && headers.length > 0) {
-        headers.forEach((header) => {
+        headers.forEach(header => {
           columns.push({
             prop: header,
             label: header,
@@ -116,7 +116,7 @@ function parseExcel(buffer: ArrayBuffer | Uint8Array | Buffer, maxRows = 20) {
         // 剩余行作为数据
         if (data.length > 1) {
           const rows = data.slice(1);
-          tableData = rows.map((row) => {
+          tableData = rows.map(row => {
             const obj: Record<string, any> = {};
             headers.forEach((header, index) => {
               obj[header] = row[index];

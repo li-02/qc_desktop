@@ -76,8 +76,7 @@
       description="请先导入数据后再进行预处理操作。导入数据后，系统会自动分析数据特征并提供建议的处理方案。"
       :closable="false"
       show-icon
-      class="mb-6"
-    />
+      class="mb-6" />
 
     <div class="flex justify-between">
       <el-button @click="prevStep" :disabled="currentStep <= 0">
@@ -97,8 +96,8 @@
 </template>
 
 <script setup lang="ts">
-import {ref} from "vue";
-import {ArrowLeft, ArrowRight, DataAnalysis} from "@element-plus/icons-vue";
+import { ref } from "vue";
+import { ArrowLeft, ArrowRight, DataAnalysis } from "@element-plus/icons-vue";
 
 const currentStep = ref(0);
 const dataLoaded = ref(false);

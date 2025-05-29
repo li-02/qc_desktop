@@ -1,9 +1,9 @@
-import {defineStore} from "pinia";
-import {ref, computed, watch} from "vue";
-import type {DatasetBaseInfo, DatasetInfo, ImportOption} from "@shared/types/projectInterface";
-import {useProjectStore} from "./useProjectStore";
-import {ElMessage} from "element-plus";
-import {API_ROUTES} from "@shared/constants/apiRoutes";
+import { defineStore } from "pinia";
+import { ref, computed, watch } from "vue";
+import type { DatasetBaseInfo, DatasetInfo, ImportOption } from "@shared/types/projectInterface";
+import { useProjectStore } from "./useProjectStore";
+import { ElMessage } from "element-plus";
+import { API_ROUTES } from "@shared/constants/apiRoutes";
 
 export const useDatasetStore = defineStore("dataset", () => {
   const projectStore = useProjectStore();
@@ -150,7 +150,7 @@ export const useDatasetStore = defineStore("dataset", () => {
         currentDataset.value = null;
       }
     },
-    {immediate: true}
+    { immediate: true }
   );
 
   return {

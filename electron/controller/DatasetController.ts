@@ -57,13 +57,9 @@ export class DatasetController extends BaseController {
           size: args.importOption.file.size.trim(),
           path: args.importOption.file.path.trim(),
         },
-        missingValueTypes: args.importOption.missingValueTypes.map((v) =>
-          v.trim()
-        ),
+        missingValueTypes: args.importOption.missingValueTypes.map(v => v.trim()),
         rows: Number(args.importOption.rows),
-        columns: args.importOption.columns
-          .map((col) => col.trim())
-          .filter((col) => col.length > 0),
+        columns: args.importOption.columns.map(col => col.trim()).filter(col => col.length > 0),
       };
 
       const result = await this.datasetService.importDataset(request);
@@ -83,19 +79,14 @@ export class DatasetController extends BaseController {
   /**
    * 获取项目的所有数据集
    */
-  async getProjectDatasets(
-    args: { projectId: string },
-    event: IpcMainInvokeEvent
-  ) {
+  async getProjectDatasets(args: { projectId: string }, event: IpcMainInvokeEvent) {
     return this.handleAsync(async () => {
       // 参数校验
       if (!args.projectId || typeof args.projectId !== "string") {
         throw new Error("项目ID不能为空");
       }
 
-      const result = await this.datasetService.getProjectDatasets(
-        args.projectId.trim()
-      );
+      const result = await this.datasetService.getProjectDatasets(args.projectId.trim());
 
       if (!result.success) {
         throw new Error(result.error || "获取项目数据集失败");
@@ -125,10 +116,7 @@ export class DatasetController extends BaseController {
         throw new Error("数据集ID不能为空");
       }
 
-      const result = await this.datasetService.getDatasetInfo(
-        args.projectId.trim(),
-        args.datasetId.trim()
-      );
+      const result = await this.datasetService.getDatasetInfo(args.projectId.trim(), args.datasetId.trim());
 
       if (!result.success) {
         throw new Error(result.error || "获取数据集信息失败");
@@ -158,10 +146,7 @@ export class DatasetController extends BaseController {
         throw new Error("数据集ID不能为空");
       }
 
-      const result = await this.datasetService.deleteDataset(
-        args.projectId.trim(),
-        args.datasetId.trim()
-      );
+      const result = await this.datasetService.deleteDataset(args.projectId.trim(), args.datasetId.trim());
 
       if (!result.success) {
         throw new Error(result.error || "删除数据集失败");
@@ -204,20 +189,14 @@ export class DatasetController extends BaseController {
       const cleanUpdates: any = {};
 
       if (args.updates.name !== undefined) {
-        if (
-          typeof args.updates.name !== "string" ||
-          args.updates.name.trim().length === 0
-        ) {
+        if (typeof args.updates.name !== "string" || args.updates.name.trim().length === 0) {
           throw new Error("数据集名称不能为空");
         }
         cleanUpdates.name = args.updates.name.trim();
       }
 
       if (args.updates.type !== undefined) {
-        if (
-          typeof args.updates.type !== "string" ||
-          args.updates.type.trim().length === 0
-        ) {
+        if (typeof args.updates.type !== "string" || args.updates.type.trim().length === 0) {
           throw new Error("数据类型不能为空");
         }
         cleanUpdates.type = args.updates.type.trim();
@@ -227,9 +206,7 @@ export class DatasetController extends BaseController {
         if (!Array.isArray(args.updates.missingValueTypes)) {
           throw new Error("缺失值类型必须是数组");
         }
-        cleanUpdates.missingValueTypes = args.updates.missingValueTypes
-          .map((v) => v.trim())
-          .filter((v) => v.length > 0);
+        cleanUpdates.missingValueTypes = args.updates.missingValueTypes.map(v => v.trim()).filter(v => v.length > 0);
       }
 
       const result = await this.datasetService.updateDataset(
@@ -267,10 +244,7 @@ export class DatasetController extends BaseController {
       }
 
       // 先获取数据集信息
-      const datasetResult = await this.datasetService.getDatasetInfo(
-        args.projectId.trim(),
-        args.datasetId.trim()
-      );
+      const datasetResult = await this.datasetService.getDatasetInfo(args.projectId.trim(), args.datasetId.trim());
 
       if (!datasetResult.success) {
         throw new Error(datasetResult.error || "数据集不存在");

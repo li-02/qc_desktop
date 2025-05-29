@@ -1,12 +1,12 @@
-import {defineStore} from "pinia";
-import {computed, ref} from "vue";
-import {type ProjectInfo} from "@shared/types/projectInterface.ts";
-import {ElMessage} from "element-plus";
-import {API_ROUTES} from "@shared/constants/apiRoutes";
+import { defineStore } from "pinia";
+import { computed, ref } from "vue";
+import { type ProjectInfo } from "@shared/types/projectInterface.ts";
+import { ElMessage } from "element-plus";
+import { API_ROUTES } from "@shared/constants/apiRoutes";
 
 type Result<T = undefined> = T extends undefined
-  ? {success: boolean; error?: string}
-  : {success: boolean; data?: T; error?: string};
+  ? { success: boolean; error?: string }
+  : { success: boolean; data?: T; error?: string };
 
 export const useProjectStore = defineStore("project", () => {
   // state
@@ -32,7 +32,7 @@ export const useProjectStore = defineStore("project", () => {
 
       if (result.success) {
         projects.value = result.data.sort(
-          (a: {createdAt: number}, b: {createdAt: number}) => b.createdAt - a.createdAt
+          (a: { createdAt: number }, b: { createdAt: number }) => b.createdAt - a.createdAt
         );
 
         if (currentProject.value) {
@@ -73,7 +73,7 @@ export const useProjectStore = defineStore("project", () => {
     };
   }): Promise<Result> => {
     if (!window.electronAPI) {
-      return {success: false, error: "electron API not available"};
+      return { success: false, error: "electron API not available" };
     }
     try {
       loading.value = true;
@@ -81,12 +81,12 @@ export const useProjectStore = defineStore("project", () => {
 
       if (result.success) {
         await loadProjects();
-        return {success: true};
+        return { success: true };
       } else {
-        return {success: false, error: result.error || "项目创建失败"};
+        return { success: false, error: result.error || "项目创建失败" };
       }
     } catch (err) {
-      return {success: false, error: "项目创建失败"};
+      return { success: false, error: "项目创建失败" };
     } finally {
       loading.value = false;
     }
@@ -127,13 +127,13 @@ export const useProjectStore = defineStore("project", () => {
       const result = await window.electronAPI.invoke(API_ROUTES.PROJECTS.CHECK_NAME, name);
 
       if (result.success) {
-        return {success: true, data: result.data.isAvailable};
+        return { success: true, data: result.data.isAvailable };
       } else {
-        return {success: false, error: result.error || "项目名称检查失败"};
+        return { success: false, error: result.error || "项目名称检查失败" };
       }
     } catch (err) {
       console.error("Check project name error", err);
-      return {success: false, error: "项目名称检查失败"};
+      return { success: false, error: "项目名称检查失败" };
     }
   };
 

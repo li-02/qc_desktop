@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import {computed, onMounted, ref, watch} from "vue";
-import {ElMessage} from "element-plus";
-import {useDatasetStore} from "@/stores/useDatasetStore";
+import { computed, onMounted, ref, watch } from "vue";
+import { ElMessage } from "element-plus";
+import { useDatasetStore } from "@/stores/useDatasetStore";
 import DatasetCard from "@/components/dataview/DatasetCard.vue";
 import DataAnalysisTabs from "@/components/dataview/DataAnalysisTabs.vue";
 import QuickOperation from "@/components/dataview/QuickOperation.vue";

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import {computed} from "vue";
-import {ElMessage} from "element-plus";
+import { computed } from "vue";
+import { ElMessage } from "element-plus";
 import {
   Calendar,
   CircleCheck,
@@ -18,7 +18,7 @@ import {
   View,
   Warning,
 } from "@element-plus/icons-vue";
-import {useDatasetStore} from "@/stores/useDatasetStore";
+import { useDatasetStore } from "@/stores/useDatasetStore";
 
 const datasetStore = useDatasetStore();
 const datasetInfo = computed(() => datasetStore.currentDataset);
@@ -290,7 +290,7 @@ const handleCommand = (command: string) => {
                 <div class="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
                   <div
                     class="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-500"
-                    :style="{width: `${dataQualityPercentage}%`}"></div>
+                    :style="{ width: `${dataQualityPercentage}%` }"></div>
                 </div>
                 <div v-if="datasetStore.loading">
                   <el-skeleton-item variant="text" style="width: 40px; height: 16px" />

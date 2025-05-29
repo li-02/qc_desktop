@@ -1,10 +1,19 @@
 <script setup lang="ts">
-import {ref, computed, onMounted} from "vue";
-import {useRouter} from "vue-router";
-import {ElMessage} from "element-plus";
-import {DataAnalysis, Upload, Plus, View, TrendCharts, ArrowRight, Document, Histogram} from "@element-plus/icons-vue";
-import {useProjectStore} from "@/stores/useProjectStore";
-import {useDatasetStore} from "@/stores/useDatasetStore";
+import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { ElMessage } from "element-plus";
+import {
+  DataAnalysis,
+  Upload,
+  Plus,
+  View,
+  TrendCharts,
+  ArrowRight,
+  Document,
+  Histogram,
+} from "@element-plus/icons-vue";
+import { useProjectStore } from "@/stores/useProjectStore";
+import { useDatasetStore } from "@/stores/useDatasetStore";
 import emitter from "@/utils/eventBus";
 import ProjectInfoCard from "../../components/homepage/ProjectInfoCard.vue";
 import DatasetInfoCard from "../../components/homepage/DatasetInfoCard.vue";
@@ -91,14 +100,14 @@ const processSteps = ref([
   },
 ]);
 const getColorClasses = (color: string) => {
-  const colorMap: Record<string, {bg: string; text: string}> = {
-    blue: {bg: "bg-blue-100", text: "!text-blue-600"},
-    orange: {bg: "bg-orange-100", text: "!text-orange-600"},
-    purple: {bg: "bg-purple-100", text: "!text-purple-600"},
-    green: {bg: "bg-green-100", text: "!text-green-600"},
-    red: {bg: "bg-red-100", text: "!text-red-600"},
+  const colorMap: Record<string, { bg: string; text: string }> = {
+    blue: { bg: "bg-blue-100", text: "!text-blue-600" },
+    orange: { bg: "bg-orange-100", text: "!text-orange-600" },
+    purple: { bg: "bg-purple-100", text: "!text-purple-600" },
+    green: { bg: "bg-green-100", text: "!text-green-600" },
+    red: { bg: "bg-red-100", text: "!text-red-600" },
   };
-  return colorMap[color] || {bg: "bg-gray-50", text: "!text-gray-600"};
+  return colorMap[color] || { bg: "bg-gray-50", text: "!text-gray-600" };
 };
 const getIconColor = (color: string) => {
   const colors: Record<string, string> = {

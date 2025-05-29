@@ -52,10 +52,7 @@ export class ControllerRegistry {
       this.projectService = new ProjectService(this.projectRepository);
       console.log("✓ ProjectService 初始化完成");
 
-      this.datasetService = new DatasetService(
-        this.datasetRepository,
-        this.projectRepository
-      );
+      this.datasetService = new DatasetService(this.datasetRepository, this.projectRepository);
       console.log("✓ DatasetService 初始化完成");
 
       // 3. 初始化控制器层 (Controller Layer)
@@ -99,49 +96,37 @@ export class ControllerRegistry {
     const routes = [
       {
         path: "projects/get-all",
-        handler: this.projectController.getProjects.bind(
-          this.projectController
-        ),
+        handler: this.projectController.getProjects.bind(this.projectController),
         description: "获取所有项目",
       },
       {
         path: "projects/get-by-id",
-        handler: this.projectController.getProjectById.bind(
-          this.projectController
-        ),
+        handler: this.projectController.getProjectById.bind(this.projectController),
         description: "根据ID获取项目",
       },
       {
         path: "projects/create",
-        handler: this.projectController.createProject.bind(
-          this.projectController
-        ),
+        handler: this.projectController.createProject.bind(this.projectController),
         description: "创建新项目",
       },
       {
         path: "projects/update",
-        handler: this.projectController.updateProject.bind(
-          this.projectController
-        ),
+        handler: this.projectController.updateProject.bind(this.projectController),
         description: "更新项目信息",
       },
       {
         path: "projects/delete",
-        handler: this.projectController.deleteProject.bind(
-          this.projectController
-        ),
+        handler: this.projectController.deleteProject.bind(this.projectController),
         description: "删除项目",
       },
       {
         path: "projects/check-name",
-        handler: this.projectController.checkProjectName.bind(
-          this.projectController
-        ),
+        handler: this.projectController.checkProjectName.bind(this.projectController),
         description: "检查项目名称可用性",
       },
     ];
 
-    routes.forEach((route) => {
+    routes.forEach(route => {
       IPCManager.registerRoute(route.path, route.handler);
       console.log(`✓ 注册路由: ${route.path} - ${route.description}`);
     });
@@ -161,42 +146,32 @@ export class ControllerRegistry {
       },
       {
         path: "datasets/get-by-project",
-        handler: this.datasetController.getProjectDatasets.bind(
-          this.datasetController
-        ),
+        handler: this.datasetController.getProjectDatasets.bind(this.datasetController),
         description: "获取项目数据集",
       },
       {
         path: "datasets/get-info",
-        handler: this.datasetController.getDatasetInfo.bind(
-          this.datasetController
-        ),
+        handler: this.datasetController.getDatasetInfo.bind(this.datasetController),
         description: "获取数据集信息",
       },
       {
         path: "datasets/delete",
-        handler: this.datasetController.deleteDataset.bind(
-          this.datasetController
-        ),
+        handler: this.datasetController.deleteDataset.bind(this.datasetController),
         description: "删除数据集",
       },
       {
         path: "datasets/update",
-        handler: this.datasetController.updateDataset.bind(
-          this.datasetController
-        ),
+        handler: this.datasetController.updateDataset.bind(this.datasetController),
         description: "更新数据集信息",
       },
       {
         path: "datasets/validate-structure",
-        handler: this.datasetController.validateDatasetStructure.bind(
-          this.datasetController
-        ),
+        handler: this.datasetController.validateDatasetStructure.bind(this.datasetController),
         description: "验证数据集结构",
       },
     ];
 
-    routes.forEach((route) => {
+    routes.forEach(route => {
       IPCManager.registerRoute(route.path, route.handler);
       console.log(`✓ 注册路由: ${route.path} - ${route.description}`);
     });
@@ -216,7 +191,7 @@ export class ControllerRegistry {
       },
     ];
 
-    routes.forEach((route) => {
+    routes.forEach(route => {
       IPCManager.registerRoute(route.path, route.handler);
       console.log(`✓ 注册路由: ${route.path} - ${route.description}`);
     });

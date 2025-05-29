@@ -1,11 +1,11 @@
 <!-- 新建项目 -->
 <script setup lang="ts">
-import {ref, watch} from "vue";
+import { ref, watch } from "vue";
 import "plus-pro-components/es/components/form/style/css";
-import {type FieldValues, type PlusColumn, PlusForm} from "plus-pro-components";
-import {ElMessage} from "element-plus";
+import { type FieldValues, type PlusColumn, PlusForm } from "plus-pro-components";
+import { ElMessage } from "element-plus";
 // import emitter from "@/utils/eventBus";
-import {useProjectStore} from "@/stores/useProjectStore";
+import { useProjectStore } from "@/stores/useProjectStore";
 
 interface ProjectInfo {
   siteName: string;
@@ -99,7 +99,7 @@ const handleClosed = () => {
     latitude: "",
     altitude: "",
   };
-  nameCheckStatus.value = {checking: false, valid: true, message: ""};
+  nameCheckStatus.value = { checking: false, valid: true, message: "" };
   projectStore.loading = false;
 };
 const handleChange = (values: FieldValues, prop: PlusColumn) => {
@@ -111,7 +111,7 @@ const handleSubmit = async (values: ProjectInfo) => {
     ElMessage.error(nameCheckStatus.value.checking ? "正在检查站点名称，请稍后" : nameCheckStatus.value.message);
   }
   try {
-    const {success, error} = await projectStore.createProject({
+    const { success, error } = await projectStore.createProject({
       name: values.siteName,
       siteInfo: {
         longitude: values.longitude,
@@ -148,7 +148,7 @@ watch(
   () => projectInfo.value.siteName,
   async newName => {
     if (!newName) {
-      nameCheckStatus.value = {checking: false, valid: false, message: ""};
+      nameCheckStatus.value = { checking: false, valid: false, message: "" };
       return;
     }
     nameCheckStatus.value.checking = true;
@@ -188,7 +188,7 @@ const validateSiteName = (rule: any, value: string, callback: any) => {
   callback();
 };
 const validateGeoLocation = (rule: any, value: string, callback: any, source: any) => {
-  const {longitude, latitude} = source;
+  const { longitude, latitude } = source;
 
   if (!longitude && !latitude) {
     if (!longitude) {
@@ -256,9 +256,9 @@ const rules = {
       trigger: "blur",
     },
   ],
-  longitude: [{required: true, trigger: "blur", validator: validateGeoLocation}],
-  latitude: [{required: true, trigger: "blur", validator: validateGeoLocation}],
-  altitude: [{required: true, trigger: "blur", validator: validateHeight}],
+  longitude: [{ required: true, trigger: "blur", validator: validateGeoLocation }],
+  latitude: [{ required: true, trigger: "blur", validator: validateGeoLocation }],
+  altitude: [{ required: true, trigger: "blur", validator: validateHeight }],
 };
 
 // 暴露方法给父组件
@@ -276,7 +276,7 @@ defineExpose({
         class="m-auto"
         :columns="columns"
         :rules="rules"
-        :row-props="{gutter: 5}"
+        :row-props="{ gutter: 5 }"
         label-width="100px"
         label-position="right"
         @change="handleChange"

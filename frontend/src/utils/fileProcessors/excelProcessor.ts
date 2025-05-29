@@ -1,22 +1,22 @@
 import * as XLSX from "xlsx";
-import type {TableColumn} from "@/types";
+import type { TableColumn } from "@/types";
 
 /**
  * 处理Excel文件
  * @param content Excel文件内容
  * @returns 包含表头和数据的对象
  */
-export const processExcel = (content: ArrayBuffer): Promise<{columns: TableColumn[]; tableData: any[]}> => {
+export const processExcel = (content: ArrayBuffer): Promise<{ columns: TableColumn[]; tableData: any[] }> => {
   return new Promise((resolve, reject) => {
     try {
-      const workbook = XLSX.read(content, {type: "array"});
+      const workbook = XLSX.read(content, { type: "array" });
 
       // 获取第一个工作表
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
 
       // 将工作表转换为JSON
-      const data = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+      const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
       const columns: TableColumn[] = [];
       let tableData: any[] = [];
@@ -47,7 +47,7 @@ export const processExcel = (content: ArrayBuffer): Promise<{columns: TableColum
         }
       }
 
-      resolve({columns, tableData});
+      resolve({ columns, tableData });
     } catch (error) {
       reject(new Error(`解析Excel文件时出错: ${error}`));
     }

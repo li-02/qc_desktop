@@ -2,12 +2,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import {
-  ProjectsIndexFile,
-  ProjectBaseInfo,
-  ProjectInfo,
-  ServiceResponse,
-} from "@shared/types/projectInterface";
+import { ProjectsIndexFile, ProjectBaseInfo, ProjectInfo, ServiceResponse } from "@shared/types/projectInterface";
 
 /**
  * 项目数据访问层
@@ -56,9 +51,7 @@ export class ProjectRepository {
   /**
    * 写入项目索引文件
    */
-  async writeProjectsIndex(
-    indexData: ProjectsIndexFile
-  ): Promise<ServiceResponse<void>> {
+  async writeProjectsIndex(indexData: ProjectsIndexFile): Promise<ServiceResponse<void>> {
     try {
       indexData.lastUpdated = Date.now();
       const content = JSON.stringify(indexData, null, 2);
@@ -80,9 +73,7 @@ export class ProjectRepository {
   /**
    * 读取项目配置文件
    */
-  async readProjectConfig(
-    projectPath: string
-  ): Promise<ServiceResponse<ProjectInfo>> {
+  async readProjectConfig(projectPath: string): Promise<ServiceResponse<ProjectInfo>> {
     try {
       const configPath = path.join(projectPath, "project.json");
 
@@ -108,9 +99,7 @@ export class ProjectRepository {
   /**
    * 写入项目配置文件
    */
-  async writeProjectConfig(
-    projectInfo: ProjectInfo
-  ): Promise<ServiceResponse<void>> {
+  async writeProjectConfig(projectInfo: ProjectInfo): Promise<ServiceResponse<void>> {
     try {
       const configPath = path.join(projectInfo.path, "project.json");
       projectInfo.lastUpdated = Date.now();
@@ -134,9 +123,7 @@ export class ProjectRepository {
   /**
    * 创建项目目录
    */
-  async createProjectDirectory(
-    projectPath: string
-  ): Promise<ServiceResponse<void>> {
+  async createProjectDirectory(projectPath: string): Promise<ServiceResponse<void>> {
     try {
       if (fs.existsSync(projectPath)) {
         return {
@@ -158,9 +145,7 @@ export class ProjectRepository {
   /**
    * 删除项目目录
    */
-  async deleteProjectDirectory(
-    projectPath: string
-  ): Promise<ServiceResponse<void>> {
+  async deleteProjectDirectory(projectPath: string): Promise<ServiceResponse<void>> {
     try {
       if (fs.existsSync(projectPath)) {
         fs.rmSync(projectPath, { recursive: true, force: true });

@@ -11,7 +11,8 @@
     "build:frontend": "cd frontend && npm run build",
     "build:electron": "tsc -p electron/tsconfig.json",
     "copy-dist": "mkdir -p public && cp -r frontend/dist public/ && cp -r dist public/",
-    "watch": "tsc -w -p electron/tsconfig.json"
+    "watch": "tsc -w -p electron/tsconfig.json",
+    "format": "prettier --write \"./{electron,frontend}/**/*.{html,vue,ts,js,json,md}\""
   },
   "dependencies": {
     "electron": "^31.7.6",
@@ -26,6 +27,7 @@
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
     "electron-builder": "^25.1.8",
+    "prettier": "^3.5.3",
     "typescript": "^5.4.2",
     "wait-on": "^7.2.0"
   }

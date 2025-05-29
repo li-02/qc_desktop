@@ -82,6 +82,7 @@ const selectProject = (projectId: string) => {
 };
 
 const selectDataset = (projectId: string, datasetId: string) => {
+  console.log("触发选择数据集事件:", projectId, datasetId);
   projectStore.setCurrentProject(projectId);
   datasetStore.setCurrentDataset(datasetId);
   ElMessage.info(`已选择数据集: ${datasetId}`);

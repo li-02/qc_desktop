@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import DatasetOverview from "@/components/dataview/DatasetOverview.vue";
+import DatasetOverview from "@/components/dataview/DatasetCard.vue";
 import {ref} from "vue";
 </script>
 

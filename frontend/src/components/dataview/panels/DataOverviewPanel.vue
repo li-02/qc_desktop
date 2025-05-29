@@ -227,7 +227,7 @@
 import {ref, computed, watch, onMounted} from "vue";
 import {ElMessage} from "element-plus";
 import {Loading, Refresh, Search, InfoFilled, TrendCharts, DocumentDelete, Connection} from "@element-plus/icons-vue";
-import type {DatasetInfo} from "@shared/types/projectInterface";
+import type {DatasetInfo} from "@shared/types/projectInterface.ts";
 
 // Props
 interface Props {

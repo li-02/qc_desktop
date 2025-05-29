@@ -77,7 +77,7 @@
 import {ref, computed, watch} from "vue";
 import {ElMessage} from "element-plus";
 import type {DatasetInfo} from "@shared/types/projectInterface";
-import DataOverviewPanel from "./DataOverviewPanel.vue";
+import DataOverviewPanel from "./panels/DataOverviewPanel.vue";
 import OutlierDetectionPanel from "./OutlierDetectionPanel.vue";
 import MissingValuePanel from "./MissingValuePanel.vue";
 import DataCleaningPanel from "./DataCleaningPanel.vue";

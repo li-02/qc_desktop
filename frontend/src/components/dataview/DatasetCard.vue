@@ -1,25 +1,23 @@
 <script setup lang="ts">
-import {computed, ref, onMounted, watch} from "vue";
+import {computed} from "vue";
 import {ElMessage} from "element-plus";
 import {
+  Calendar,
+  CircleCheck,
   DataAnalysis,
   Document,
+  DocumentCopy,
+  DocumentDelete,
+  Download,
+  FolderOpened,
   Grid,
   List,
-  Warning,
-  QuestionFilled,
-  CircleCheck,
-  FolderOpened,
-  DocumentCopy,
   MoreFilled,
+  QuestionFilled,
   Refresh,
   View,
-  Download,
-  DocumentDelete,
-  Calendar,
-  Loading,
+  Warning,
 } from "@element-plus/icons-vue";
-import type {DatasetInfo} from "@shared/types/projectInterface";
 import {useDatasetStore} from "@/stores/useDatasetStore";
 
 const datasetStore = useDatasetStore();
@@ -153,9 +151,6 @@ const handleCommand = (command: string) => {
   switch (command) {
     case "refresh":
       emit("refresh");
-      break;
-    case "togglePath":
-      showFilePath.value = !showFilePath.value;
       break;
     case "export":
       emit("export");
@@ -321,9 +316,7 @@ const handleCommand = (command: string) => {
         </div>
 
         <!-- 原始文件路径（可选显示） -->
-        <div
-          v-if="showFilePath && isDataReady && datasetInfo.originalFile.filePath"
-          class="mt-3 pt-3 border-t border-gray-100">
+        <div v-if="isDataReady && datasetInfo.originalFile.filePath" class="mt-3 pt-3 border-t border-gray-100">
           <div class="flex items-center gap-2 text-xs text-gray-500">
             <el-icon>
               <FolderOpened />
@@ -375,7 +368,7 @@ const handleCommand = (command: string) => {
                 <el-icon class="mr-2">
                   <View />
                 </el-icon>
-                {{ showFilePath ? "隐藏" : "显示" }}文件路径
+                显示文件路径
               </el-dropdown-item>
               <el-dropdown-item command="export" :disabled="!isDataReady" divided>
                 <el-icon class="mr-2">

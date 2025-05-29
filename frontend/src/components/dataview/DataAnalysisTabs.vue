@@ -47,23 +47,21 @@
       </div>
 
       <!-- 数据清洗 -->
-      <div v-else-if="activeTab === 'cleaning'" class="p-6">
-        <DataCleaningPanel
-          :dataset-info="datasetInfo"
-          :loading="contentLoading"
-          @start-cleaning="handleStartDataCleaning" />
-      </div>
+      <!--      <div v-else-if="activeTab === 'cleaning'" class="p-6">-->
+      <!--        <DataCleaningPanel-->
+      <!--          :dataset-info="datasetInfo"-->
+      <!--          :loading="contentLoading"-->
+      <!--          @start-cleaning="handleStartDataCleaning" />-->
+      <!--      </div>-->
+      <!--      -->
+      <!--      <div v-else-if="activeTab === 'export'" class="p-6">-->
+      <!--        <DataExportPanel -->
+      <!--          :dataset-info="datasetInfo"-->
+      <!--          :loading="contentLoading"-->
+      <!--          @export-data="handleExportData"-->
+      <!--        />-->
+      <!--      </div>-->
 
-      <!-- 数据导出 */
-      <div v-else-if="activeTab === 'export'" class="p-6">
-        <DataExportPanel 
-          :dataset-info="datasetInfo"
-          :loading="contentLoading"
-          @export-data="handleExportData"
-        />
-      </div>
-
-      <!-- 开发中占位符 -->
       <div v-else class="p-12 text-center">
         <div class="text-6xl mb-4">🚧</div>
         <h3 class="text-xl font-semibold text-gray-600 mb-2">功能开发中</h3>
@@ -77,11 +75,11 @@
 import {ref, computed, watch} from "vue";
 import {ElMessage} from "element-plus";
 import type {DatasetInfo} from "@shared/types/projectInterface";
-import DataOverviewPanel from "./DataOverviewPanel.vue";
-import OutlierDetectionPanel from "./OutlierDetectionPanel.vue";
-import MissingValuePanel from "./MissingValuePanel.vue";
-import DataCleaningPanel from "./DataCleaningPanel.vue";
-import DataExportPanel from "./DataExportPanel.vue";
+import DataOverviewPanel from "./panels/DataOverviewPanel.vue";
+import OutlierDetectionPanel from "./panels/OutlierDetectionPanel.vue";
+import MissingValuePanel from "./panels/GapFillingPanel.vue";
+// import DataCleaningPanel from "./DataCleaningPanel.vue";
+// import DataExportPanel from "./DataExportPanel.vue";
 
 // Props
 interface Props {

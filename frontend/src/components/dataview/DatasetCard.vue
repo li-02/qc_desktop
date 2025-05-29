@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, ref} from "vue";
+import {computed, ref, onMounted, watch} from "vue";
 import {ElMessage} from "element-plus";
 import {
   DataAnalysis,
@@ -25,34 +25,27 @@ import {useDatasetStore} from "@/stores/useDatasetStore";
 const datasetStore = useDatasetStore();
 const datasetInfo = computed(() => datasetStore.currentDataset);
 
-// Props
-interface Props {
-  datasetInfo?: DatasetInfo | null;
-  loading?: boolean;
-  showFilePath?: boolean;
-}
-
-const props = withDefaults(defineProps<Props>(), {
-  loading: false,
-  showFilePath: false,
-});
-
 // Emits
 const emit = defineEmits<{
   retry: [];
   refresh: [];
   export: [];
 }>();
+// 数据是否完整可用
+const isDataReady = computed(() => {
+  return !!(
+    datasetInfo.value &&
+    datasetInfo.value.originalFile &&
+    datasetInfo.value.originalFile.size &&
+    datasetInfo.value.originalFile.rows &&
+    Array.isArray(datasetInfo.value.originalFile.columns)
+  );
+});
 
-// Reactive state
-const showFilePath = ref(props.showFilePath);
-
-// Computed properties
+// Computed properties - 安全访问，提供默认值
 const missingValueCount = computed(() => {
-  if (!props.datasetInfo) return 0;
-  // 这里可以根据实际需求计算缺失值总数
-  // 临时使用简单计算
-  return props.datasetInfo.missingValueTypes.length * 10; // 示例计算
+  if (!isDataReady.value || !datasetInfo.value?.missingValueTypes) return 0;
+  return datasetInfo.value.missingValueTypes.length * 10; // 示例计算
 });
 
 const missingValueIconClass = computed(() => {
@@ -64,13 +57,13 @@ const missingValueTextClass = computed(() => {
 });
 
 const missingValueTooltip = computed(() => {
-  if (missingValueCount.value === 0) return "";
-  return `缺失值类型: ${props.datasetInfo?.missingValueTypes.join(", ")}`;
+  if (!isDataReady.value || missingValueCount.value === 0) return "";
+  return `缺失值类型: ${datasetInfo.value?.missingValueTypes?.join(", ") || ""}`;
 });
 
 const dataQualityPercentage = computed(() => {
-  if (!props.datasetInfo) return 0;
-  const totalRows = props.datasetInfo.originalFile.rows;
+  if (!isDataReady.value) return 0;
+  const totalRows = datasetInfo.value!.originalFile.rows;
   const missingRows = missingValueCount.value;
   return ((totalRows - missingRows) / totalRows) * 100;
 });
@@ -83,12 +76,13 @@ const dataQualityTextClass = computed(() => {
 });
 
 const completeRecords = computed(() => {
-  if (!props.datasetInfo) return 0;
-  return props.datasetInfo.originalFile.rows - missingValueCount.value;
+  if (!isDataReady.value) return 0;
+  return datasetInfo.value!.originalFile.rows - missingValueCount.value;
 });
 
 // Methods
 const formatDate = (timestamp: number): string => {
+  if (!timestamp) return "未知";
   return new Date(timestamp).toLocaleDateString("zh-CN", {
     year: "numeric",
     month: "2-digit",
@@ -98,14 +92,17 @@ const formatDate = (timestamp: number): string => {
   });
 };
 
-const formatFileSize = (sizeStr: string): string => {
+const formatFileSize = (sizeStr: string | number): string => {
+  if (!sizeStr) return "未知";
+
   // 如果已经是格式化的字符串，直接返回
   if (typeof sizeStr === "string" && sizeStr.includes("B")) {
     return sizeStr;
   }
 
   // 如果是数字，进行格式化
-  const size = parseInt(sizeStr);
+  const size = typeof sizeStr === "string" ? parseInt(sizeStr) : sizeStr;
+  if (isNaN(size)) return "未知";
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
@@ -113,10 +110,12 @@ const formatFileSize = (sizeStr: string): string => {
 };
 
 const formatNumber = (num: number): string => {
+  if (!num && num !== 0) return "0";
   return num.toLocaleString("zh-CN");
 };
 
 const getDatasetTypeLabel = (type: string): string => {
+  if (!type) return "未知";
   const typeMap: Record<string, string> = {
     flux: "通量",
     aqi: "空气质量",
@@ -128,6 +127,7 @@ const getDatasetTypeLabel = (type: string): string => {
 };
 
 const getDatasetTypeTagType = (type: string): string => {
+  if (!type) return "info";
   const typeMap: Record<string, string> = {
     flux: "success",
     aqi: "warning",
@@ -139,10 +139,10 @@ const getDatasetTypeTagType = (type: string): string => {
 };
 
 const copyFilePath = async () => {
-  if (!props.datasetInfo?.originalFile.filePath) return;
+  if (!isDataReady.value || !datasetInfo.value?.originalFile?.filePath) return;
 
   try {
-    await navigator.clipboard.writeText(props.datasetInfo.originalFile.filePath);
+    await navigator.clipboard.writeText(datasetInfo.value.originalFile.filePath);
     ElMessage.success("文件路径已复制到剪贴板");
   } catch (error) {
     ElMessage.error("复制失败");
@@ -166,16 +166,8 @@ const handleCommand = (command: string) => {
 
 <template>
   <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-    <!-- 加载状态 -->
-    <div v-if="datasetStore.loading" class="flex items-center justify-center h-32">
-      <el-icon class="animate-spin text-2xl text-emerald-600">
-        <Loading />
-      </el-icon>
-      <span class="ml-2 text-gray-600">加载数据集信息...</span>
-    </div>
-
-    <!-- 数据集信息展示 -->
-    <div v-else-if="datasetInfo" class="flex items-start gap-6">
+    <!-- 始终显示基本结构 -->
+    <div class="flex items-start gap-6">
       <!-- 数据集图标 -->
       <div
         class="w-16 h-16 bg-gradient-to-br from-emerald-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
@@ -189,28 +181,44 @@ const handleCommand = (command: string) => {
         <!-- 标题行 -->
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-3">
-            <h1 class="text-2xl font-bold text-gray-800 truncate">
-              {{ datasetInfo.name }}
-            </h1>
-            <el-tag :type="getDatasetTypeTagType(datasetInfo.type)" size="small" class="uppercase">
-              {{ getDatasetTypeLabel(datasetInfo.type) }}
-            </el-tag>
+            <!-- 数据集名称 -->
+            <div v-if="datasetStore.loading" class="flex items-center gap-2">
+              <el-skeleton-item variant="text" style="width: 200px; height: 32px" />
+              <el-skeleton-item variant="button" style="width: 60px; height: 24px" />
+            </div>
+            <div v-else-if="datasetInfo" class="flex items-center gap-3">
+              <h1 class="text-2xl font-bold text-gray-800 truncate">
+                {{ datasetInfo.name || "未知数据集" }}
+              </h1>
+              <el-tag :type="getDatasetTypeTagType(datasetInfo.type)" size="small" class="uppercase">
+                {{ getDatasetTypeLabel(datasetInfo.type) }}
+              </el-tag>
+            </div>
+            <div v-else class="flex items-center gap-3">
+              <h1 class="text-2xl font-bold text-gray-400">请选择数据集</h1>
+            </div>
           </div>
 
           <!-- 时间信息 -->
           <div class="flex items-center gap-4 text-sm text-gray-600 flex-shrink-0">
-            <div class="flex items-center gap-1">
-              <el-icon class="text-blue-500">
-                <Refresh />
-              </el-icon>
-              <span>最后更新: {{ formatDate(datasetInfo.updatedAt) }}</span>
+            <div v-if="datasetStore.loading" class="flex gap-4">
+              <el-skeleton-item variant="text" style="width: 120px; height: 16px" />
+              <el-skeleton-item variant="text" style="width: 120px; height: 16px" />
             </div>
-            <div class="flex items-center gap-1">
-              <el-icon class="text-green-500">
-                <Calendar />
-              </el-icon>
-              <span>创建时间: {{ formatDate(datasetInfo.createdAt) }}</span>
-            </div>
+            <template v-else-if="datasetInfo">
+              <div v-if="datasetInfo.updatedAt" class="flex items-center gap-1">
+                <el-icon class="text-blue-500">
+                  <Refresh />
+                </el-icon>
+                <span>最后更新: {{ formatDate(datasetInfo.updatedAt) }}</span>
+              </div>
+              <div v-if="datasetInfo.createdAt" class="flex items-center gap-1">
+                <el-icon class="text-green-500">
+                  <Calendar />
+                </el-icon>
+                <span>创建时间: {{ formatDate(datasetInfo.createdAt) }}</span>
+              </div>
+            </template>
           </div>
         </div>
 
@@ -222,7 +230,12 @@ const handleCommand = (command: string) => {
               <Document />
             </el-icon>
             <span class="text-gray-500 text-sm">文件大小:</span>
-            <span class="font-medium text-gray-700">{{ formatFileSize(datasetInfo.originalFile.size) }}</span>
+            <div v-if="datasetStore.loading" class="flex-1">
+              <el-skeleton-item variant="text" style="width: 60px; height: 16px" />
+            </div>
+            <span v-else class="font-medium text-gray-700">
+              {{ isDataReady ? formatFileSize(datasetInfo!.originalFile.size) : "等待加载..." }}
+            </span>
           </div>
 
           <!-- 数据行数 -->
@@ -231,7 +244,12 @@ const handleCommand = (command: string) => {
               <Grid />
             </el-icon>
             <span class="text-gray-500 text-sm">数据行数:</span>
-            <span class="font-medium text-gray-700">{{ formatNumber(datasetInfo.originalFile.rows) }} 行</span>
+            <div v-if="datasetStore.loading" class="flex-1">
+              <el-skeleton-item variant="text" style="width: 60px; height: 16px" />
+            </div>
+            <span v-else class="font-medium text-gray-700">
+              {{ isDataReady ? formatNumber(datasetInfo!.originalFile.rows) : "0" }} 行
+            </span>
           </div>
 
           <!-- 数据列数 -->
@@ -240,7 +258,12 @@ const handleCommand = (command: string) => {
               <List />
             </el-icon>
             <span class="text-gray-500 text-sm">数据列数:</span>
-            <span class="font-medium text-gray-700">{{ datasetInfo.originalFile.columns.length }} 列</span>
+            <div v-if="datasetStore.loading" class="flex-1">
+              <el-skeleton-item variant="text" style="width: 60px; height: 16px" />
+            </div>
+            <span v-else class="font-medium text-gray-700">
+              {{ isDataReady ? datasetInfo!.originalFile.columns.length : "0" }} 列
+            </span>
           </div>
 
           <!-- 缺失值 -->
@@ -249,12 +272,17 @@ const handleCommand = (command: string) => {
               <Warning />
             </el-icon>
             <span class="text-gray-500 text-sm">缺失值:</span>
-            <span :class="missingValueTextClass"> {{ missingValueCount }} 个 </span>
-            <el-tooltip v-if="missingValueCount > 0" :content="missingValueTooltip" placement="top">
-              <el-icon class="text-orange-400 cursor-help ml-1">
-                <QuestionFilled />
-              </el-icon>
-            </el-tooltip>
+            <div v-if="datasetStore.loading" class="flex-1">
+              <el-skeleton-item variant="text" style="width: 60px; height: 16px" />
+            </div>
+            <template v-else>
+              <span :class="missingValueTextClass"> {{ missingValueCount }} 个 </span>
+              <el-tooltip v-if="missingValueCount > 0" :content="missingValueTooltip" placement="top">
+                <el-icon class="text-orange-400 cursor-help ml-1">
+                  <QuestionFilled />
+                </el-icon>
+              </el-tooltip>
+            </template>
           </div>
         </div>
 
@@ -266,10 +294,13 @@ const handleCommand = (command: string) => {
               <div class="flex items-center gap-2">
                 <div class="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
                   <div
-                    class="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-300"
+                    class="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-500"
                     :style="{width: `${dataQualityPercentage}%`}"></div>
                 </div>
-                <span :class="dataQualityTextClass" class="text-sm font-medium">
+                <div v-if="datasetStore.loading">
+                  <el-skeleton-item variant="text" style="width: 40px; height: 16px" />
+                </div>
+                <span v-else :class="dataQualityTextClass" class="text-sm font-medium">
                   {{ dataQualityPercentage.toFixed(1) }}%
                 </span>
               </div>
@@ -281,13 +312,18 @@ const handleCommand = (command: string) => {
                 <CircleCheck />
               </el-icon>
               <span class="text-gray-600">完整记录:</span>
-              <span class="font-medium text-gray-700">{{ formatNumber(completeRecords) }} 行</span>
+              <div v-if="datasetStore.loading">
+                <el-skeleton-item variant="text" style="width: 60px; height: 16px" />
+              </div>
+              <span v-else class="font-medium text-gray-700">{{ formatNumber(completeRecords) }} 行</span>
             </div>
           </div>
         </div>
 
         <!-- 原始文件路径（可选显示） -->
-        <div v-if="showFilePath" class="mt-3 pt-3 border-t border-gray-100">
+        <div
+          v-if="showFilePath && isDataReady && datasetInfo.originalFile.filePath"
+          class="mt-3 pt-3 border-t border-gray-100">
           <div class="flex items-center gap-2 text-xs text-gray-500">
             <el-icon>
               <FolderOpened />
@@ -303,13 +339,27 @@ const handleCommand = (command: string) => {
             </el-button>
           </div>
         </div>
+
+        <!-- 无数据提示 -->
+        <div v-if="!datasetStore.loading && !datasetInfo" class="mt-4 pt-3 border-t border-gray-100">
+          <div class="flex flex-col items-center justify-center h-20 text-gray-500">
+            <el-icon class="text-2xl mb-1">
+              <DocumentDelete />
+            </el-icon>
+            <span class="text-sm">请从左侧选择一个数据集</span>
+          </div>
+        </div>
       </div>
 
       <!-- 操作按钮组 -->
       <div class="flex flex-col gap-2 flex-shrink-0">
-        <el-dropdown trigger="click" @command="handleCommand">
-          <el-button circle size="small" class="!border-gray-300 hover:!border-emerald-400">
-            <el-icon>
+        <el-dropdown trigger="click" @command="handleCommand" :disabled="datasetStore.loading">
+          <el-button
+            circle
+            size="small"
+            class="!border-gray-300 hover:!border-emerald-400"
+            :loading="datasetStore.loading">
+            <el-icon v-if="!datasetStore.loading">
               <MoreFilled />
             </el-icon>
           </el-button>
@@ -321,13 +371,13 @@ const handleCommand = (command: string) => {
                 </el-icon>
                 刷新信息
               </el-dropdown-item>
-              <el-dropdown-item command="togglePath">
+              <el-dropdown-item command="togglePath" :disabled="!isDataReady">
                 <el-icon class="mr-2">
                   <View />
                 </el-icon>
                 {{ showFilePath ? "隐藏" : "显示" }}文件路径
               </el-dropdown-item>
-              <el-dropdown-item command="export" divided>
+              <el-dropdown-item command="export" :disabled="!isDataReady" divided>
                 <el-icon class="mr-2">
                   <Download />
                 </el-icon>
@@ -337,15 +387,6 @@ const handleCommand = (command: string) => {
           </template>
         </el-dropdown>
       </div>
-    </div>
-
-    <!-- 无数据状态 -->
-    <div v-else class="flex flex-col items-center justify-center h-32 text-gray-500">
-      <el-icon class="text-4xl mb-2">
-        <DocumentDelete />
-      </el-icon>
-      <span>未找到数据集信息</span>
-      <el-button text size="small" @click="$emit('retry')" class="mt-2"> 点击重试 </el-button>
     </div>
   </div>
 </template>
@@ -377,5 +418,10 @@ const handleCommand = (command: string) => {
 /* 悬停效果 */
 .hover\:border-emerald-400:hover {
   border-color: #6ee7b7;
+}
+
+/* 骨架屏动画 */
+:deep(.el-skeleton-item) {
+  border-radius: 4px;
 }
 </style>

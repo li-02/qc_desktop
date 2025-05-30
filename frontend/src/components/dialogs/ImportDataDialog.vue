@@ -249,9 +249,9 @@ const handleFileChange = (file: any) => {
   }
 };
 /**
- * 文件处理方法
- * @param file
- * @param fileType
+ * 处理上传的文件
+ * @param file 文件本体
+ * @param fileType 文件类型（csv或excel）
  */
 const processFile = async (file: File, fileType: string) => {
   fileProcessing.value = true;

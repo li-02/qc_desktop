@@ -170,12 +170,14 @@ export class ProjectController extends BaseController {
     },
     event: IpcMainInvokeEvent
   ) {
+    console.warn("args", args.name);
     return this.handleAsync(async () => {
       // 参数校验
-      if (!args.name || typeof args.name !== "string") {
+      if (!args.name) {
         throw new Error("项目名称不能为空");
       }
       const trimmedName = args.name.trim();
+      console.log("trimmed name", trimmedName);
       if (trimmedName.length === 0) {
         throw new Error("项目名称不能为空");
       }

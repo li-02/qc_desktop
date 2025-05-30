@@ -8,14 +8,11 @@ import {
   Document,
   DocumentCopy,
   DocumentDelete,
-  Download,
   FolderOpened,
   Grid,
   List,
-  MoreFilled,
   QuestionFilled,
   Refresh,
-  View,
   Warning,
 } from "@element-plus/icons-vue";
 import { useDatasetStore } from "@/stores/useDatasetStore";
@@ -43,11 +40,11 @@ const isDataReady = computed(() => {
 // Computed properties - 安全访问，提供默认值
 const missingValueCount = computed(() => {
   if (!isDataReady.value || !datasetInfo.value?.missingValueTypes) return 0;
-  return datasetInfo.value.missingValueTypes.length * 10; // 示例计算
+  return datasetInfo.value.dataQuality.totalMissingCount; // 示例计算
 });
 
 const missingValueIconClass = computed(() => {
-  return missingValueCount.value > 0 ? "text-orange-500" : "text-green-500";
+  return missingValueCount.value > 0 ? "!text-orange-500" : "!text-green-500";
 });
 
 const missingValueTextClass = computed(() => {
@@ -162,10 +159,10 @@ const handleCommand = (command: string) => {
 <template>
   <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
     <!-- 始终显示基本结构 -->
-    <div class="flex items-start gap-6">
+    <div class="flex items-center gap-6">
       <!-- 数据集图标 -->
       <div
-        class="w-16 h-16 bg-gradient-to-br from-emerald-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
+        class="w-16 h-16 bg-gradient-to-br from-emerald-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0 !ml-2">
         <el-icon class="text-2xl text-white">
           <DataAnalysis />
         </el-icon>
@@ -175,8 +172,8 @@ const handleCommand = (command: string) => {
       <div class="flex-1 min-w-0">
         <!-- 标题行 -->
         <div class="flex items-center justify-between mb-3">
+          <!-- 数据集名称 -->
           <div class="flex items-center gap-3">
-            <!-- 数据集名称 -->
             <div v-if="datasetStore.loading" class="flex items-center gap-2">
               <el-skeleton-item variant="text" style="width: 200px; height: 32px" />
               <el-skeleton-item variant="button" style="width: 60px; height: 24px" />
@@ -195,7 +192,7 @@ const handleCommand = (command: string) => {
           </div>
 
           <!-- 时间信息 -->
-          <div class="flex items-center gap-4 text-sm text-gray-600 flex-shrink-0">
+          <div class="flex items-center gap-4 text-sm text-gray-600 flex-shrink-0 !mr-2">
             <div v-if="datasetStore.loading" class="flex gap-4">
               <el-skeleton-item variant="text" style="width: 120px; height: 16px" />
               <el-skeleton-item variant="text" style="width: 120px; height: 16px" />
@@ -221,7 +218,7 @@ const handleCommand = (command: string) => {
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
           <!-- 文件大小 -->
           <div class="flex items-center gap-2">
-            <el-icon class="text-purple-500">
+            <el-icon class="!text-gray-500">
               <Document />
             </el-icon>
             <span class="text-gray-500 text-sm">文件大小:</span>
@@ -235,7 +232,7 @@ const handleCommand = (command: string) => {
 
           <!-- 数据行数 -->
           <div class="flex items-center gap-2">
-            <el-icon class="text-blue-500">
+            <el-icon class="!text-blue-500">
               <Grid />
             </el-icon>
             <span class="text-gray-500 text-sm">数据行数:</span>
@@ -249,7 +246,7 @@ const handleCommand = (command: string) => {
 
           <!-- 数据列数 -->
           <div class="flex items-center gap-2">
-            <el-icon class="text-green-500">
+            <el-icon class="!text-green-500">
               <List />
             </el-icon>
             <span class="text-gray-500 text-sm">数据列数:</span>
@@ -289,7 +286,7 @@ const handleCommand = (command: string) => {
               <div class="flex items-center gap-2">
                 <div class="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
                   <div
-                    class="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-500"
+                    class="h-full !bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-500"
                     :style="{ width: `${dataQualityPercentage}%` }"></div>
                 </div>
                 <div v-if="datasetStore.loading">
@@ -345,7 +342,7 @@ const handleCommand = (command: string) => {
       </div>
 
       <!-- 操作按钮组 -->
-      <div class="flex flex-col gap-2 flex-shrink-0">
+      <!--<div class="flex flex-col gap-2 flex-shrink-0">
         <el-dropdown trigger="click" @command="handleCommand" :disabled="datasetStore.loading">
           <el-button
             circle
@@ -379,7 +376,7 @@ const handleCommand = (command: string) => {
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-      </div>
+      </div> -->
     </div>
   </div>
 </template>

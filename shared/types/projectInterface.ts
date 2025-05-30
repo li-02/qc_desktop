@@ -27,7 +27,15 @@ export interface ProjectInfo extends ProjectBaseInfo {
     belongTo: string; // 所属项目 id
   }[];
 }
-
+// 数据质量信息接口
+export interface DataQualityInfo {
+  totalRecords: number;
+  completeRecords: number;
+  missingValueStats: Record<string, number>; // 各类型缺失值统计
+  totalMissingCount: number;
+  qualityPercentage: number; // 数据质量百分比
+  analyzedAt: number; // 分析时间戳
+}
 export interface DatasetBaseInfo {
   id: string;
   name: string;
@@ -62,6 +70,7 @@ export interface DatasetInfo {
     rows: number;
     columns: string[];
   }[]; // 处理后的文件
+  dataQuality?: DataQualityInfo; // 数据质量信息
 }
 
 // 创建项目的请求参数
@@ -112,4 +121,39 @@ export interface FileSystemOperation {
   path: string;
   operation: "read" | "write" | "delete" | "exists";
   data?: any;
+}
+// 缺失值统计信息
+export interface MissingValueStats {
+  [missingType: string]: number; // 每种缺失值类型的出现次数
+}
+
+// 文件解析结果
+export interface FileParseResult {
+  columns: { prop: string; label: string }[]; // 列信息
+  tableData: any[]; // 表格数据
+  totalRows: number; // 总行数
+  missingValueStats?: MissingValueStats; // 缺失值统计信息
+  totalMissingCount: number; // 总缺失值计数
+}
+// 文件解析请求参数
+export interface FileParseRequest {
+  fileType: "csv" | "excel";
+  fileContent: string | ArrayBuffer;
+  maxRows?: number;
+  missingValueTypes: string[]; // 新增：缺失值类型列表
+}
+
+// Worker 线程消息格式
+export interface WorkerMessage {
+  type: "csv" | "excel";
+  data: string | ArrayBuffer;
+  maxRows: number;
+  missingValueTypes: string[]; // 新增：缺失值类型
+}
+
+// Worker 线程返回结果
+export interface WorkerResult {
+  success: boolean;
+  data?: FileParseResult;
+  error?: string;
 }

@@ -18,6 +18,7 @@ export const API_ROUTES = {
   // 文件处理
   FILES: {
     PARSE_PREVIEW: "files/parse-preview",
+    PARSE_FULL: "files/parse-full",
   },
 
   // 菜单事件

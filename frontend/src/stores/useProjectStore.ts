@@ -124,7 +124,7 @@ export const useProjectStore = defineStore("project", () => {
       throw new Error("electron API not available");
     }
     try {
-      const result = await window.electronAPI.invoke(API_ROUTES.PROJECTS.CHECK_NAME, name);
+      const result = await window.electronAPI.invoke(API_ROUTES.PROJECTS.CHECK_NAME, { name: name });
 
       if (result.success) {
         return { success: true, data: result.data.isAvailable };

@@ -189,6 +189,11 @@ export class ControllerRegistry {
         handler: this.fileController.parseFilePreview.bind(this.fileController),
         description: "解析文件预览",
       },
+      {
+        path: "files/parse-full",
+        handler: this.fileController.parseFullFile.bind(this.fileController),
+        description: "解析完整文件（用于数据质量分析）",
+      },
     ];
 
     routes.forEach(route => {

@@ -4,7 +4,13 @@ import { v4 as uuidv4 } from "uuid";
 import * as path from "path";
 import { DatasetRepository } from "../repository/DatasetRepository";
 import { ProjectRepository } from "../repository/ProjectRepository";
-import { DatasetInfo, ImportDatasetRequest, ServiceResponse, ProjectInfo } from "@shared/types/projectInterface";
+import {
+  DatasetInfo,
+  ImportDatasetRequest,
+  ServiceResponse,
+  ProjectInfo,
+  DataQualityInfo,
+} from "@shared/types/projectInterface";
 
 /**
  * 数据集业务逻辑层
@@ -79,6 +85,22 @@ export class DatasetService {
         return { success: false, error: copyFileResult.error };
       }
 
+      // 进行完整文件解析，获取数据质量信息
+      let dataQuality: DataQualityInfo | undefined;
+      try {
+        const fullParseResult = await this.performFullFileAnalysis(
+          originalFilePath,
+          request.missingValueTypes,
+          originalExt
+        );
+        if (fullParseResult.success) {
+          dataQuality = fullParseResult.data!;
+          console.log(`数据质量分析完成： ${fullParseResult.data!}`);
+        }
+      } catch (error: any) {
+        console.warn(`数据质量分析失败 ${error.message}`);
+      }
+
       // 7. 创建数据集元数据
       const metadata: DatasetInfo = {
         id: datasetId,
@@ -97,6 +119,7 @@ export class DatasetService {
           columns: [...request.columns],
         },
         processedFiles: [],
+        dataQuality,
       };
 
       // 8. 保存数据集元数据
@@ -127,6 +150,80 @@ export class DatasetService {
       return {
         success: false,
         error: `导入数据集失败: ${error.message}`,
+      };
+    }
+  }
+  /**
+   * 执行完整文件分析，获取数据质量信息
+   */
+  private async performFullFileAnalysis(
+    filePath: string,
+    missingValueTypes: string[],
+    fileExtension: string
+  ): Promise<ServiceResponse<DataQualityInfo>> {
+    try {
+      const fs = require("fs");
+
+      // 读取文件内容
+      let fileContent: string | ArrayBuffer;
+      const fileType = fileExtension.toLowerCase().replace(".", "");
+
+      if (fileType === "csv") {
+        fileContent = fs.readFileSync(filePath, "utf-8");
+      } else {
+        fileContent = fs.readFileSync(filePath);
+      }
+
+      // 调用 FileController 的完整解析方法
+      const { Worker } = require("worker_threads");
+      const workerPath = path.join(__dirname, "../workers", "fileParser.js");
+
+      const parseResult = await new Promise<any>((resolve, reject) => {
+        const worker = new Worker(workerPath);
+
+        worker.on("message", (result: any) => {
+          worker.terminate();
+          if (result.success) {
+            resolve(result.data);
+          } else {
+            reject(new Error(result.error));
+          }
+        });
+
+        worker.on("error", (error: any) => {
+          worker.terminate();
+          reject(error);
+        });
+
+        // 发送完整解析请求（maxRows = -1）
+        worker.postMessage({
+          type: fileType === "csv" ? "csv" : "excel",
+          data: fileContent,
+          maxRows: -1,
+          missingValueTypes,
+        });
+      });
+
+      // 构建数据质量信息
+      const dataQuality: DataQualityInfo = {
+        totalRecords: parseResult.totalRows,
+        completeRecords: parseResult.totalRows - Math.floor(parseResult.totalMissingCount / parseResult.columns.length),
+        missingValueStats: parseResult.missingValueStats || {},
+        totalMissingCount: parseResult.totalMissingCount || 0,
+        qualityPercentage:
+          parseResult.totalRows > 0
+            ? ((parseResult.totalRows - Math.floor(parseResult.totalMissingCount / parseResult.columns.length)) /
+                parseResult.totalRows) *
+              100
+            : 100,
+        analyzedAt: Date.now(),
+      };
+
+      return { success: true, data: dataQuality };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `文件分析失败: ${error.message}`,
       };
     }
   }

@@ -34,7 +34,12 @@ export class FileController extends BaseController {
   /**
    * 使用Worker解析文件
    */
-  private parseFileWithWorker(type: string, data: any, maxRows: number = 20): Promise<any> {
+  private parseFileWithWorker(
+    type: string,
+    data: any,
+    maxRows: number = 20,
+    missingValueTypes: string[] = []
+  ): Promise<any> {
     return new Promise((resolve, reject) => {
       const worker = this.createFileParserWorker();
 
@@ -50,24 +55,46 @@ export class FileController extends BaseController {
 
       worker.on("message", messageHandler);
       // 发送数据到worker
-      worker.postMessage({ type, data, maxRows });
+      worker.postMessage({ type, data, maxRows, missingValueTypes });
     });
   }
 
   /**
-   * 解析文件预览
+   * 解析文件预览（预览模式）
    */
   async parseFilePreview(
     args: {
       fileType: string;
       fileContent: string | ArrayBuffer;
       maxRows?: number;
+      missingValueTypes?: string[];
     },
     event: IpcMainInvokeEvent
   ) {
     return this.handleAsync(async () => {
-      const result = await this.parseFileWithWorker(args.fileType, args.fileContent, args.maxRows || 20);
-      return result;
+      return await this.parseFileWithWorker(
+        args.fileType,
+        args.fileContent,
+        args.maxRows || 20,
+        args.missingValueTypes || []
+      );
+    });
+  }
+
+  /**
+   * 解析完整文件（用于导入时的数据质量分析）
+   */
+  async parseFullFile(
+    args: {
+      fileType: string;
+      fileContent: string | ArrayBuffer;
+      missingValueTypes: string[];
+    },
+    event: IpcMainInvokeEvent
+  ) {
+    return this.handleAsync(async () => {
+      // maxRows = -1 表示解析全部数据
+      return await this.parseFileWithWorker(args.fileType, args.fileContent, -1, args.missingValueTypes);
     });
   }
 

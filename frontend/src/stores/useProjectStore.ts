@@ -60,6 +60,10 @@ export const useProjectStore = defineStore("project", () => {
     }
   };
 
+  const findProjectByDatasetId = (datasetId: string): ProjectInfo | undefined => {
+    return projects.value.find(project => project.datasets.some(dataset => dataset.id === datasetId));
+  };
+
   const setCurrentProject = (projectId: string) => {
     currentProject.value = projects.value.find(p => p.id === projectId) || null;
   };
@@ -150,5 +154,6 @@ export const useProjectStore = defineStore("project", () => {
     createProject,
     deleteProject,
     checkProjectName,
+    findProjectByDatasetId,
   };
 });

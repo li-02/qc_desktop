@@ -98,7 +98,7 @@ export const useProjectStore = defineStore("project", () => {
     }
     try {
       loading.value = true;
-      const result = await window.electronAPI.invoke(API_ROUTES.PROJECTS.DELETE, projectId);
+      const result = await window.electronAPI.invoke(API_ROUTES.PROJECTS.DELETE, { projectId });
 
       if (result.success) {
         if (currentProject.value?.id === projectId) {

@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import {
   DataAnalysis,
+  FolderOpened,
   Upload,
   Plus,
   View,
@@ -17,6 +18,7 @@ import { useDatasetStore } from "@/stores/useDatasetStore";
 import emitter from "@/utils/eventBus";
 import ProjectInfoCard from "../../components/homepage/ProjectInfoCard.vue";
 import DatasetInfoCard from "../../components/homepage/DatasetInfoCard.vue";
+
 const router = useRouter();
 const projectStore = useProjectStore();
 const datasetStore = useDatasetStore();
@@ -99,6 +101,10 @@ const processSteps = ref([
     route: "/missing-value-imputation",
   },
 ]);
+
+const handleCreateProject = () => {
+  emitter.emit("open-create-project-dialog");
+};
 const getColorClasses = (color: string) => {
   const colorMap: Record<string, { bg: string; text: string }> = {
     blue: { bg: "bg-blue-100", text: "!text-blue-600" },
@@ -168,7 +174,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="h-full bg-gradient-to-br from-slate-50 to-green-50 flex flex-col overflow-hidden">
+  <div
+    v-if="projectStore.hasProjects"
+    class="h-full bg-gradient-to-br from-slate-50 to-green-50 flex flex-col overflow-hidden">
     <!-- 顶部项目信息 -->
     <ProjectInfoCard />
 
@@ -302,6 +310,50 @@ onMounted(() => {
       </div>
     </div>
   </div>
+  <div
+    v-else
+    class="w-full h-full bg-gradient-to-br from-stone-50 via-green-50/30 to-emerald-50/20 flex items-center justify-center p-6">
+    <div class="text-center max-w-md mx-auto">
+      <!-- 标题文本 -->
+      <h1 class="text-2xl font-semibold text-gray-800 mb-3">开始您的生态监测之旅</h1>
+
+      <!-- 描述文本 -->
+      <p class="text-gray-600 mb-8 leading-relaxed">
+        您还没有创建任何项目。<br />
+        创建第一个项目来开始管理您的生态监测数据。
+      </p>
+
+      <!-- 创建项目按钮 -->
+      <el-button
+        type="primary"
+        size="large"
+        @click="handleCreateProject"
+        class="px-8 py-3 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 border-none shadow-lg hover:shadow-xl transform transition-all duration-200 hover:scale-105">
+        <el-icon class="mr-2 text-lg">
+          <Plus />
+        </el-icon>
+        创建项目
+      </el-button>
+
+      <!-- 底部提示 -->
+      <div class="mt-12 text-sm text-gray-500">
+        <div class="flex items-center justify-center gap-6">
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-2 bg-emerald-400 rounded-full"></div>
+            <span>生态数据管理</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+            <span>智能分析处理</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-2 bg-amber-400 rounded-full"></div>
+            <span>可视化展示</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
@@ -351,5 +403,54 @@ onMounted(() => {
 
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
+}
+/* 按钮悬停动画优化 */
+.el-button:hover {
+  transform: translateY(-2px);
+}
+
+/* 渐变背景优化 */
+.bg-gradient-to-br {
+  background-size: 400% 400%;
+  animation: gradientShift 8s ease infinite;
+}
+
+@keyframes gradientShift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+/* 图标容器悬停效果 */
+.w-32:hover {
+  transform: scale(1.05);
+  transition: transform 0.3s ease;
+}
+
+/* 装饰元素动画 */
+.absolute {
+  animation: float 3s ease-in-out infinite;
+}
+
+.absolute:nth-child(2) {
+  animation-delay: -1s;
+}
+
+.absolute:nth-child(3) {
+  animation-delay: -2s;
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
 }
 </style>

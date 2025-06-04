@@ -1,10 +1,8 @@
-<!-- 新建项目 -->
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import "plus-pro-components/es/components/form/style/css";
 import { type FieldValues, type PlusColumn, PlusForm } from "plus-pro-components";
 import { ElMessage } from "element-plus";
-// import emitter from "@/utils/eventBus";
 import { useProjectStore } from "@/stores/useProjectStore";
 
 interface ProjectInfo {
@@ -132,7 +130,6 @@ const handleSubmit = async (values: ProjectInfo) => {
   }
 };
 const handleSubmitError = (err: any) => {
-  console.log(err, "err");
   projectStore.loading = false;
 };
 const handleReset = () => {
@@ -187,27 +184,17 @@ const validateSiteName = (rule: any, value: string, callback: any) => {
   }
   callback();
 };
-const validateGeoLocation = (rule: any, value: string, callback: any, source: any) => {
-  const { longitude, latitude } = source;
-
-  if (!longitude && !latitude) {
-    if (!longitude) {
-      callback(new Error("请输入经度"));
-    } else {
-      callback(new Error("请输入纬度"));
-    }
+// 验证经度
+const validateLongitude = (rule: any, value: string, callback: any) => {
+  if (!value) {
+    callback(new Error("请输入经度"));
     return;
   }
 
-  const lon = parseFloat(longitude);
-  const lat = parseFloat(latitude);
+  const lon = parseFloat(value);
 
-  if (isNaN(lon) || isNaN(lat)) {
-    if (isNaN(lon)) {
-      callback(new Error("经度必须是合法数字"));
-    } else {
-      callback(new Error("纬度必须是合法数字"));
-    }
+  if (isNaN(lon)) {
+    callback(new Error("经度必须是合法数字"));
     return;
   }
 
@@ -216,11 +203,27 @@ const validateGeoLocation = (rule: any, value: string, callback: any, source: an
     return;
   }
 
+  callback();
+};
+
+// 验证纬度
+const validateLatitude = (rule: any, value: string, callback: any) => {
+  if (!value) {
+    callback(new Error("请输入纬度"));
+    return;
+  }
+
+  const lat = parseFloat(value);
+
+  if (isNaN(lat)) {
+    callback(new Error("纬度必须是合法数字"));
+    return;
+  }
+
   if (lat < -90 || lat > 90) {
     callback(new Error("纬度范围应在 -90 到 90 之间"));
     return;
   }
-
   callback();
 };
 const validateHeight = (rule: any, value: string, callback: any) => {
@@ -256,8 +259,8 @@ const rules = {
       trigger: "blur",
     },
   ],
-  longitude: [{ required: true, trigger: "blur", validator: validateGeoLocation }],
-  latitude: [{ required: true, trigger: "blur", validator: validateGeoLocation }],
+  longitude: [{ required: true, trigger: "blur", validator: validateLongitude }],
+  latitude: [{ required: true, trigger: "blur", validator: validateLatitude }],
   altitude: [{ required: true, trigger: "blur", validator: validateHeight }],
 };
 
@@ -277,7 +280,7 @@ defineExpose({
         :columns="columns"
         :rules="rules"
         :row-props="{ gutter: 5 }"
-        label-width="100px"
+        label-width="90px"
         label-position="right"
         @change="handleChange"
         @submit-error="handleSubmitError"

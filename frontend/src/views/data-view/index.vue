@@ -112,13 +112,13 @@ watch(currentDataset, (newDataset, oldDataset) => {
 
 <template>
   <div class="min-h-screen bg-gradient-to-br from-stone-50 to-emerald-50/30 p-6">
-    <div class="max-w-7xl mx-auto space-y-6">
+    <div class="w-full mx-auto space-y-6">
       <!-- 数据集信息卡片 -->
       <DatasetCard @refresh="refreshDatasetInfo" @export="handleExportData" />
 
       <!-- 主要功能区域 -->
-      <div v-if="hasDataset" class="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <!-- 数据分析选项卡 (占2/3宽度) -->
+      <div v-if="hasDataset" class="grid grid-cols-1 gap-6 !mt-2">
+        <!-- 数据分析选项卡 -->
         <div class="xl:col-span-2">
           <DataAnalysisTabs
             :dataset-info="currentDataset"
@@ -131,19 +131,17 @@ watch(currentDataset, (newDataset, oldDataset) => {
             @start-data-cleaning="handleStartDataCleaning"
             @export-data="handleExportData" />
         </div>
-
-        <!-- 快速操作面板 (占1/3宽度) -->
-        <div class="xl:col-span-1">
-          <QuickOperation
-            :dataset-info="currentDataset"
-            @start-outlier-detection="handleStartOutlierDetection"
-            @start-missing-value-imputation="handleStartMissingValueImputation"
-            @start-data-cleaning="handleStartDataCleaning"
-            @generate-report="handleExportData"
-            @export-data="handleExportData" />
-        </div>
       </div>
-
+      <!-- 快速操作面板 (占1/3宽度) -->
+      <!--        <div class="xl:col-span-1">-->
+      <!--          <QuickOperation-->
+      <!--            :dataset-info="currentDataset"-->
+      <!--            @start-outlier-detection="handleStartOutlierDetection"-->
+      <!--            @start-missing-value-imputation="handleStartMissingValueImputation"-->
+      <!--            @start-data-cleaning="handleStartDataCleaning"-->
+      <!--            @generate-report="handleExportData"-->
+      <!--            @export-data="handleExportData" />-->
+      <!--        </div>-->
       <!-- 无数据集时的空状态 -->
       <div
         v-else
@@ -153,9 +151,7 @@ watch(currentDataset, (newDataset, oldDataset) => {
             <span class="text-3xl">📊</span>
           </div>
           <h3 class="text-xl font-semibold text-gray-800 mb-3">开始数据分析</h3>
-          <p class="text-gray-600 mb-6">
-            请从左侧导航栏选择一个数据集，开始您的数据分析之旅。 我们为您提供了全面的数据探索和处理工具。
-          </p>
+          <p class="text-gray-600 mb-6">请从左侧导航栏选择一个数据集，开始您的数据分析之旅。</p>
           <div class="text-sm text-gray-500">💡 支持异常值检测、缺失值处理、数据清洗等功能</div>
         </div>
       </div>

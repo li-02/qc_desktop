@@ -2,6 +2,7 @@
 import { parentPort } from "worker_threads";
 import * as XLSX from "xlsx";
 import Papa from "papaparse";
+import { ColumnMissingStatus } from "@shared/types";
 
 if (parentPort) {
   const messagePort = parentPort;
@@ -59,22 +60,36 @@ function calculateMissingValueStats(
 ): {
   missingValueStats: Record<string, number>;
   totalMissingCount: number;
+  columnMissingStatus?: ColumnMissingStatus; // 每列缺失值统计
+  completeRecords: number;
 } {
   const missingValueStats: Record<string, number> = {};
+  const columnMissingStatus: ColumnMissingStatus = {};
   let totalMissingCount = 0;
+  let completeRecords = 0;
+  // 该行是否有缺失值的标志
+  let hasMissingValue = false;
 
   // 初始化统计对象
   missingValueTypes.forEach(type => {
     missingValueStats[type === "" ? "空值" : type] = 0;
   });
+  // 初始化每列缺失值计数
+  columns.forEach(column => {
+    columnMissingStatus[column] = 0;
+  });
 
   // 遍历所有数据统计缺失值
   data.forEach(row => {
+    hasMissingValue = false; // 每行开始时重置标志
     columns.forEach(column => {
       const value = row[column];
 
       if (isMissingValue(value, missingValueTypes)) {
+        hasMissingValue = true;
         totalMissingCount++;
+        // 更新每列缺失值计数
+        columnMissingStatus[column]++;
 
         // 确定具体的缺失值类型
         if (value === null || value === undefined || String(value).trim() === "") {
@@ -89,16 +104,17 @@ function calculateMissingValueStats(
         }
       }
     });
+    if (!hasMissingValue) {
+      completeRecords++;
+    }
   });
 
-  return { missingValueStats, totalMissingCount };
+  return { missingValueStats, totalMissingCount, columnMissingStatus, completeRecords };
 }
 
 // 使用papaparse解析CSV文件
 function parseCSV(content: any, maxRows = 20, missingValueTypes: string[] = []) {
   try {
-    console.log(`Worker: 开始解析CSV，限制行数: ${maxRows === -1 ? "全部" : maxRows}`);
-
     // 完整解析（用于统计）
     const fullResults = Papa.parse(content, {
       header: true,
@@ -111,6 +127,8 @@ function parseCSV(content: any, maxRows = 20, missingValueTypes: string[] = []) 
     let totalRows = 0;
     let missingValueStats: Record<string, number> = {};
     let totalMissingCount = 0;
+    let columnMissingStatus: ColumnMissingStatus | undefined = {};
+    let completeRecords = 0;
 
     if (fullResults.data && fullResults.data.length > 0) {
       totalRows = fullResults.data.length;
@@ -123,22 +141,20 @@ function parseCSV(content: any, maxRows = 20, missingValueTypes: string[] = []) 
             label: field,
           });
         });
-      }
+        // 🆕 使用增强的统计函数
+        if (maxRows === -1 || missingValueTypes.length > 0) {
+          const stats = calculateMissingValueStats(fullResults.data, fullResults.meta.fields, missingValueTypes);
+          missingValueStats = stats.missingValueStats;
+          totalMissingCount = stats.totalMissingCount;
+          columnMissingStatus = stats.columnMissingStatus;
+          completeRecords = stats.completeRecords;
+        }
 
-      // 如果需要完整解析（maxRows = -1）或者有缺失值类型定义，进行缺失值统计
-      if (maxRows === -1 || missingValueTypes.length > 0) {
-        const stats = calculateMissingValueStats(fullResults.data, fullResults.meta.fields || [], missingValueTypes);
-        missingValueStats = stats.missingValueStats;
-        totalMissingCount = stats.totalMissingCount;
-
-        console.log(`Worker: 缺失值统计完成，总缺失: ${totalMissingCount}`);
-      }
-
-      // 设置预览数据（如果maxRows不是-1）
-      if (maxRows !== -1) {
-        tableData = fullResults.data.slice(0, maxRows);
-      } else {
-        tableData = fullResults.data;
+        if (maxRows !== -1) {
+          tableData = fullResults.data.slice(0, maxRows);
+        } else {
+          tableData = fullResults.data;
+        }
       }
     }
 
@@ -148,6 +164,8 @@ function parseCSV(content: any, maxRows = 20, missingValueTypes: string[] = []) 
       totalRows,
       missingValueStats,
       totalMissingCount,
+      columnMissingStatus,
+      completeRecords,
     };
   } catch (error: any) {
     throw new Error(`CSV解析错误: ${error.message}`);
@@ -157,8 +175,6 @@ function parseCSV(content: any, maxRows = 20, missingValueTypes: string[] = []) 
 // 解析Excel文件
 function parseExcel(buffer: ArrayBuffer | Uint8Array | Buffer, maxRows = 20, missingValueTypes: string[] = []) {
   try {
-    console.log(`Worker: 开始解析Excel，限制行数: ${maxRows === -1 ? "全部" : maxRows}`);
-
     const workbook = XLSX.read(buffer);
     const firstSheetName = workbook.SheetNames[0];
     if (!firstSheetName) {
@@ -178,6 +194,8 @@ function parseExcel(buffer: ArrayBuffer | Uint8Array | Buffer, maxRows = 20, mis
     let totalRows = 0;
     let missingValueStats: Record<string, number> = {};
     let totalMissingCount = 0;
+    let columnMissingStatus: ColumnMissingStatus | undefined = {};
+    let completeRecords = 0;
 
     if (fullData && fullData.length > 0) {
       const headers: any[] = fullData[0].map(h => String(h));
@@ -206,8 +224,8 @@ function parseExcel(buffer: ArrayBuffer | Uint8Array | Buffer, maxRows = 20, mis
           const stats = calculateMissingValueStats(formattedData, headers, missingValueTypes);
           missingValueStats = stats.missingValueStats;
           totalMissingCount = stats.totalMissingCount;
-
-          console.log(`Worker: 缺失值统计完成，总缺失: ${totalMissingCount}`);
+          columnMissingStatus = stats.columnMissingStatus;
+          completeRecords = stats.completeRecords;
         }
 
         // 设置预览数据
@@ -225,6 +243,8 @@ function parseExcel(buffer: ArrayBuffer | Uint8Array | Buffer, maxRows = 20, mis
       totalRows,
       missingValueStats,
       totalMissingCount,
+      columnMissingStatus,
+      completeRecords,
     };
   } catch (error: any) {
     throw new Error(`Excel解析错误: ${error.message}`);

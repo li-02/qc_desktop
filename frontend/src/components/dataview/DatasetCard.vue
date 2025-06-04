@@ -37,10 +37,9 @@ const isDataReady = computed(() => {
   );
 });
 
-// Computed properties - 安全访问，提供默认值
 const missingValueCount = computed(() => {
   if (!isDataReady.value || !datasetInfo.value?.missingValueTypes) return 0;
-  return datasetInfo.value.dataQuality.totalMissingCount; // 示例计算
+  return datasetInfo.value.originalFile.dataQuality.totalMissingCount; // 示例计算
 });
 
 const missingValueIconClass = computed(() => {
@@ -229,56 +228,10 @@ const handleCommand = (command: string) => {
               {{ isDataReady ? formatFileSize(datasetInfo!.originalFile.size) : "等待加载..." }}
             </span>
           </div>
-
-          <!-- 数据行数 -->
-          <div class="flex items-center gap-2">
-            <el-icon class="!text-blue-500">
-              <Grid />
-            </el-icon>
-            <span class="text-gray-500 text-sm">数据行数:</span>
-            <div v-if="datasetStore.loading" class="flex-1">
-              <el-skeleton-item variant="text" style="width: 60px; height: 16px" />
-            </div>
-            <span v-else class="font-medium text-gray-700">
-              {{ isDataReady ? formatNumber(datasetInfo!.originalFile.rows) : "0" }} 行
-            </span>
-          </div>
-
-          <!-- 数据列数 -->
-          <div class="flex items-center gap-2">
-            <el-icon class="!text-green-500">
-              <List />
-            </el-icon>
-            <span class="text-gray-500 text-sm">数据列数:</span>
-            <div v-if="datasetStore.loading" class="flex-1">
-              <el-skeleton-item variant="text" style="width: 60px; height: 16px" />
-            </div>
-            <span v-else class="font-medium text-gray-700">
-              {{ isDataReady ? datasetInfo!.originalFile.columns.length : "0" }} 列
-            </span>
-          </div>
-
-          <!-- 缺失值 -->
-          <div class="flex items-center gap-2">
-            <el-icon :class="missingValueIconClass">
-              <Warning />
-            </el-icon>
-            <span class="text-gray-500 text-sm">缺失值:</span>
-            <div v-if="datasetStore.loading" class="flex-1">
-              <el-skeleton-item variant="text" style="width: 60px; height: 16px" />
-            </div>
-            <template v-else>
-              <span :class="missingValueTextClass"> {{ missingValueCount }} 个 </span>
-              <el-tooltip v-if="missingValueCount > 0" :content="missingValueTooltip" placement="top">
-                <el-icon class="text-orange-400 cursor-help ml-1">
-                  <QuestionFilled />
-                </el-icon>
-              </el-tooltip>
-            </template>
-          </div>
         </div>
 
         <!-- 数据质量指示器 -->
+        <!--
         <div class="mt-4 pt-3 border-t border-gray-100">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
@@ -298,7 +251,6 @@ const handleCommand = (command: string) => {
               </div>
             </div>
 
-            <!-- 完整记录数 -->
             <div class="flex items-center gap-2 text-sm">
               <el-icon class="text-emerald-500">
                 <CircleCheck />
@@ -310,7 +262,7 @@ const handleCommand = (command: string) => {
               <span v-else class="font-medium text-gray-700">{{ formatNumber(completeRecords) }} 行</span>
             </div>
           </div>
-        </div>
+        </div> -->
 
         <!-- 原始文件路径（可选显示） -->
         <div v-if="isDataReady && datasetInfo.originalFile.filePath" class="mt-3 pt-3 border-t border-gray-100">

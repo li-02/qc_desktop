@@ -27,13 +27,17 @@ export interface ProjectInfo extends ProjectBaseInfo {
     belongTo: string; // 所属项目 id
   }[];
 }
+export interface ColumnMissingStatus {
+  [columnName: string]: number; // 列名: 缺失值计数
+}
 // 数据质量信息接口
 export interface DataQualityInfo {
-  totalRecords: number;
-  completeRecords: number;
+  totalRecords: number; // 总记录数
+  completeRecords: number; // 完整记录数
   missingValueStats: Record<string, number>; // 各类型缺失值统计
-  totalMissingCount: number;
+  totalMissingCount: number; // 总缺失值计数
   qualityPercentage: number; // 数据质量百分比
+  columnMissingStatus: ColumnMissingStatus; // 各列缺失值统计
   analyzedAt: number; // 分析时间戳
 }
 export interface DatasetBaseInfo {
@@ -61,6 +65,7 @@ export interface DatasetInfo {
     size: string;
     rows: number;
     columns: string[];
+    dataQuality?: DataQualityInfo; // 数据质量信息
   };
   // 这部分有待扩展
   processedFiles: {
@@ -70,7 +75,6 @@ export interface DatasetInfo {
     rows: number;
     columns: string[];
   }[]; // 处理后的文件
-  dataQuality?: DataQualityInfo; // 数据质量信息
 }
 
 // 创建项目的请求参数
@@ -134,6 +138,7 @@ export interface FileParseResult {
   totalRows: number; // 总行数
   missingValueStats?: MissingValueStats; // 缺失值统计信息
   totalMissingCount: number; // 总缺失值计数
+  columnMissingStatus?: ColumnMissingStatus; // 每列缺失值统计
 }
 // 文件解析请求参数
 export interface FileParseRequest {

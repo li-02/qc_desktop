@@ -108,14 +108,14 @@ export const useDatasetStore = defineStore("dataset", () => {
     }
   };
 
-  const deleteDataset = async (datasetId: string) => {
+  const deleteDataset = async (projectId: string, datasetId: string) => {
     if (!window.electronAPI || !projectStore.currentProject) {
       throw new Error("无法删除数据集：缺少必要条件");
     }
     try {
       loading.value = true;
       const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.DELETE, {
-        projectId: projectStore.currentProject.id,
+        projectId,
         datasetId,
       });
 

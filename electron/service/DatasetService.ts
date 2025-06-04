@@ -117,9 +117,17 @@ export class DatasetService {
           size: request.file.size,
           rows: request.rows,
           columns: [...request.columns],
+          dataQuality: dataQuality || {
+            totalRecords: request.rows,
+            completeRecords: request.rows,
+            missingValueStats: {},
+            totalMissingCount: 0,
+            qualityPercentage: 100,
+            analyzedAt: now,
+            columnMissingStatus: {},
+          },
         },
         processedFiles: [],
-        dataQuality,
       };
 
       // 8. 保存数据集元数据
@@ -207,7 +215,7 @@ export class DatasetService {
       // 构建数据质量信息
       const dataQuality: DataQualityInfo = {
         totalRecords: parseResult.totalRows,
-        completeRecords: parseResult.totalRows - Math.floor(parseResult.totalMissingCount / parseResult.columns.length),
+        completeRecords: parseResult.completeRecords,
         missingValueStats: parseResult.missingValueStats || {},
         totalMissingCount: parseResult.totalMissingCount || 0,
         qualityPercentage:
@@ -217,6 +225,7 @@ export class DatasetService {
               100
             : 100,
         analyzedAt: Date.now(),
+        columnMissingStatus: parseResult.columnMissingStatus || {},
       };
 
       return { success: true, data: dataQuality };

@@ -1,0 +1,30 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+你是一个精通 Electron、Vue 3（组合式 API）、TypeScript、echarts的前端开发专家。
+
+构建工具：Vite
+
+Electron 主进程：electron/main.ts
+
+预加载脚本：electron/preload.ts
+
+渲染进程：Vue 3 + TypeScript + Vite + Pinia + Vue Router
+
+所有代码严格遵循 TypeScript + Vue 3 组合式 API 写法
+
+vue文件布局为script-template-style
+
+使用原生CSS实现样式
+
+设计风格要求和frontend/src/layouts/MainLayout.vue中的风格一致
+
+📦 附加要求
+添加合理的用户反馈机制（如 ElMessage、ElNotification）
+
+跨组件通信建议使用Pinia（含状态定义）
+
+
+所有逻辑需加入必要的异常处理（try/catch）

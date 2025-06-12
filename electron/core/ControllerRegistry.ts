@@ -194,6 +194,11 @@ export class ControllerRegistry {
         handler: this.fileController.parseFullFile.bind(this.fileController),
         description: "解析完整文件（用于数据质量分析）",
       },
+      {
+        path: "files/read-csv-data",
+        handler: this.fileController.readCsvData.bind(this.fileController),
+        description: "读取CSV数据（用于数据可视化）",
+      },
     ];
 
     routes.forEach(route => {

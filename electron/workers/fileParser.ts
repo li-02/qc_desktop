@@ -112,6 +112,59 @@ function calculateMissingValueStats(
   return { missingValueStats, totalMissingCount, columnMissingStatus, completeRecords };
 }
 
+// 计算列的统计信息
+function calculateColumnStatistics(
+  data: any[],
+  columnName: string
+): {
+  mean: number;
+  std: number;
+  min: number;
+  max: number;
+  count: number;
+  validCount: number;
+} {
+  // 提取列数据，过滤掉无效值
+  const values = data
+    .map(row => row[columnName])
+    .filter(value => value !== null && value !== undefined && !isNaN(parseFloat(value)) && isFinite(parseFloat(value)))
+    .map(value => parseFloat(value));
+
+  const validCount = values.length;
+  const totalCount = data.length;
+
+  if (validCount === 0) {
+    return {
+      mean: 0,
+      std: 0,
+      min: 0,
+      max: 0,
+      count: totalCount,
+      validCount: 0,
+    };
+  }
+
+  // 计算均值
+  const mean = values.reduce((sum, value) => sum + value, 0) / validCount;
+
+  // 计算最小值和最大值
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+
+  // 计算标准差
+  const variance = values.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / validCount;
+  const std = Math.sqrt(variance);
+
+  return {
+    mean: Number(mean.toFixed(6)),
+    std: Number(std.toFixed(6)),
+    min: Number(min.toFixed(6)),
+    max: Number(max.toFixed(6)),
+    count: totalCount,
+    validCount: validCount,
+  };
+}
+
 // 使用papaparse解析CSV文件
 function parseCSV(content: any, maxRows = 20, missingValueTypes: string[] = []) {
   try {

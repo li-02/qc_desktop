@@ -9,11 +9,7 @@ import {
   DocumentCopy,
   DocumentDelete,
   FolderOpened,
-  Grid,
-  List,
-  QuestionFilled,
   Refresh,
-  Warning,
 } from "@element-plus/icons-vue";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 
@@ -26,6 +22,7 @@ const emit = defineEmits<{
   refresh: [];
   export: [];
 }>();
+
 // 数据是否完整可用
 const isDataReady = computed(() => {
   return !!(
@@ -39,15 +36,12 @@ const isDataReady = computed(() => {
 
 const missingValueCount = computed(() => {
   if (!isDataReady.value || !datasetInfo.value?.missingValueTypes) return 0;
-  return datasetInfo.value.originalFile.dataQuality.totalMissingCount; // 示例计算
-});
-
-const missingValueIconClass = computed(() => {
-  return missingValueCount.value > 0 ? "!text-orange-500" : "!text-green-500";
+  // 安全访问dataQuality属性
+  return datasetInfo.value.originalFile.dataQuality?.totalMissingCount || 0;
 });
 
 const missingValueTextClass = computed(() => {
-  return missingValueCount.value > 0 ? "font-medium text-orange-600" : "font-medium text-green-600";
+  return missingValueCount.value > 0 ? "missing-warning" : "missing-success";
 });
 
 const missingValueTooltip = computed(() => {
@@ -64,9 +58,9 @@ const dataQualityPercentage = computed(() => {
 
 const dataQualityTextClass = computed(() => {
   const percentage = dataQualityPercentage.value;
-  if (percentage >= 95) return "text-emerald-600";
-  if (percentage >= 85) return "text-yellow-600";
-  return "text-red-600";
+  if (percentage >= 95) return "quality-excellent";
+  if (percentage >= 85) return "quality-good";
+  return "quality-poor";
 });
 
 const completeRecords = computed(() => {
@@ -115,7 +109,7 @@ const getDatasetTypeLabel = (type: string): string => {
     aqi: "空气质量",
     nai: "负氧离子",
     sapflow: "茎流",
-    micrometology: "微气象",
+    micrometeorology: "微气象",
   };
   return typeMap[type] || type.toUpperCase();
 };
@@ -127,7 +121,7 @@ const getDatasetTypeTagType = (type: string): string => {
     aqi: "warning",
     nai: "info",
     sapflow: "primary",
-    micrometology: "danger",
+    micrometeorology: "danger",
   };
   return typeMap[type] || "info";
 };
@@ -156,214 +150,386 @@ const handleCommand = (command: string) => {
 </script>
 
 <template>
-  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-    <!-- 始终显示基本结构 -->
-    <div class="flex items-center gap-6">
+  <div class="dataset-card">
+    <!-- 数据集信息容器 -->
+    <div class="dataset-container">
       <!-- 数据集图标 -->
-      <div
-        class="w-16 h-16 bg-gradient-to-br from-emerald-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0 !ml-2">
-        <el-icon class="text-2xl text-white">
+      <div class="dataset-icon-wrapper">
+        <el-icon class="dataset-icon">
           <DataAnalysis />
         </el-icon>
       </div>
 
       <!-- 数据集详细信息 -->
-      <div class="flex-1 min-w-0">
+      <div class="dataset-content">
         <!-- 标题行 -->
-        <div class="flex items-center justify-between mb-3">
+        <div class="dataset-header">
           <!-- 数据集名称 -->
-          <div class="flex items-center gap-3">
-            <div v-if="datasetStore.loading" class="flex items-center gap-2">
-              <el-skeleton-item variant="text" style="width: 200px; height: 32px" />
-              <el-skeleton-item variant="button" style="width: 60px; height: 24px" />
+          <div class="dataset-title-section">
+            <div v-if="datasetStore.loading" class="loading-title">
+              <el-skeleton-item variant="text" style="width: 200px; height: 28px" />
+              <el-skeleton-item variant="button" style="width: 60px; height: 20px" />
             </div>
-            <div v-else-if="datasetInfo" class="flex items-center gap-3">
-              <h1 class="text-2xl font-bold text-gray-800 truncate">
+            <div v-else-if="datasetInfo" class="title-group">
+              <h1 class="dataset-title">
                 {{ datasetInfo.name || "未知数据集" }}
               </h1>
-              <el-tag :type="getDatasetTypeTagType(datasetInfo.type)" size="small" class="uppercase">
+              <el-tag :type="getDatasetTypeTagType(datasetInfo.type)" size="small" class="dataset-type-tag">
                 {{ getDatasetTypeLabel(datasetInfo.type) }}
               </el-tag>
             </div>
-            <div v-else class="flex items-center gap-3">
-              <h1 class="text-2xl font-bold text-gray-400">请选择数据集</h1>
+            <div v-else class="no-dataset">
+              <h1 class="no-dataset-title">请选择数据集</h1>
             </div>
           </div>
 
           <!-- 时间信息 -->
-          <div class="flex items-center gap-4 text-sm text-gray-600 flex-shrink-0 !mr-2">
-            <div v-if="datasetStore.loading" class="flex gap-4">
-              <el-skeleton-item variant="text" style="width: 120px; height: 16px" />
-              <el-skeleton-item variant="text" style="width: 120px; height: 16px" />
+          <div v-if="datasetInfo" class="dataset-meta-section">
+            <div v-if="datasetStore.loading" class="loading-meta">
+              <el-skeleton-item variant="text" style="width: 120px; height: 14px" />
             </div>
-            <template v-else-if="datasetInfo">
-              <div v-if="datasetInfo.updatedAt" class="flex items-center gap-1">
-                <el-icon class="text-blue-500">
-                  <Refresh />
-                </el-icon>
-                <span>最后更新: {{ formatDate(datasetInfo.updatedAt) }}</span>
-              </div>
-              <div v-if="datasetInfo.createdAt" class="flex items-center gap-1">
-                <el-icon class="text-green-500">
-                  <Calendar />
-                </el-icon>
-                <span>创建时间: {{ formatDate(datasetInfo.createdAt) }}</span>
-              </div>
-            </template>
+            <div v-else-if="datasetInfo.updatedAt" class="meta-item">
+              <el-icon class="meta-icon update-icon">
+                <Refresh />
+              </el-icon>
+              <span class="meta-text">{{ formatDate(datasetInfo.updatedAt) }}</span>
+            </div>
           </div>
         </div>
 
-        <!-- 统计信息网格 -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <!-- 文件大小 -->
-          <div class="flex items-center gap-2">
-            <el-icon class="!text-gray-500">
+        <!-- 统计信息 - 单行紧凑布局 -->
+        <div v-if="isDataReady" class="dataset-stats">
+          <div class="stat-item">
+            <el-icon class="stat-icon">
               <Document />
             </el-icon>
-            <span class="text-gray-500 text-sm">文件大小:</span>
-            <div v-if="datasetStore.loading" class="flex-1">
-              <el-skeleton-item variant="text" style="width: 60px; height: 16px" />
-            </div>
-            <span v-else class="font-medium text-gray-700">
-              {{ isDataReady ? formatFileSize(datasetInfo!.originalFile.size) : "等待加载..." }}
-            </span>
+            <span class="stat-value">{{ formatFileSize(datasetInfo!.originalFile.size) }}</span>
           </div>
         </div>
 
-        <!-- 数据质量指示器 -->
-        <!--
-        <div class="mt-4 pt-3 border-t border-gray-100">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <span class="text-sm font-medium text-gray-600">数据质量:</span>
-              <div class="flex items-center gap-2">
-                <div class="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    class="h-full !bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-500"
-                    :style="{ width: `${dataQualityPercentage}%` }"></div>
-                </div>
-                <div v-if="datasetStore.loading">
-                  <el-skeleton-item variant="text" style="width: 40px; height: 16px" />
-                </div>
-                <span v-else :class="dataQualityTextClass" class="text-sm font-medium">
-                  {{ dataQualityPercentage.toFixed(1) }}%
-                </span>
-              </div>
-            </div>
-
-            <div class="flex items-center gap-2 text-sm">
-              <el-icon class="text-emerald-500">
-                <CircleCheck />
-              </el-icon>
-              <span class="text-gray-600">完整记录:</span>
-              <div v-if="datasetStore.loading">
-                <el-skeleton-item variant="text" style="width: 60px; height: 16px" />
-              </div>
-              <span v-else class="font-medium text-gray-700">{{ formatNumber(completeRecords) }} 行</span>
-            </div>
-          </div>
-        </div> -->
-
-        <!-- 原始文件路径（可选显示） -->
-        <div v-if="isDataReady && datasetInfo.originalFile.filePath" class="mt-3 pt-3 border-t border-gray-100">
-          <div class="flex items-center gap-2 text-xs text-gray-500">
+        <!-- 文件路径 - 简化显示 -->
+        <div v-if="isDataReady && datasetInfo && datasetInfo.originalFile.filePath" class="file-path-section">
+          <el-icon class="path-icon">
+            <FolderOpened />
+          </el-icon>
+          <code class="file-path">{{ datasetInfo.originalFile.filePath }}</code>
+          <el-button text size="small" @click="copyFilePath" class="copy-btn">
             <el-icon>
-              <FolderOpened />
+              <DocumentCopy />
             </el-icon>
-            <span>原始文件:</span>
-            <code class="bg-gray-100 px-2 py-1 rounded text-gray-700 truncate max-w-md">
-              {{ datasetInfo.originalFile.filePath }}
-            </code>
-            <el-button text size="small" @click="copyFilePath" class="!p-1">
-              <el-icon>
-                <DocumentCopy />
-              </el-icon>
-            </el-button>
-          </div>
+          </el-button>
         </div>
 
         <!-- 无数据提示 -->
-        <div v-if="!datasetStore.loading && !datasetInfo" class="mt-4 pt-3 border-t border-gray-100">
-          <div class="flex flex-col items-center justify-center h-20 text-gray-500">
-            <el-icon class="text-2xl mb-1">
-              <DocumentDelete />
-            </el-icon>
-            <span class="text-sm">请从左侧选择一个数据集</span>
-          </div>
+        <div v-if="!datasetStore.loading && !datasetInfo" class="empty-section">
+          <el-icon class="empty-icon">
+            <DocumentDelete />
+          </el-icon>
+          <span class="empty-text">请从左侧选择一个数据集</span>
         </div>
       </div>
-
-      <!-- 操作按钮组 -->
-      <!--<div class="flex flex-col gap-2 flex-shrink-0">
-        <el-dropdown trigger="click" @command="handleCommand" :disabled="datasetStore.loading">
-          <el-button
-            circle
-            size="small"
-            class="!border-gray-300 hover:!border-emerald-400"
-            :loading="datasetStore.loading">
-            <el-icon v-if="!datasetStore.loading">
-              <MoreFilled />
-            </el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="refresh">
-                <el-icon class="mr-2">
-                  <Refresh />
-                </el-icon>
-                刷新信息
-              </el-dropdown-item>
-              <el-dropdown-item command="togglePath" :disabled="!isDataReady">
-                <el-icon class="mr-2">
-                  <View />
-                </el-icon>
-                显示文件路径
-              </el-dropdown-item>
-              <el-dropdown-item command="export" :disabled="!isDataReady" divided>
-                <el-icon class="mr-2">
-                  <Download />
-                </el-icon>
-                导出数据集信息
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-      </div> -->
     </div>
   </div>
 </template>
 
 <style scoped>
-/* 自定义样式 */
-.truncate {
+/* 主容器 */
+.dataset-card {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(229, 231, 235, 0.4);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+}
+
+.dataset-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.dataset-container {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+/* 数据集图标 */
+.dataset-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.dataset-icon {
+  font-size: 20px;
+  color: white;
+}
+
+/* 数据集内容 */
+.dataset-content {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 标题部分 */
+.dataset-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 16px;
+}
+
+.dataset-title-section {
+  flex: 1;
+  min-width: 0;
+}
+
+.loading-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dataset-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 300px;
+}
+
+.dataset-type-tag {
+  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  font-size: 11px;
+}
+
+.no-dataset {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.no-dataset-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #9ca3af;
+  margin: 0;
+}
+
+/* 元数据部分 */
+.dataset-meta-section {
+  flex-shrink: 0;
+}
+
+.loading-meta {
+  display: flex;
+  gap: 8px;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.meta-icon {
+  font-size: 12px;
+}
+
+.update-icon {
+  color: #3b82f6;
+}
+
+.meta-text {
   white-space: nowrap;
 }
 
-/* 响应式调整 */
+/* 统计信息 - 单行布局 */
+.dataset-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stat-icon {
+  color: #6b7280;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.stat-value {
+  font-weight: 500;
+  color: #374151;
+  white-space: nowrap;
+}
+
+.stat-separator {
+  color: #d1d5db;
+  font-weight: bold;
+}
+
+/* 数据质量样式 */
+.quality-excellent {
+  color: #059669;
+}
+
+.quality-good {
+  color: #d97706;
+}
+
+.quality-poor {
+  color: #dc2626;
+}
+
+/* 文件路径 - 简化 */
+.file-path-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #6b7280;
+  background: rgba(249, 250, 251, 0.6);
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(229, 231, 235, 0.3);
+}
+
+.path-icon {
+  color: #6b7280;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.file-path {
+  background: rgba(229, 231, 235, 0.3);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: #374151;
+  font-family: "Consolas", "Monaco", monospace;
+  font-size: 10px;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 300px;
+}
+
+.copy-btn {
+  padding: 2px;
+  color: #6b7280;
+  transition: color 0.2s ease;
+  min-height: auto;
+}
+
+.copy-btn:hover {
+  color: #059669;
+}
+
+/* 空状态 */
+.empty-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #9ca3af;
+  text-align: center;
+  padding: 16px;
+}
+
+.empty-icon {
+  font-size: 20px;
+  color: #d1d5db;
+}
+
+.empty-text {
+  font-size: 13px;
+}
+
+/* 响应式处理 */
 @media (max-width: 768px) {
-  .grid-cols-2 {
-    grid-template-columns: repeat(1, minmax(0, 1fr));
+  .dataset-card {
+    padding: 12px;
   }
 
-  .md\:grid-cols-4 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .dataset-container {
+    gap: 12px;
+  }
+
+  .dataset-icon-wrapper {
+    width: 40px;
+    height: 40px;
+  }
+
+  .dataset-icon {
+    font-size: 16px;
+  }
+
+  .dataset-header {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .dataset-title {
+    font-size: 18px;
+    max-width: none;
+  }
+
+  .dataset-stats {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .file-path {
+    max-width: 200px;
   }
 }
 
-/* 数据质量进度条动画 */
-.bg-gradient-to-r {
-  background-image: linear-gradient(to right, var(--tw-gradient-stops));
+/* 微动画 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-/* 悬停效果 */
-.hover\:border-emerald-400:hover {
-  border-color: #6ee7b7;
-}
-
-/* 骨架屏动画 */
-:deep(.el-skeleton-item) {
-  border-radius: 4px;
+.stat-item {
+  animation: fadeIn 0.3s ease forwards;
 }
 </style>

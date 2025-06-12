@@ -4,7 +4,6 @@ import { ElMessage } from "element-plus";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import DatasetCard from "@/components/dataview/DatasetCard.vue";
 import DataAnalysisTabs from "@/components/dataview/DataAnalysisTabs.vue";
-import QuickOperation from "@/components/dataview/QuickOperation.vue";
 
 // Store
 const datasetStore = useDatasetStore();
@@ -111,15 +110,15 @@ watch(currentDataset, (newDataset, oldDataset) => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-stone-50 to-emerald-50/30 p-6">
-    <div class="w-full mx-auto space-y-6">
+  <div class="data-view-container">
+    <div class="content-wrapper">
       <!-- 数据集信息卡片 -->
       <DatasetCard @refresh="refreshDatasetInfo" @export="handleExportData" />
 
       <!-- 主要功能区域 -->
-      <div v-if="hasDataset" class="grid grid-cols-1 gap-6 !mt-2">
+      <div v-if="hasDataset" class="main-content-grid">
         <!-- 数据分析选项卡 -->
-        <div class="xl:col-span-2">
+        <div class="analysis-tabs-section">
           <DataAnalysisTabs
             :dataset-info="currentDataset"
             :content-loading="loading"
@@ -132,29 +131,203 @@ watch(currentDataset, (newDataset, oldDataset) => {
             @export-data="handleExportData" />
         </div>
       </div>
-      <!-- 快速操作面板 (占1/3宽度) -->
-      <!--        <div class="xl:col-span-1">-->
-      <!--          <QuickOperation-->
-      <!--            :dataset-info="currentDataset"-->
-      <!--            @start-outlier-detection="handleStartOutlierDetection"-->
-      <!--            @start-missing-value-imputation="handleStartMissingValueImputation"-->
-      <!--            @start-data-cleaning="handleStartDataCleaning"-->
-      <!--            @generate-report="handleExportData"-->
-      <!--            @export-data="handleExportData" />-->
-      <!--        </div>-->
+
       <!-- 无数据集时的空状态 -->
-      <div
-        v-else
-        class="flex flex-col items-center justify-center h-96 bg-white rounded-xl shadow-sm border border-gray-100">
-        <div class="text-center max-w-md">
-          <div class="w-20 h-20 mx-auto mb-6 bg-emerald-100 rounded-full flex items-center justify-center">
-            <span class="text-3xl">📊</span>
+      <div v-else class="empty-state-container">
+        <div class="empty-state-content">
+          <div class="empty-state-icon">
+            <span>📊</span>
           </div>
-          <h3 class="text-xl font-semibold text-gray-800 mb-3">开始数据分析</h3>
-          <p class="text-gray-600 mb-6">请从左侧导航栏选择一个数据集，开始您的数据分析之旅。</p>
-          <div class="text-sm text-gray-500">💡 支持异常值检测、缺失值处理、数据清洗等功能</div>
+          <h3 class="empty-state-title">开始数据分析</h3>
+          <p class="empty-state-description">请从左侧导航栏选择一个数据集，开始您的数据分析之旅。</p>
+          <div class="empty-state-tip">💡 支持异常值检测、缺失值处理、数据清洗等功能</div>
         </div>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+/* 主容器 */
+.data-view-container {
+  width: 100%;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
+  /* padding: 24px; */
+}
+
+/* 内容包装器 */
+.content-wrapper {
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  /* gap: 24px; */
+}
+
+/* 主要功能区域网格 */
+.main-content-grid {
+  display: grid;
+  /* grid-template-columns: 1fr; */
+  /* gap: 24px; */
+  margin-top: 8px;
+}
+
+/* 数据分析选项卡区域 */
+.analysis-tabs-section {
+  width: 100%;
+}
+
+/* 空状态容器 */
+.empty-state-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 384px;
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(248, 250, 252, 0.9) 30%,
+    rgba(240, 253, 244, 0.85) 70%,
+    rgba(236, 253, 245, 0.9) 100%
+  );
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  border: 1px solid rgba(229, 231, 235, 0.4);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.06),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.empty-state-container::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.3), transparent);
+}
+
+/* 空状态内容 */
+.empty-state-content {
+  text-align: center;
+  max-width: 400px;
+  padding: 32px;
+}
+
+/* 空状态图标 */
+.empty-state-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 24px;
+  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 32px rgba(16, 185, 129, 0.3);
+  position: relative;
+}
+
+.empty-state-icon::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), transparent);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.empty-state-icon span {
+  font-size: 32px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+/* 空状态标题 */
+.empty-state-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 16px;
+  letter-spacing: -0.02em;
+}
+
+/* 空状态描述 */
+.empty-state-description {
+  color: #6b7280;
+  margin-bottom: 24px;
+  line-height: 1.6;
+  font-size: 16px;
+}
+
+/* 空状态提示 */
+.empty-state-tip {
+  font-size: 14px;
+  color: #6b7280;
+  background: rgba(16, 185, 129, 0.08);
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  display: inline-block;
+  font-weight: 500;
+}
+
+/* 响应式布局 */
+/* @media (min-width: 1280px) {
+  .main-content-grid {
+    grid-template-columns: 2fr 1fr;
+  }
+} */
+
+/* 悬停和交互效果 */
+.empty-state-container:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 8px 40px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.empty-state-icon:hover {
+  transform: scale(1.05);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 加载状态动画 */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.content-wrapper[data-loading="true"] {
+  animation: pulse 2s infinite;
+}
+
+/* 渐变动画 */
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.data-view-container {
+  background-size: 400% 400%;
+  animation: gradient-shift 15s ease infinite;
+}
+</style>

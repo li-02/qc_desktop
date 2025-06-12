@@ -19,6 +19,7 @@ export const API_ROUTES = {
   FILES: {
     PARSE_PREVIEW: "files/parse-preview",
     PARSE_FULL: "files/parse-full",
+    READ_CSV_DATA: "files/read-csv-data",
   },
 
   // 菜单事件

@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import emitter from "@/utils/eventBus";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { DataAnalysis, HomeFilled, Operation, PieChart, Plus, Upload } from "@element-plus/icons-vue";
+import { DataAnalysis, HomeFilled, Operation, PieChart, Plus, Upload, Expand, Fold } from "@element-plus/icons-vue";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 
@@ -224,7 +224,10 @@ onUnmounted(() => {
           </div>
         </div>
         <button class="collapse-btn" @click="toggleCollapse" :title="isCollapsed ? '展开侧边栏' : '折叠侧边栏'">
-          <span class="collapse-icon">{{ isCollapsed ? "▶️" : "◀️" }}</span>
+          <el-icon class="collapse-icon">
+            <Expand v-if="isCollapsed" />
+            <Fold v-else />
+          </el-icon>
         </button>
       </div>
 
@@ -583,13 +586,8 @@ onUnmounted(() => {
 }
 
 .collapse-icon {
-  font-size: 20px;
-  font-weight: bold;
-  transition: transform 0.3s ease;
-}
-
-.collapse-icon.rotated {
-  transform: rotate(180deg);
+  font-size: 18px;
+  transition: color 0.2s ease;
 }
 
 /* 项目管理区域 */

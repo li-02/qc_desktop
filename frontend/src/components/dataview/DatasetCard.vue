@@ -197,27 +197,28 @@ const handleCommand = (command: string) => {
           </div>
         </div>
 
-        <!-- 统计信息 - 单行紧凑布局 -->
-        <div v-if="isDataReady" class="dataset-stats">
-          <div class="stat-item">
+        <!-- 文件信息 - 文件大小和路径同行显示 -->
+        <div v-if="isDataReady && datasetInfo" class="file-info-section">
+          <!-- 文件大小 -->
+          <div class="file-size-info">
             <el-icon class="stat-icon">
               <Document />
             </el-icon>
-            <span class="stat-value">{{ formatFileSize(datasetInfo!.originalFile.size) }}</span>
+            <span class="stat-value">{{ formatFileSize(datasetInfo.originalFile.size) }}</span>
           </div>
-        </div>
-
-        <!-- 文件路径 - 简化显示 -->
-        <div v-if="isDataReady && datasetInfo && datasetInfo.originalFile.filePath" class="file-path-section">
-          <el-icon class="path-icon">
-            <FolderOpened />
-          </el-icon>
-          <code class="file-path">{{ datasetInfo.originalFile.filePath }}</code>
-          <el-button text size="small" @click="copyFilePath" class="copy-btn">
-            <el-icon>
-              <DocumentCopy />
+          
+          <!-- 文件路径 -->
+          <div v-if="datasetInfo.originalFile.filePath" class="file-path-info">
+            <el-icon class="path-icon">
+              <FolderOpened />
             </el-icon>
-          </el-button>
+            <code class="file-path">{{ datasetInfo.originalFile.filePath }}</code>
+            <el-button text size="small" @click="copyFilePath" class="copy-btn">
+              <el-icon>
+                <DocumentCopy />
+              </el-icon>
+            </el-button>
+          </div>
         </div>
 
         <!-- 无数据提示 -->
@@ -367,20 +368,34 @@ const handleCommand = (command: string) => {
   white-space: nowrap;
 }
 
-/* 统计信息 - 单行布局 */
-.dataset-stats {
+/* 文件信息 - 文件大小和路径同行显示 */
+.file-info-section {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 12px;
-  font-size: 13px;
+  font-size: 12px;
   color: #6b7280;
+  background: rgba(249, 250, 251, 0.6);
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(229, 231, 235, 0.3);
 }
 
-.stat-item {
+.file-size-info {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.file-path-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
 }
 
 .stat-icon {
@@ -395,11 +410,6 @@ const handleCommand = (command: string) => {
   white-space: nowrap;
 }
 
-.stat-separator {
-  color: #d1d5db;
-  font-weight: bold;
-}
-
 /* 数据质量样式 */
 .quality-excellent {
   color: #059669;
@@ -411,19 +421,6 @@ const handleCommand = (command: string) => {
 
 .quality-poor {
   color: #dc2626;
-}
-
-/* 文件路径 - 简化 */
-.file-path-section {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: #6b7280;
-  background: rgba(249, 250, 251, 0.6);
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid rgba(229, 231, 235, 0.3);
 }
 
 .path-icon {
@@ -507,9 +504,14 @@ const handleCommand = (command: string) => {
     max-width: none;
   }
 
-  .dataset-stats {
-    flex-wrap: wrap;
-    gap: 6px;
+  .file-info-section {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .file-path-info {
+    width: 100%;
   }
 
   .file-path {
@@ -529,7 +531,8 @@ const handleCommand = (command: string) => {
   }
 }
 
-.stat-item {
+.file-size-info,
+.file-path-info {
   animation: fadeIn 0.3s ease forwards;
 }
 </style>

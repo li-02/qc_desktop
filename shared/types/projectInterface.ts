@@ -50,6 +50,23 @@ export interface DatasetBaseInfo {
   belongTo: string; // 所属项目 id
 }
 
+// 处理后文件信息接口
+export interface ProcessedFileInfo {
+  name: string;
+  filePath: string;
+  size: string;
+  rows: number;
+  columns: string[];
+  // 插补特有字段
+  method?: string;
+  column?: string;
+  createdAt?: number;
+  parameters?: any;
+  statistics?: any;
+  imputedCount?: number;
+  originalMissingCount?: number;
+}
+
 export interface DatasetInfo {
   id: string;
   name: string;
@@ -68,13 +85,7 @@ export interface DatasetInfo {
     dataQuality?: DataQualityInfo; // 数据质量信息
   };
   // 这部分有待扩展
-  processedFiles: {
-    name: string;
-    filePath: string;
-    size: string;
-    rows: number;
-    columns: string[];
-  }[]; // 处理后的文件
+  processedFiles: ProcessedFileInfo[]; // 处理后的文件
 }
 
 // 创建项目的请求参数

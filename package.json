@@ -12,10 +12,12 @@
     "build:electron": "tsc -p electron/tsconfig.json",
     "copy-dist": "mkdir -p public && cp -r frontend/dist public/ && cp -r dist public/",
     "watch": "tsc -w -p electron/tsconfig.json",
+    "rebuild": "electron-builder install-app-deps",
     "format": "prettier --write \"./{electron,frontend}/**/*.{html,vue,ts,js,json,md}\""
   },
   "dependencies": {
-    "electron": "^31.7.6",
+    "better-sqlite3": "^12.4.1",
+    "bindings": "^1.5.0",
     "mitt": "^3.0.1",
     "papaparse": "^5.5.2",
     "uuid": "^11.1.0",
@@ -26,6 +28,7 @@
     "@types/papaparse": "^5.3.16",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
+    "electron": "35.0.3",
     "electron-builder": "^25.1.8",
     "prettier": "^3.5.3",
     "typescript": "^5.4.2",

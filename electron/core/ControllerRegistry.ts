@@ -6,8 +6,8 @@ import { DatasetController } from "../controller/DatasetController";
 import { FileController } from "../controller/FileController";
 
 // 引入新的分层架构
-import { ProjectRepository } from "../repository/ProjectRepository";
-import { DatasetRepository } from "../repository/DatasetRepository";
+import { ProjectDBRepository } from "../repository/ProjectDBRepository";
+import { DatasetDBRepository } from "../repository/DatasetDBRepository";
 import { ProjectService } from "../service/ProjectService";
 import { DatasetService } from "../service/DatasetService";
 
@@ -17,8 +17,8 @@ import { DatasetService } from "../service/DatasetService";
  */
 export class ControllerRegistry {
   // 数据访问层
-  private projectRepository!: ProjectRepository;
-  private datasetRepository!: DatasetRepository;
+  private projectRepository!: ProjectDBRepository;
+  private datasetRepository!: DatasetDBRepository;
 
   // 业务逻辑层
   private projectService!: ProjectService;
@@ -42,14 +42,14 @@ export class ControllerRegistry {
 
     try {
       // 1. 初始化数据访问层 (Repository Layer)
-      this.projectRepository = new ProjectRepository(projectsDir);
+      this.projectRepository = new ProjectDBRepository();
       console.log("✓ ProjectRepository 初始化完成");
 
-      this.datasetRepository = new DatasetRepository();
+      this.datasetRepository = new DatasetDBRepository();
       console.log("✓ DatasetRepository 初始化完成");
 
       // 2. 初始化业务逻辑层 (Service Layer)
-      this.projectService = new ProjectService(this.projectRepository);
+      this.projectService = new ProjectService(this.projectRepository, this.datasetRepository);
       console.log("✓ ProjectService 初始化完成");
 
       this.datasetService = new DatasetService(this.datasetRepository, this.projectRepository);
@@ -168,6 +168,11 @@ export class ControllerRegistry {
         path: "datasets/validate-structure",
         handler: this.datasetController.validateDatasetStructure.bind(this.datasetController),
         description: "验证数据集结构",
+      },
+      {
+        path: "datasets/perform-imputation",
+        handler: this.datasetController.performImputation.bind(this.datasetController),
+        description: "执行缺失值插补",
       },
     ];
 

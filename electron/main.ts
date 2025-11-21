@@ -4,6 +4,7 @@ import { app, BrowserWindow, Menu } from "electron";
 import * as path from "path";
 import { IPCManager } from "./core/IPCManager";
 import { ControllerRegistry } from "./core/ControllerRegistry";
+import { DatabaseManager } from "./core/DatabaseManager";
 
 // 应用状态管理
 interface AppState {
@@ -247,6 +248,11 @@ async function onAppReady(): Promise<void> {
   try {
     // 1. 初始化应用配置
     initializeAppConfig();
+
+    // 初始化数据库
+    const dbPath = path.join(appState.projectsDir, "qc_metadata.db");
+    DatabaseManager.getInstance().initialize(dbPath);
+    console.log(`数据库已初始化: ${dbPath}`);
 
     // 2. 设置IPC通信
     setupIPC();

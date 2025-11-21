@@ -1,7 +1,12 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 // 统一的IPC调用接口
 const electronAPI = {
+  // 获取文件路径
+  getFilePath: (file: File) => {
+    return webUtils.getPathForFile(file);
+  },
+
   // 统一的IPC调用方法
   invoke: async (channel: string, args?: any) => {
     try {

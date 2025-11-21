@@ -260,6 +260,60 @@ export class DatasetController extends BaseController {
     });
   }
 
+  /**
+   * 执行缺失值插补
+   */
+  async performImputation(
+    args: {
+      projectId: string;
+      datasetId: string;
+      method: string;
+      options: {
+        maxGapSize?: number;
+        windowSize?: number;
+        polynomialDegree?: number;
+        knnNeighbors?: number;
+        outlierThreshold?: number;
+        preservePattern?: boolean;
+        arimaP?: number;
+        arimaD?: number;
+        arimaQ?: number;
+        arimaAutoSelect?: boolean;
+      };
+    },
+    event: IpcMainInvokeEvent
+  ) {
+    return this.handleAsync(async () => {
+      console.log("进入 performImputation 方法", args);
+
+      // 参数校验
+      if (!args.projectId || typeof args.projectId !== "string") {
+        throw new Error("项目ID不能为空");
+      }
+
+      if (!args.datasetId || typeof args.datasetId !== "string") {
+        throw new Error("数据集ID不能为空");
+      }
+
+      if (!args.method || typeof args.method !== "string") {
+        throw new Error("插补方法不能为空");
+      }
+
+      const result = await this.datasetService.performImputation(
+        args.projectId.trim(),
+        args.datasetId.trim(),
+        args.method.trim(),
+        args.options || {}
+      );
+
+      if (!result.success) {
+        throw new Error(result.error || "执行插补失败");
+      }
+
+      return result.data;
+    });
+  }
+
   // #region 私有辅助方法
 
   /**

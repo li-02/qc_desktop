@@ -34,52 +34,52 @@ const columns: PlusColumn[] = [
     prop: "siteName",
     valueType: "input",
     fieldProps: {
-      placeholder: "",
+      placeholder: "请输入站点名称",
     },
   },
   {
     label: "经度",
     width: 120,
     prop: "longitude",
-    valueType: "copy",
+    valueType: "input",
     colProps: {
-      span: 8,
+      span: 24,
     },
     fieldSlots: {
       append: () => "°",
     },
     fieldProps: {
-      placeholder: "",
+      placeholder: "请输入经度 (例如: 116.40)",
     },
   },
   {
     label: "纬度",
     width: 120,
     prop: "latitude",
-    valueType: "copy",
+    valueType: "input",
     colProps: {
-      span: 8,
+      span: 24,
     },
     fieldSlots: {
       append: () => "°",
     },
     fieldProps: {
-      placeholder: "",
+      placeholder: "请输入纬度 (例如: 39.90)",
     },
   },
   {
     label: "高度",
     width: 120,
     prop: "altitude",
-    valueType: "copy",
+    valueType: "input",
     colProps: {
-      span: 8,
+      span: 24,
     },
     fieldSlots: {
       append: () => "m",
     },
     fieldProps: {
-      placeholder: "",
+      placeholder: "请输入海拔高度",
     },
   },
 ];
@@ -118,15 +118,15 @@ const handleSubmit = async (values: ProjectInfo) => {
       },
     });
     if (success) {
-      ElMessage.success("项目创建成功");
+      ElMessage.success("站点创建成功");
       // emitter.emit("refresh-projects");
       close();
     } else {
-      ElMessage.error(`项目创建失败: ${error}`);
+      ElMessage.error(`站点创建失败: ${error}`);
     }
   } catch (e) {
     console.error("create project failed", e);
-    ElMessage.error("项目创建失败，请稍后重试");
+    ElMessage.error("站点创建失败，请稍后重试");
   }
 };
 const handleSubmitError = (err: any) => {
@@ -273,7 +273,14 @@ defineExpose({
 
 <template>
   <div>
-    <el-dialog v-model="dialogVisible" title="新建项目" width="50%" @closed="handleClosed">
+    <el-dialog
+      v-model="dialogVisible"
+      title="新建站点"
+      width="500px"
+      class="site-creation-dialog"
+      @closed="handleClosed"
+      align-center
+    >
       <PlusForm
         v-model="projectInfo"
         class="m-auto"
@@ -284,17 +291,20 @@ defineExpose({
         label-position="right"
         @change="handleChange"
         @submit-error="handleSubmitError"
-        :has-footer="false" />
+        :has-footer="false"
+      />
 
       <template #footer>
-        <span>
-          <el-button @click="close">取消</el-button>
-          <el-button @click="handleReset" type="warning">重置</el-button>
+        <span class="dialog-footer">
+          <el-button @click="close" class="cancel-btn">取消</el-button>
+          <el-button @click="handleReset" type="warning" plain>重置</el-button>
           <el-button
             type="primary"
             @click="handleSubmit(projectInfo)"
             :loading="projectStore.loading"
-            :disabled="nameCheckStatus.checking || !nameCheckStatus.valid">
+            :disabled="nameCheckStatus.checking || !nameCheckStatus.valid"
+            class="submit-btn"
+          >
             确定
           </el-button>
         </span>
@@ -302,5 +312,70 @@ defineExpose({
     </el-dialog>
   </div>
 </template>
+
+<style>
+.site-creation-dialog {
+  border-radius: 16px !important;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.98) !important;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
+  padding: 0 !important;
+}
+
+.site-creation-dialog .el-dialog__header {
+  margin-right: 0;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(229, 231, 235, 0.5);
+  background: linear-gradient(
+    to right,
+    rgba(240, 253, 244, 0.8),
+    rgba(255, 255, 255, 0)
+  );
+}
+
+.site-creation-dialog .el-dialog__title {
+  font-weight: 600;
+  color: #059669; /* Emerald 600 */
+  font-size: 18px;
+}
+
+.site-creation-dialog .el-dialog__headerbtn {
+  top: 20px;
+}
+
+.site-creation-dialog .el-dialog__body {
+  padding: 32px 24px !important;
+}
+
+.site-creation-dialog .el-dialog__footer {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(229, 231, 235, 0.5);
+  background-color: rgba(249, 250, 251, 0.6);
+}
+
+.site-creation-dialog .submit-btn {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
+  border: none !important;
+  padding: 8px 24px;
+  height: 36px;
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.site-creation-dialog .submit-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+}
+
+.site-creation-dialog .cancel-btn:hover {
+  color: #059669;
+  border-color: #a7f3d0;
+  background-color: #ecfdf5;
+}
+</style>
+
+<style scoped></style>
 
 <style scoped></style>

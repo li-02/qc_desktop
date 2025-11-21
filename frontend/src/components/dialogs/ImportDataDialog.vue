@@ -202,7 +202,7 @@ const submitImportOption = async () => {
         file: {
           name: String(selectedFile.value!.name),
           size: String(selectedFile.value!.size),
-          path: String((selectedFile.value as any).path),
+          path: window.electronAPI.getFilePath(selectedFile.value!),
         },
         missingValueTypes: missingValueTypes.value.map(v => String(v)),
         rows: Number(totalRowCount.value),
@@ -234,7 +234,7 @@ const handleFileChange = (file: any) => {
       return;
     }
     selectedFile.value = file.raw;
-    const filePath = (file.raw as any).path;
+    const filePath = window.electronAPI.getFilePath(file.raw);
     // 更新文件列表
     fileList.value = [
       {

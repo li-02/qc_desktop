@@ -38,13 +38,14 @@ const emit = defineEmits<{
 }>();
 
 // Reactive state
-const selectedColumn = ref<string>("");
 const imputationMethod = ref("linear");
-const processingColumn = ref<string | null>(null);
+const isProcessing = ref<boolean>(false);
+const hasImputationResult = ref<boolean>(false);
 const timeSeriesChart = ref<HTMLDivElement | null>(null);
 const timeSeriesInstance = ref<echarts.ECharts | null>(null);
 
-// 指标选择相关状态
+// 结果查看相关状态
+const selectedColumn = ref<string>("");
 const searchKeyword = ref<string>("");
 const isDropdownOpen = ref<boolean>(false);
 
@@ -55,6 +56,7 @@ const viewMode = ref<'chart' | 'table'>('chart');
 const imputationMethods = [
   { value: "linear", label: "线性插值", description: "基于时间序列的线性插值方法", icon: "📈" },
   { value: "spline", label: "样条插值", description: "三次样条插值，适合平滑数据", icon: "〰️" },
+  { value: "arima", label: "ARIMA插补", description: "基于时间序列ARIMA模型的智能插补", icon: "🎯" },
   { value: "mean", label: "均值插补", description: "使用列均值填充缺失值", icon: "📊" },
   { value: "median", label: "中位数插补", description: "使用列中位数填充缺失值", icon: "📏" },
   { value: "forward", label: "前向填充", description: "使用前一个有效值填充", icon: "⏩" },
@@ -70,6 +72,11 @@ const advancedOptions = ref({
   knnNeighbors: 5,
   outlierThreshold: 3,
   preservePattern: true,
+  // ARIMA特有参数
+  arimaP: 1,
+  arimaD: 1,
+  arimaQ: 1,
+  arimaAutoSelect: true,
 });
 
 // 预览数据
@@ -105,7 +112,7 @@ const selectedColumnInfo = computed(() => {
 });
 
 const canStartImputation = computed(() => {
-  return selectedColumn.value && !props.loading;
+  return !props.loading && !isProcessing.value;
 });
 
 // Methods
@@ -158,23 +165,56 @@ const startImputation = async () => {
   if (!canStartImputation.value) return;
 
   try {
+    isProcessing.value = true;
+
     const options = {
-      column: selectedColumn.value,
-      method: imputationMethod.value,
-      ...advancedOptions.value,
+      maxGapSize: advancedOptions.value.maxGapSize,
+      windowSize: advancedOptions.value.windowSize,
+      polynomialDegree: advancedOptions.value.polynomialDegree,
+      knnNeighbors: advancedOptions.value.knnNeighbors,
+      outlierThreshold: advancedOptions.value.outlierThreshold,
+      preservePattern: advancedOptions.value.preservePattern,
+      arimaP: advancedOptions.value.arimaP,
+      arimaD: advancedOptions.value.arimaD,
+      arimaQ: advancedOptions.value.arimaQ,
+      arimaAutoSelect: advancedOptions.value.arimaAutoSelect,
     };
 
     ElNotification({
       title: "开始处理",
-      message: `正在对列 ${selectedColumn.value} 进行缺失值插补...`,
+      message: `正在插补...`,
       type: "info",
       duration: 3000,
     });
 
-    emit("startImputation", options);
-  } catch (error) {
-    console.error("启动插补失败:", error);
-    ElMessage.error("启动插补失败，请重试");
+    // 调用后端API
+    const result = await window.electronAPI.invoke('datasets/perform-imputation', {
+      projectId: props.datasetInfo?.belongTo,
+      datasetId: props.datasetInfo?.id,
+      method: imputationMethod.value,
+      options: options
+    });
+
+    if (result.success) {
+      hasImputationResult.value = true;
+      ElNotification({
+        title: "插补完成",
+        message: result.data.message || "整个数据集的缺失值插补处理完成",
+        type: "success",
+        duration: 5000,
+      });
+
+      // 发送刷新事件
+      emit("refresh");
+    } else {
+      throw new Error(result.error || "插补处理失败");
+    }
+
+  } catch (error: any) {
+    console.error("插补处理失败:", error);
+    ElMessage.error(error.message || "插补处理失败，请重试");
+  } finally {
+    isProcessing.value = false;
   }
 };
 
@@ -410,6 +450,55 @@ onMounted(() => {
                   max="20">
               </div>
 
+              <!-- ARIMA特有参数 -->
+              <div v-if="imputationMethod === 'arima'" class="arima-parameters">
+                <div class="parameter-group-title">ARIMA模型参数</div>
+                
+                <div class="parameter-switches">
+                  <label class="switch-item">
+                    <input 
+                      v-model="advancedOptions.arimaAutoSelect" 
+                      type="checkbox" 
+                      class="switch-input">
+                    <span class="switch-label">自动选择最优参数</span>
+                  </label>
+                </div>
+
+                <div v-if="!advancedOptions.arimaAutoSelect" class="arima-order-params">
+                  <div class="parameter-row">
+                    <div class="parameter-group">
+                      <label class="parameter-label">AR阶数 (p)</label>
+                      <input 
+                        v-model.number="advancedOptions.arimaP" 
+                        type="number" 
+                        class="parameter-input"
+                        min="0"
+                        max="5">
+                    </div>
+                    
+                    <div class="parameter-group">
+                      <label class="parameter-label">差分次数 (d)</label>
+                      <input 
+                        v-model.number="advancedOptions.arimaD" 
+                        type="number" 
+                        class="parameter-input"
+                        min="0"
+                        max="2">
+                    </div>
+                    
+                    <div class="parameter-group">
+                      <label class="parameter-label">MA阶数 (q)</label>
+                      <input 
+                        v-model.number="advancedOptions.arimaQ" 
+                        type="number" 
+                        class="parameter-input"
+                        min="0"
+                        max="5">
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div class="parameter-switches">
                 <label class="switch-item">
                   <input 
@@ -424,22 +513,51 @@ onMounted(() => {
                 @click="startImputation"
                 :disabled="!canStartImputation"
                 class="process-button">
-                <el-icon><Check /></el-icon>
-                开始处理
+                <el-icon v-if="!isProcessing" class="button-icon"><Check /></el-icon>
+                <div v-else class="loading-spinner"></div>
+                {{ isProcessing ? '处理中...' : '开始整个数据集插补' }}
               </button>
             </div>
           </div>
         </div>
 
-        <!-- 右侧：指标选择和可视化 -->
+        <!-- 右侧：插补结果查看 -->
         <div class="right-panel">
-          <!-- 指标选择 -->
-          <div class="indicator-selection-section">
+          <!-- 插补状态显示 -->
+          <div v-if="!hasImputationResult" class="imputation-status-section">
+            <div class="status-content">
+              <div v-if="!isProcessing" class="waiting-state">
+                <div class="waiting-icon">🎯</div>
+                <h3 class="waiting-title">准备开始插补</h3>
+                <p class="waiting-description">
+                  配置插补参数后，点击"开始整个数据集插补"按钮
+                </p>
+              </div>
+              <div v-else class="processing-state">
+                <div class="processing-icon">
+                  <div class="loading-spinner-large"></div>
+                </div>
+                <h3 class="processing-title">正在处理数据集...</h3>
+                <p class="processing-description">
+                  正在使用{{ imputationMethods.find(m => m.value === imputationMethod)?.label }}方法处理整个数据集的缺失值
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 结果查看：指标选择 -->
+          <div v-else class="indicator-selection-section">
             <div class="section-header">
               <h3 class="section-title">
                 <el-icon><Search /></el-icon>
-                选择指标
+                选择指标查看插补结果
               </h3>
+              <div class="section-actions">
+                <button @click="hasImputationResult = false; selectedColumn = ''" class="action-button">
+                  <el-icon><Refresh /></el-icon>
+                  重新插补
+                </button>
+              </div>
             </div>
 
             <!-- 选择框 -->
@@ -522,10 +640,10 @@ onMounted(() => {
           </div>
 
           <!-- 可视化区域 -->
-          <div class="visualization-section">
+          <div v-if="hasImputationResult" class="visualization-section">
             <div v-if="!selectedColumn" class="no-selection-state">
               <div class="no-selection-icon">📊</div>
-              <p class="no-selection-text">请选择一个指标查看可视化</p>
+              <p class="no-selection-text">请选择一个指标查看插补结果</p>
             </div>
 
             <div v-else class="visualization-content">
@@ -838,6 +956,35 @@ onMounted(() => {
   color: rgba(55, 65, 81, 1);
 }
 
+/* ARIMA参数样式 */
+.arima-parameters {
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(248, 250, 252, 0.8);
+  border: 1px solid rgba(226, 232, 240, 1);
+  border-radius: 8px;
+}
+
+.parameter-group-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(51, 65, 85, 1);
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(226, 232, 240, 1);
+}
+
+.parameter-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.parameter-row .parameter-group {
+  flex: 1;
+  margin-bottom: 0;
+}
+
 .process-button {
   margin-top: 12px;
   display: flex;
@@ -866,6 +1013,80 @@ onMounted(() => {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
+}
+
+.loading-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 插补状态区域 */
+.imputation-status-section {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(8px);
+  border-radius: 12px;
+  border: 1px solid rgba(167, 243, 208, 0.2);
+  padding: 24px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-content {
+  text-align: center;
+  max-width: 400px;
+}
+
+.waiting-state, .processing-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.waiting-icon {
+  font-size: 64px;
+  opacity: 0.7;
+}
+
+.waiting-title, .processing-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: rgba(31, 41, 55, 1);
+  margin: 0;
+}
+
+.waiting-description, .processing-description {
+  font-size: 14px;
+  color: rgba(107, 114, 128, 1);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.processing-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-spinner-large {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(34, 197, 94, 0.2);
+  border-top: 4px solid rgba(34, 197, 94, 1);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
 }
 
 /* 指标选择区域 */

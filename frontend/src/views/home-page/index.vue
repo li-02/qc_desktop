@@ -391,14 +391,14 @@ onMounted(() => {
     <div class="empty-content">
       <h1 class="empty-title">开始您的生态监测之旅</h1>
       <p class="empty-desc">
-        您还没有创建任何项目。<br />
-        创建第一个项目来开始管理您的生态监测数据。
+        您还没有创建任何站点。<br />
+        创建第一个站点来开始管理您的生态监测数据。
       </p>
       <el-button type="primary" size="large" @click="handleCreateProject" class="create-button">
         <el-icon class="button-icon">
           <Plus />
         </el-icon>
-        创建项目
+        创建站点
       </el-button>
       <div class="empty-features">
         <div class="feature-item">

@@ -30,6 +30,17 @@ export interface ProjectInfo extends ProjectBaseInfo {
 export interface ColumnMissingStatus {
   [columnName: string]: number; // 列名: 缺失值计数
 }
+
+// 列统计信息接口
+export interface ColumnStatistics {
+  mean: number;
+  std: number;
+  min: number;
+  max: number;
+  count: number;
+  validCount: number;
+}
+
 // 数据质量信息接口
 export interface DataQualityInfo {
   totalRecords: number; // 总记录数
@@ -38,18 +49,9 @@ export interface DataQualityInfo {
   totalMissingCount: number; // 总缺失值计数
   qualityPercentage: number; // 数据质量百分比
   columnMissingStatus: ColumnMissingStatus; // 各列缺失值统计
+  columnStatistics?: Record<string, ColumnStatistics>; // 各列详细统计
   analyzedAt: number; // 分析时间戳
 }
-export interface DatasetBaseInfo {
-  id: string;
-  name: string;
-  type: string;
-  dirPath: string;
-  originalFile: string;
-  createdAt: number;
-  belongTo: string; // 所属项目 id
-}
-
 // 处理后文件信息接口
 export interface ProcessedFileInfo {
   name: string;
@@ -150,6 +152,8 @@ export interface FileParseResult {
   missingValueStats?: MissingValueStats; // 缺失值统计信息
   totalMissingCount: number; // 总缺失值计数
   columnMissingStatus?: ColumnMissingStatus; // 每列缺失值统计
+  columnStatistics?: Record<string, ColumnStatistics>; // 每列详细统计
+  completeRecords?: number;
 }
 // 文件解析请求参数
 export interface FileParseRequest {
@@ -172,4 +176,25 @@ export interface WorkerResult {
   success: boolean;
   data?: FileParseResult;
   error?: string;
+}
+
+// Dataset Version Interface
+export interface DatasetVersionInfo {
+  id: number;
+  datasetId: number;
+  parentVersionId: number | null;
+  stageType: string;
+  createdAt: number;
+  remark: string;
+}
+
+// Version Statistics Interface
+export interface VersionStatsInfo {
+  versionId: number;
+  totalRows: number;
+  totalCols: number;
+  totalMissingCount: number;
+  totalOutlierCount: number;
+  columnStats: Record<string, any>;
+  calculatedAt: number;
 }

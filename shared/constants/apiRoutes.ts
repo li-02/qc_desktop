@@ -12,6 +12,8 @@ export const API_ROUTES = {
     IMPORT: "datasets/import",
     GET_BY_PROJECT: "datasets/get-by-project",
     GET_INFO: "datasets/get-info",
+    GET_VERSIONS: "datasets/get-versions",
+    GET_VERSION_STATS: "datasets/get-version-stats",
     DELETE: "datasets/delete",
   },
 

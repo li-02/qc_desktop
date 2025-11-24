@@ -155,6 +155,16 @@ export class ControllerRegistry {
         description: "获取数据集信息",
       },
       {
+        path: "datasets/get-versions",
+        handler: this.datasetController.getDatasetVersions.bind(this.datasetController),
+        description: "获取数据集版本",
+      },
+      {
+        path: "datasets/get-version-stats",
+        handler: this.datasetController.getDatasetVersionStats.bind(this.datasetController),
+        description: "获取版本统计信息",
+      },
+      {
         path: "datasets/delete",
         handler: this.datasetController.deleteDataset.bind(this.datasetController),
         description: "删除数据集",

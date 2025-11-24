@@ -181,6 +181,7 @@ function parseCSV(content: any, maxRows = 20, missingValueTypes: string[] = []) 
     let missingValueStats: Record<string, number> = {};
     let totalMissingCount = 0;
     let columnMissingStatus: ColumnMissingStatus | undefined = {};
+    let columnStatistics: Record<string, any> = {};
     let completeRecords = 0;
 
     if (fullResults.data && fullResults.data.length > 0) {
@@ -201,6 +202,15 @@ function parseCSV(content: any, maxRows = 20, missingValueTypes: string[] = []) 
           totalMissingCount = stats.totalMissingCount;
           columnMissingStatus = stats.columnMissingStatus;
           completeRecords = stats.completeRecords;
+
+          // 计算列统计信息
+          fullResults.meta.fields.forEach(col => {
+            const colStats = calculateColumnStatistics(fullResults.data, col);
+            // 只有当有有效数值时才保存统计信息
+            if (colStats.validCount > 0) {
+              columnStatistics[col] = colStats;
+            }
+          });
         }
 
         if (maxRows !== -1) {
@@ -218,6 +228,7 @@ function parseCSV(content: any, maxRows = 20, missingValueTypes: string[] = []) 
       missingValueStats,
       totalMissingCount,
       columnMissingStatus,
+      columnStatistics,
       completeRecords,
     };
   } catch (error: any) {
@@ -248,6 +259,7 @@ function parseExcel(buffer: ArrayBuffer | Uint8Array | Buffer, maxRows = 20, mis
     let missingValueStats: Record<string, number> = {};
     let totalMissingCount = 0;
     let columnMissingStatus: ColumnMissingStatus | undefined = {};
+    let columnStatistics: Record<string, any> = {};
     let completeRecords = 0;
 
     if (fullData && fullData.length > 0) {
@@ -279,6 +291,14 @@ function parseExcel(buffer: ArrayBuffer | Uint8Array | Buffer, maxRows = 20, mis
           totalMissingCount = stats.totalMissingCount;
           columnMissingStatus = stats.columnMissingStatus;
           completeRecords = stats.completeRecords;
+
+          // 计算列统计信息
+          headers.forEach(col => {
+            const colStats = calculateColumnStatistics(formattedData, col);
+            if (colStats.validCount > 0) {
+              columnStatistics[col] = colStats;
+            }
+          });
         }
 
         // 设置预览数据
@@ -297,6 +317,7 @@ function parseExcel(buffer: ArrayBuffer | Uint8Array | Buffer, maxRows = 20, mis
       missingValueStats,
       totalMissingCount,
       columnMissingStatus,
+      columnStatistics,
       completeRecords,
     };
   } catch (error: any) {

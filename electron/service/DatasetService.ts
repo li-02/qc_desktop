@@ -8,6 +8,8 @@ import {
   ImportDatasetRequest,
   ServiceResponse,
   DataQualityInfo,
+  DatasetVersionInfo,
+  VersionStatsInfo
 } from "@shared/types/projectInterface";
 import { Dataset, DatasetVersion, StatVersionDetail, ColumnSetting } from "@shared/types/database";
 import { Worker } from "worker_threads";
@@ -91,7 +93,11 @@ export class DatasetService {
            total_cols: request.columns.length,
            total_missing_count: dq.totalMissingCount,
            total_outlier_count: 0,
-           column_stats_json: JSON.stringify(dq.columnMissingStatus)
+           column_stats_json: JSON.stringify({
+             columnMissingStatus: dq.columnMissingStatus,
+             missingValueStats: dq.missingValueStats,
+             columnStatistics: dq.columnStatistics
+           })
          });
       }
 
@@ -99,9 +105,15 @@ export class DatasetService {
         dataset_id: datasetId,
         column_name: col,
         column_index: index,
-        is_active: 1
-      }));
-      this.datasetRepository.saveColumnSettings(columnSettings);
+        is_active: 1,
+        data_type: 'text',
+        min_threshold: null,
+        max_threshold: null
+      } as any));
+      const saveSettingsResult = this.datasetRepository.saveColumnSettings(columnSettings);
+      if (!saveSettingsResult.success) {
+         throw new Error(`保存列设置失败: ${saveSettingsResult.error}`);
+      }
 
       return {
         success: true,
@@ -185,8 +197,14 @@ export class DatasetService {
           if (stat.column_stats_json) {
              try {
                 const colStats = JSON.parse(stat.column_stats_json);
-                dataQuality.missingValueStats = colStats.missingValueStats || {};
-                dataQuality.columnMissingStatus = colStats.columnMissingStatus || {};
+                if (colStats.columnMissingStatus) {
+                   dataQuality.missingValueStats = colStats.missingValueStats || {};
+                   dataQuality.columnMissingStatus = colStats.columnMissingStatus || {};
+                   dataQuality.columnStatistics = colStats.columnStatistics || {};
+                } else {
+                   // Fallback for old format where it was just the missing status map
+                   dataQuality.columnMissingStatus = colStats;
+                }
              } catch (e) {}
           }
         }
@@ -233,6 +251,55 @@ export class DatasetService {
       return { success: true, data: datasetInfo };
     } catch (error: any) {
       return { success: false, error: `获取数据集信息失败: ${error.message}` };
+    }
+  }
+
+  async getDatasetVersions(datasetId: string): Promise<ServiceResponse<DatasetVersionInfo[]>> {
+    try {
+      const dId = parseInt(datasetId);
+      if (isNaN(dId)) return { success: false, error: "无效的数据集ID" };
+
+      const versionsResult = this.datasetRepository.getVersionsByDatasetId(dId);
+      if (!versionsResult.success) return { success: false, error: versionsResult.error };
+
+      const versions = versionsResult.data!.map(v => ({
+        id: v.id,
+        datasetId: v.dataset_id,
+        parentVersionId: v.parent_version_id || null,
+        stageType: v.stage_type,
+        createdAt: new Date(v.created_at).getTime(),
+        remark: v.remark || ""
+      }));
+
+      return { success: true, data: versions };
+    } catch (error: any) {
+      return { success: false, error: `获取数据集版本失败: ${error.message}` };
+    }
+  }
+
+  async getDatasetVersionStats(versionId: string): Promise<ServiceResponse<VersionStatsInfo>> {
+    try {
+      const vId = parseInt(versionId);
+      if (isNaN(vId)) return { success: false, error: "无效的版本ID" };
+
+      const statResult = this.datasetRepository.getStatByVersionId(vId);
+      if (!statResult.success) return { success: false, error: statResult.error };
+
+      const stat = statResult.data!;
+      return {
+        success: true,
+        data: {
+          versionId: stat.version_id,
+          totalRows: stat.total_rows,
+          totalCols: stat.total_cols,
+          totalMissingCount: stat.total_missing_count,
+          totalOutlierCount: stat.total_outlier_count,
+          columnStats: stat.column_stats_json ? JSON.parse(stat.column_stats_json) : {},
+          calculatedAt: new Date(stat.calculated_at).getTime()
+        }
+      };
+    } catch (error: any) {
+      return { success: false, error: `获取版本统计信息失败: ${error.message}` };
     }
   }
 
@@ -307,14 +374,32 @@ export class DatasetService {
        const statResult = this.datasetRepository.getStatByVersionId(latestVersion.id);
        if (statResult.success) {
          const stat = statResult.data!;
+         let columnMissingStatus = {};
+         let missingValueStats = {};
+         let columnStatistics = {};
+
+         if (stat.column_stats_json) {
+            try {
+                const parsed = JSON.parse(stat.column_stats_json);
+                if (parsed.columnMissingStatus) {
+                    columnMissingStatus = parsed.columnMissingStatus;
+                    missingValueStats = parsed.missingValueStats || {};
+                    columnStatistics = parsed.columnStatistics || {};
+                } else {
+                    columnMissingStatus = parsed;
+                }
+            } catch(e) {}
+         }
+
          dataQuality = {
             totalRecords: stat.total_rows,
             completeRecords: stat.total_rows - stat.total_missing_count,
-            missingValueStats: {},
+            missingValueStats: missingValueStats,
             totalMissingCount: stat.total_missing_count,
             qualityPercentage: stat.total_rows > 0 ? ((stat.total_rows - stat.total_missing_count) / stat.total_rows) * 100 : 100,
             analyzedAt: new Date(stat.calculated_at).getTime(),
-            columnMissingStatus: stat.column_stats_json ? JSON.parse(stat.column_stats_json) : {}
+            columnMissingStatus: columnMissingStatus,
+            columnStatistics: columnStatistics
          };
        }
      }
@@ -404,8 +489,8 @@ export class DatasetService {
             : 100,
         analyzedAt: Date.now(),
         columnMissingStatus: parseResult.columnMissingStatus || {},
+        columnStatistics: parseResult.columnStatistics || {},
       };
-
       return { success: true, data: dataQuality };
     } catch (error: any) {
       return {

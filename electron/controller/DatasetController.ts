@@ -127,6 +127,52 @@ export class DatasetController extends BaseController {
   }
 
   /**
+   * 获取数据集的所有版本
+   */
+  async getDatasetVersions(
+    args: {
+      datasetId: string;
+    },
+    event: IpcMainInvokeEvent
+  ) {
+    return this.handleAsync(async () => {
+      if (!args.datasetId || typeof args.datasetId !== "string") {
+        throw new Error("数据集ID不能为空");
+      }
+
+      const result = await this.datasetService.getDatasetVersions(args.datasetId.trim());
+      if (!result.success) {
+        throw new Error(result.error || "获取数据集版本失败");
+      }
+
+      return result.data;
+    });
+  }
+
+  /**
+   * 获取版本统计信息
+   */
+  async getDatasetVersionStats(
+    args: {
+      versionId: string;
+    },
+    event: IpcMainInvokeEvent
+  ) {
+    return this.handleAsync(async () => {
+      if (!args.versionId || typeof args.versionId !== "string") {
+        throw new Error("版本ID不能为空");
+      }
+
+      const result = await this.datasetService.getDatasetVersionStats(args.versionId.trim());
+      if (!result.success) {
+        throw new Error(result.error || "获取版本统计信息失败");
+      }
+
+      return result.data;
+    });
+  }
+
+  /**
    * 删除数据集
    */
   async deleteDataset(

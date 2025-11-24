@@ -1,3 +1,4 @@
+<!-- dialog管理器 -->
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
 import CreateProjectDialog from "./CreateProjectDialog.vue";

@@ -23,8 +23,8 @@ import {
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import emitter from "@/utils/eventBus";
-import ProjectInfoCard from "../../components/homepage/ProjectInfoCard.vue";
-import DatasetInfoCard from "../../components/homepage/DatasetInfoCard.vue";
+import ProjectInfoCard from "./components/ProjectInfoCard.vue";
+import DatasetInfoCard from "./components/DatasetInfoCard.vue";
 
 const router = useRouter();
 const projectStore = useProjectStore();

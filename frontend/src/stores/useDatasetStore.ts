@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed, watch } from "vue";
-import type { DatasetBaseInfo, DatasetInfo, ImportOption } from "@shared/types/projectInterface";
+import type { DatasetBaseInfo, DatasetInfo, ImportOption, DatasetVersionInfo, VersionStatsInfo } from "@shared/types/projectInterface";
 import { useProjectStore } from "./useProjectStore";
 import { ElMessage } from "element-plus";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
@@ -11,6 +11,9 @@ export const useDatasetStore = defineStore("dataset", () => {
   // 状态
   const datasets = ref<DatasetBaseInfo[]>([]);
   const currentDataset = ref<DatasetInfo | null>(null);
+  const versions = ref<DatasetVersionInfo[]>([]);
+  const currentVersion = ref<DatasetVersionInfo | null>(null);
+  const currentVersionStats = ref<VersionStatsInfo | null>(null);
   const loading = ref(false);
 
   // 计算属性
@@ -56,8 +59,56 @@ export const useDatasetStore = defineStore("dataset", () => {
   const setCurrentDataset = async (datasetId: string) => {
     if (projectStore.currentProject && datasetId) {
       currentDataset.value = await getCurrentDatasetInfo(projectStore.currentProject.id, datasetId);
+      if (currentDataset.value) {
+        await loadVersions(datasetId);
+        if (versions.value.length > 0) {
+          // Default to latest version
+          await setCurrentVersion(versions.value[0].id);
+        }
+      }
     } else {
       currentDataset.value = null;
+      versions.value = [];
+      currentVersion.value = null;
+      currentVersionStats.value = null;
+    }
+  };
+
+  const loadVersions = async (datasetId: string) => {
+    try {
+      const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.GET_VERSIONS, { datasetId });
+      if (result.success) {
+        // 显式按创建时间倒序排序，确保最新的在第一个
+        versions.value = result.data.sort((a: DatasetVersionInfo, b: DatasetVersionInfo) => b.createdAt - a.createdAt);
+      } else {
+        ElMessage.error(result.error || "获取版本列表失败");
+      }
+    } catch (error) {
+      console.error("Failed to load versions:", error);
+    }
+  };
+
+  const setCurrentVersion = async (versionId: number) => {
+    const version = versions.value.find(v => v.id === versionId);
+    if (version) {
+      currentVersion.value = version;
+      await loadVersionStats(versionId);
+    }
+  };
+
+  const loadVersionStats = async (versionId: number) => {
+    try {
+      const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.GET_VERSION_STATS, { versionId: String(versionId) });
+      if (result.success) {
+        currentVersionStats.value = result.data;
+      } else {
+        // It's possible that stats are not calculated yet or failed
+        currentVersionStats.value = null;
+        console.warn(result.error || "获取版本统计信息失败");
+      }
+    } catch (error) {
+      console.error("Failed to load version stats:", error);
+      currentVersionStats.value = null;
     }
   };
 
@@ -157,6 +208,9 @@ export const useDatasetStore = defineStore("dataset", () => {
     // 状态
     datasets,
     currentDataset,
+    versions,
+    currentVersion,
+    currentVersionStats,
     loading,
     // 计算属性
     hasDatasets,
@@ -165,6 +219,7 @@ export const useDatasetStore = defineStore("dataset", () => {
     // Actions
     loadDatasets,
     setCurrentDataset,
+    setCurrentVersion,
     importData,
     deleteDataset,
   };

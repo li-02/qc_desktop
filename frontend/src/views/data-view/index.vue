@@ -2,8 +2,8 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { useDatasetStore } from "@/stores/useDatasetStore";
-import DatasetCard from "@/components/dataview/DatasetCard.vue";
-import DataAnalysisTabs from "@/components/dataview/DataAnalysisTabs.vue";
+import DatasetCard from "./components/DatasetCard.vue";
+import DataAnalysisTabs from "./components/DataAnalysisTabs.vue";
 
 // Store
 const datasetStore = useDatasetStore();

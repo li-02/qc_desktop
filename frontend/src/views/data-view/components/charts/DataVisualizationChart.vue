@@ -4,7 +4,7 @@ import * as echarts from "echarts";
 
 interface Props {
   selectedColumn: string;
-  chartType: "histogram" | "scatter" | "cdf";
+  chartType: "histogram" | "scatter" | "cdf" | "heatmap";
   loading?: boolean;
   csvData?: {
     tableData: Array<any>;
@@ -206,10 +206,67 @@ const extractTimeSeriesFromCsv = (csvData: any, columnName: string): Array<{ tim
     return [];
   }
 
+  // 智能识别时间戳列
+  let timestampKey = '';
+  
+  if (csvData.tableData.length > 0) {
+    const firstRow = csvData.tableData[0];
+    const keys = Object.keys(firstRow);
+
+    // 1. 优先匹配常见的时间列名
+    const priorityKeys = ['TIMESTAMP', 'timestamp', 'Timestamp', 'Date', 'date', 'Time', 'time', 'record_time', 'Record_Time', 'RECORD_TIME'];
+    for (const key of priorityKeys) {
+      if (keys.includes(key)) {
+        timestampKey = key;
+        break;
+      }
+    }
+
+    // 2. 如果没找到，尝试智能识别内容
+    if (!timestampKey) {
+      for (const key of keys) {
+        // 跳过当前选中的数值列
+        if (key === columnName) continue;
+        
+        const value = firstRow[key];
+        // 检查是否为字符串且包含日期特征
+        if (typeof value === 'string') {
+            // 简单的日期格式检查：包含 - / : 且能被 Date 解析
+            // 排除纯数字字符串（虽然 Date.parse 可能接受，但通常不是我们想要的格式）
+            if ((value.includes('-') || value.includes('/') || value.includes(':')) && !isNaN(Date.parse(value))) {
+                 timestampKey = key;
+                 break;
+            }
+        }
+      }
+    }
+    
+    // 3. 如果还是没找到，但存在 TIMESTAMP 列，回退到默认
+    if (!timestampKey && keys.includes('TIMESTAMP')) {
+        timestampKey = 'TIMESTAMP';
+    }
+  }
+
+  if (!timestampKey) {
+      console.warn("无法识别时间列，将使用索引作为X轴");
+      return csvData.tableData.map((row: any, index: number) => {
+          const value = row[columnName];
+          if (value !== null && value !== undefined && !isNaN(Number(value))) {
+              return {
+                  time: String(index + 1),
+                  value: Number(value)
+              };
+          }
+          return null;
+      }).filter((item: any) => item !== null);
+  }
+
+  console.log(`识别到的时间列名: ${timestampKey}`);
+
   return csvData.tableData
     .map((row: any) => {
       const value = row[columnName];
-      const timestamp = row.TIMESTAMP;
+      const timestamp = row[timestampKey];
 
       // 确保数值和时间戳都有效
       if (value !== null && value !== undefined && !isNaN(Number(value)) && timestamp) {
@@ -494,8 +551,11 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
 
   const data = sampledData.map(d => [d.time, d.value]);
 
+  // Check if data is index-based (not a date string)
+  const isIndexBased = sampledData.length > 0 && !isNaN(Number(sampledData[0].time)) && !sampledData[0].time.includes('-') && !sampledData[0].time.includes(':');
+
   let timeSpanDays = 0;
-  if (sampledData.length > 1) {
+  if (!isIndexBased && sampledData.length > 1) {
     const firstTime = new Date(sampledData[0].time);
     const lastTime = new Date(sampledData[sampledData.length - 1].time);
     if (!isNaN(firstTime.getTime()) && !isNaN(lastTime.getTime())) {
@@ -504,9 +564,11 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
   }
 
   let axisInterval;
-  let axisLabelFormatter = "{MM}-{dd}";
+  let axisLabelFormatter: string | ((value: any) => string) = "{MM}-{dd}";
 
-  if (timeSpanDays > 90) {
+  if (isIndexBased) {
+      axisLabelFormatter = (value: any) => value;
+  } else if (timeSpanDays > 90) {
     // 大于3个月，按月分割
     axisInterval = 30 * 24 * 3600 * 1000;
     axisLabelFormatter = "{yyyy}-{MM}";
@@ -543,9 +605,12 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
       hideDelay: 0, // 立即隐藏
       formatter: (params: any) => {
         const dataPoint = params[0];
-        const date = new Date(dataPoint.value[0]);
-        const formattedDate = echarts.format.formatTime("yyyy-MM-dd hh:mm:ss", date.getTime());
-        return `时间: ${formattedDate}<br/>${props.selectedColumn}: ${dataPoint.value[1].toFixed(3)}`;
+        let timeStr = dataPoint.value[0];
+        if (!isIndexBased) {
+            const date = new Date(dataPoint.value[0]);
+            timeStr = echarts.format.formatTime("yyyy-MM-dd hh:mm:ss", date.getTime());
+        }
+        return `时间/索引: ${timeStr}<br/>${props.selectedColumn}: ${dataPoint.value[1].toFixed(3)}`;
       },
     },
     // 工具箱配置
@@ -650,8 +715,8 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
       containLabel: true,
     },
     xAxis: {
-      type: "time",
-      name: "时间",
+      type: isIndexBased ? "category" : "time",
+      name: isIndexBased ? "索引" : "时间",
       nameLocation: "middle",
       nameGap: 50,
       axisLabel: {
@@ -701,7 +766,7 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
     // 性能优化配置
     progressive: sampledData.length > 1000 ? 1000 : 0, // 分批渲染
     progressiveThreshold: 1000, // 分批渲染阈值
-    useUTC: true, // 使用UTC时间提高性能
+    useUTC: !isIndexBased, // 使用UTC时间提高性能
   };
 };
 
@@ -859,6 +924,112 @@ const getCdfOption = (data: number[]) => {
   };
 };
 
+// 生成热力图配置
+const getHeatmapOption = (timeData: Array<{ time: string; value: number }>) => {
+  if (timeData.length === 0) return null;
+
+  // 初始化聚合数组: 12个月 * 24小时
+  const aggregation = new Array(12).fill(0).map(() => new Array(24).fill(0).map(() => ({ sum: 0, count: 0 })));
+
+  timeData.forEach(item => {
+    const date = new Date(item.time);
+    if (isNaN(date.getTime())) return;
+
+    const month = date.getMonth(); // 0-11
+    const hour = date.getHours(); // 0-23
+
+    aggregation[month][hour].sum += item.value;
+    aggregation[month][hour].count += 1;
+  });
+
+  // 转换为 ECharts 需要的格式 [monthIndex, hourIndex, averageValue]
+  const data: [number, number, number][] = [];
+  let minVal = Infinity;
+  let maxVal = -Infinity;
+
+  for (let m = 0; m < 12; m++) {
+    for (let h = 0; h < 24; h++) {
+      const { sum, count } = aggregation[m][h];
+      if (count > 0) {
+        const avg = parseFloat((sum / count).toFixed(3));
+        data.push([m, h, avg]);
+        if (avg < minVal) minVal = avg;
+        if (avg > maxVal) maxVal = avg;
+      }
+    }
+  }
+
+  // 如果没有数据，避免 min/max 为 Infinity
+  if (minVal === Infinity) minVal = 0;
+  if (maxVal === -Infinity) maxVal = 100;
+
+  const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+  const hours = Array.from({length: 24}, (_, i) => `${i}点`);
+
+  return {
+    title: {
+        text: `${props.selectedColumn} 月份-小时热力图`,
+        left: 'center',
+        textStyle: {
+          fontSize: 16,
+          fontWeight: "bold",
+        },
+    },
+    tooltip: {
+        position: 'top',
+        formatter: function (params: any) {
+            return `${months[params.value[0]]} ${hours[params.value[1]]}<br />平均值: ${params.value[2]}`;
+        }
+    },
+    toolbox: getCommonToolbox(),
+    grid: {
+        height: '70%',
+        top: '10%',
+        left: '10%',
+        right: '10%'
+    },
+    xAxis: {
+        type: 'category',
+        data: months,
+        splitArea: {
+            show: true
+        }
+    },
+    yAxis: {
+        type: 'category',
+        data: hours,
+        splitArea: {
+            show: true
+        }
+    },
+    visualMap: {
+        min: minVal,
+        max: maxVal,
+        calculable: true,
+        orient: 'horizontal',
+        left: 'center',
+        bottom: '5%',
+        inRange: {
+            color: ['#f6efa6', '#d88273', '#bf444c'] // 经典热力图配色
+        }
+    },
+    series: [{
+        name: 'Heatmap',
+        type: 'heatmap',
+        data: data,
+        label: {
+            show: false
+        },
+        emphasis: {
+            itemStyle: {
+                shadowBlur: 10,
+                shadowColor: 'rgba(0, 0, 0, 0.5)'
+            }
+        }
+    }]
+  };
+};
+
 // 获取当前图表配置
 const getChartOption = computed(() => {
   console.log("getChartOption 计算属性被调用:", {
@@ -909,6 +1080,24 @@ const getChartOption = computed(() => {
 
     console.log("时间序列数据:", timeData.slice(0, 3), "...总共", timeData.length, "个点");
     return getScatterOption(timeData);
+  } else if (props.chartType === "heatmap") {
+    // 热力图逻辑
+    let timeData: Array<{ time: string; value: number }>;
+    if (props.csvData && props.csvData.tableData.length > 0) {
+      console.log("使用真实CSV数据生成热力图");
+      timeData = extractTimeSeriesFromCsv(props.csvData, props.selectedColumn);
+    } else {
+      console.log("使用模拟数据生成热力图");
+      timeData = generateTimeSeriesData(props.selectedColumn);
+    }
+
+    if (timeData.length === 0) {
+      console.log("提取的时间序列数据为空，使用模拟数据");
+      timeData = generateTimeSeriesData(props.selectedColumn);
+    }
+
+    console.log("热力图数据:", timeData.slice(0, 3), "...总共", timeData.length, "个点");
+    return getHeatmapOption(timeData);
   } else if (props.chartType === "cdf") {
     // 优先使用真实数据，如果没有则使用模拟数据
     let data: number[];

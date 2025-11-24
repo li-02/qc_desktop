@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted } from "vue";
 import { ElMessage, ElNotification } from "element-plus";
 import { Download, Refresh, InfoFilled, Setting } from "@element-plus/icons-vue";
 import type { DatasetInfo } from "@shared/types/projectInterface";
-import CorrelationAnalysisChart from "@/components/charts/CorrelationAnalysisChart.vue";
+import CorrelationAnalysisChart from "../charts/CorrelationAnalysisChart.vue";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
 
 interface Props {

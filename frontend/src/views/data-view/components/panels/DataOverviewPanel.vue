@@ -2,30 +2,36 @@
 import { ref, computed, watch, onMounted } from "vue";
 import { ElMessage } from "element-plus";
 import { Loading, Refresh, Search, InfoFilled, TrendCharts, DocumentDelete, Connection } from "@element-plus/icons-vue";
-import { useDatasetStore } from "@/stores/useDatasetStore.ts";
-import DataVisualizationChart from "@/components/charts/DataVisualizationChart.vue";
+import { useDatasetStore } from "@/stores/useDatasetStore";
+import DataVisualizationChart from "../charts/DataVisualizationChart.vue";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
 
 const datasetStore = useDatasetStore();
 const datasetInfo = computed(() => datasetStore.currentDataset);
+const versions = computed(() => datasetStore.versions);
+const currentVersion = computed({
+  get: () => datasetStore.currentVersion?.id,
+  set: (val) => {
+    if (val) datasetStore.setCurrentVersion(val);
+  }
+});
+const currentVersionStats = computed(() => datasetStore.currentVersionStats);
 
 // 总缺失值数量
 const missingValueCount = computed(() => {
-  if (!datasetInfo.value?.originalFile?.dataQuality) return 0;
-  return datasetInfo.value.originalFile.dataQuality.totalMissingCount || 0;
+  return currentVersionStats.value?.totalMissingCount || 0;
 });
 
 const columnNumber = computed(() => {
-  return datasetInfo.value?.originalFile?.columns?.length || 0;
+  return currentVersionStats.value?.totalCols || 0;
 });
 
 const rowNumber = computed(() => {
-  return datasetInfo.value?.originalFile?.rows || 0;
+  return currentVersionStats.value?.totalRows || 0;
 });
 
 const dataQualityPercentage = computed(() => {
-  if (!datasetInfo.value?.originalFile) return 0;
-  const totalRows = datasetInfo.value.originalFile.rows || 0;
+  const totalRows = rowNumber.value;
   const totalCells = totalRows * columnNumber.value;
   const missingCells = missingValueCount.value;
   if (totalCells === 0) return 0;
@@ -34,49 +40,44 @@ const dataQualityPercentage = computed(() => {
 
 // 完整记录数量
 const completeRecords = computed(() => {
-  if (!datasetInfo.value?.originalFile?.dataQuality) return 0;
-  return datasetInfo.value.originalFile.dataQuality.completeRecords || 0;
+  // Approximate if not available directly
+  return rowNumber.value - (currentVersionStats.value?.totalMissingCount || 0); // This is rough, ideally backend provides it
 });
 
 const columns = computed(() => {
-  // 模拟基于你的实际数据格式的列缺失状态
-  const mockColumnMissingStatus = {
-    TIMESTAMP: 0, // 时间戳没有缺失
-    RH: 1, // 相对湿度有1个缺失值
-    NEE_VUT_REF: 3, // 净生态系统交换有3个缺失值
-    TS_F_MDS_1: 0, // 土壤温度没有缺失
-    SWC_F_MDS_1: 2, // 土壤含水量有2个缺失值
-    VPD_F_MDS: 1, // 水汽压差有1个缺失值
-    TA_F_MDS: 0, // 空气温度没有缺失
-    NETRAD: 4, // 净辐射有4个缺失值
-    SW_IN_F: 0, // 短波入射辐射没有缺失
-  };
-
-  return datasetInfo.value?.originalFile?.dataQuality?.columnMissingStatus || mockColumnMissingStatus;
+  const statsObj = currentVersionStats.value?.columnStats;
+  if (statsObj) {
+    // New format with nested structure
+    if (statsObj.columnMissingStatus) {
+      return statsObj.columnMissingStatus;
+    }
+    // Old format (direct map) or fallback
+    // Check if values are numbers (old format)
+    const values = Object.values(statsObj);
+    if (values.length > 0 && typeof values[0] === 'number') {
+       return statsObj;
+    }
+  }
+  return {};
 });
 
 // 数值列过滤 - 基于你的实际数据列名
 const numericColumns = computed(() => {
-  if (!datasetInfo.value?.originalFile?.columns) return [];
-
-  // 你的实际数据列名
-  const actualColumns = [
-    { name: "TIMESTAMP", type: "datetime" },
-    { name: "RH", type: "numeric" },
-    { name: "NEE_VUT_REF", type: "numeric" },
-    { name: "TS_F_MDS_1", type: "numeric" },
-    { name: "SWC_F_MDS_1", type: "numeric" },
-    { name: "VPD_F_MDS", type: "numeric" },
-    { name: "TA_F_MDS", type: "numeric" },
-    { name: "NETRAD", type: "numeric" },
-    { name: "SW_IN_F", type: "numeric" },
-  ];
-
-  // 返回数值列（排除时间列）
-  return actualColumns.filter(col => col.type === "numeric");
-});
-
-// Emits
+  const statsObj = currentVersionStats.value?.columnStats;
+  if (statsObj) {
+     // If we have detailed stats, use them to identify numeric columns
+     if (statsObj.columnStatistics) {
+         return Object.keys(statsObj.columnStatistics).map(name => ({ name, type: 'numeric' }));
+     }
+     // Fallback to all columns if we only have missing status
+     if (statsObj.columnMissingStatus) {
+         return Object.keys(statsObj.columnMissingStatus).map(name => ({ name, type: 'numeric' }));
+     }
+     // Old format fallback
+     return Object.keys(statsObj).map(name => ({ name, type: 'numeric' }));
+  }
+  return datasetInfo.value?.originalFile?.columns?.map(name => ({ name, type: 'numeric' })) || [];
+});// Emits
 const emit = defineEmits<{
   refresh: [];
 }>();
@@ -139,9 +140,23 @@ const getColumnTooltip = (col: { type: string; missingCount: number; uniqueCount
 };
 
 const getColumnStats = (columnName: string) => {
-  // 如果有从后端返回的统计信息，使用真实数据
+  // 1. 优先使用后端预计算的统计信息
+  const statsObj = currentVersionStats.value?.columnStats;
+  if (statsObj && statsObj.columnStatistics && statsObj.columnStatistics[columnName]) {
+      const s = statsObj.columnStatistics[columnName];
+      return {
+          mean: typeof s.mean === 'number' ? s.mean.toFixed(2) : s.mean,
+          std: typeof s.std === 'number' ? s.std.toFixed(2) : s.std,
+          min: typeof s.min === 'number' ? s.min.toFixed(2) : s.min,
+          max: typeof s.max === 'number' ? s.max.toFixed(2) : s.max,
+          minTimestamp: '', // 后端暂未计算时间戳
+          maxTimestamp: ''
+      };
+  }
+
+  // 2. 如果有从后端返回的实时统计信息（CSV读取），使用它
   if (columnStatistics.value && selectedColumn.value === columnName) {
-    return {
+      return {
       mean: columnStatistics.value.mean.toFixed(2),
       std: columnStatistics.value.std.toFixed(2),
       min: columnStatistics.value.min.toFixed(2),
@@ -151,7 +166,7 @@ const getColumnStats = (columnName: string) => {
     };
   }
 
-  // 否则返回默认值（当数据未加载时）
+    // 否则返回默认值（当数据未加载时）
   return {
     mean: "加载中...",
     std: "加载中...",
@@ -256,8 +271,7 @@ const updateChartType = () => {
 
   const chartTypeNames: Record<string, string> = {
     scatter: "时间序列图",
-    histogram: "分布直方图",
-    cdf: "累计分布函数图",
+    heatmap: "热力图 (月-时)",
   };
 
   ElMessage.success(`已切换到${chartTypeNames[chartType.value] || "图表"}视图`);
@@ -329,11 +343,21 @@ onMounted(() => {
         <div class="stats-section">
           <div class="section-header">
             <div class="section-title">📊 数据统计摘要</div>
-            <button class="action-btn refresh-btn" @click="$emit('refresh')" :disabled="refreshing" title="刷新数据">
-              <el-icon class="action-icon" :class="{ spinning: refreshing }">
-                <Refresh />
-              </el-icon>
-            </button>
+            <div class="header-controls" style="display: flex; align-items: center;">
+              <el-select v-model="currentVersion" placeholder="选择版本" size="small" style="width: 200px; margin-right: 10px;">
+                <el-option
+                  v-for="v in versions"
+                  :key="v.id"
+                  :label="`${v.stageType} (${new Date(v.createdAt).toLocaleDateString()})`"
+                  :value="v.id"
+                />
+              </el-select>
+              <button class="action-btn refresh-btn" @click="$emit('refresh')" :disabled="refreshing" title="刷新数据">
+                <el-icon class="action-icon" :class="{ spinning: refreshing }">
+                  <Refresh />
+                </el-icon>
+              </button>
+            </div>
           </div>
 
           <div class="stats-cards">
@@ -448,8 +472,7 @@ onMounted(() => {
             </el-select>
             <el-select v-model="chartType" size="small" class="chart-select" @change="updateChartType">
               <el-option label="时间序列" value="scatter" />
-              <el-option label="分布直方图" value="histogram" />
-              <el-option label="累计分布函数" value="cdf" />
+              <el-option label="热力图 (月-时)" value="heatmap" />
             </el-select>
           </div>
         </div>
@@ -468,7 +491,7 @@ onMounted(() => {
           
           <DataVisualizationChart
             :selected-column="selectedColumn"
-            :chart-type="chartType as 'histogram' | 'scatter' | 'cdf'"
+            :chart-type="chartType as 'histogram' | 'scatter' | 'cdf' | 'heatmap'"
             :loading="chartLoading"
             :csv-data="csvData" />
         </div>

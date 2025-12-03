@@ -40,6 +40,17 @@ export class DatabaseManager {
   private initSchema(): void {
     if (!this.db) return;
 
+    this.initCoreTables();
+    this.initOutlierDetectionTables();
+    this.migrateSchema();
+  }
+
+  /**
+   * 初始化核心表结构
+   */
+  private initCoreTables(): void {
+    if (!this.db) return;
+
     // 3.2.1 站点表 (sys_site)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS sys_site (
@@ -73,7 +84,7 @@ export class DatabaseManager {
       );
     `);
 
-    // 3.2.3 列配置表 (conf_column_setting)
+    // 3.2.3 列配置表 (conf_column_setting) - 扩展支持异常检测阈值
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS conf_column_setting (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,6 +94,12 @@ export class DatabaseManager {
         data_type TEXT,
         min_threshold REAL,
         max_threshold REAL,
+        physical_min REAL,
+        physical_max REAL,
+        warning_min REAL,
+        warning_max REAL,
+        unit TEXT,
+        variable_type TEXT,
         is_active BOOLEAN DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -128,5 +145,112 @@ export class DatabaseManager {
         FOREIGN KEY (version_id) REFERENCES biz_dataset_version(id) ON DELETE CASCADE
       );
     `);
+  }
+
+  /**
+   * 初始化异常检测相关表结构
+   */
+  private initOutlierDetectionTables(): void {
+    if (!this.db) return;
+
+    // 异常检测配置表 (conf_outlier_detection)
+    // 支持三级作用域: APP(全局) / SITE(站点) / DATASET(数据集)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS conf_outlier_detection (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scope_type TEXT NOT NULL CHECK(scope_type IN ('APP', 'SITE', 'DATASET')),
+        scope_id INTEGER,
+        column_name TEXT,
+        detection_method TEXT NOT NULL,
+        method_params TEXT,
+        priority INTEGER DEFAULT 0,
+        is_active BOOLEAN DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        deleted_at DATETIME,
+        is_del BOOLEAN DEFAULT 0
+      );
+    `);
+
+    // 异常检测结果表 (biz_outlier_result)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS biz_outlier_result (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        version_id INTEGER NOT NULL,
+        detection_config_id INTEGER,
+        column_name TEXT NOT NULL,
+        detection_method TEXT NOT NULL,
+        outlier_indices TEXT,
+        outlier_count INTEGER DEFAULT 0,
+        detection_params TEXT,
+        executed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        status TEXT DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'APPLIED', 'REVERTED')),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        deleted_at DATETIME,
+        is_del BOOLEAN DEFAULT 0,
+        FOREIGN KEY (version_id) REFERENCES biz_dataset_version(id) ON DELETE CASCADE,
+        FOREIGN KEY (detection_config_id) REFERENCES conf_outlier_detection(id)
+      );
+    `);
+
+    // 异常值详情表 (biz_outlier_detail)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS biz_outlier_detail (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        result_id INTEGER NOT NULL,
+        row_index INTEGER NOT NULL,
+        original_value REAL,
+        action TEXT DEFAULT 'FLAGGED' CHECK(action IN ('FLAGGED', 'REMOVED', 'REPLACED')),
+        replaced_value REAL,
+        is_confirmed BOOLEAN DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        deleted_at DATETIME,
+        is_del BOOLEAN DEFAULT 0,
+        FOREIGN KEY (result_id) REFERENCES biz_outlier_result(id) ON DELETE CASCADE
+      );
+    `);
+
+    // 创建索引以提升查询性能
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_outlier_detection_scope 
+        ON conf_outlier_detection(scope_type, scope_id, column_name);
+      
+      CREATE INDEX IF NOT EXISTS idx_outlier_result_version 
+        ON biz_outlier_result(version_id, column_name);
+      
+      CREATE INDEX IF NOT EXISTS idx_outlier_detail_result 
+        ON biz_outlier_detail(result_id, row_index);
+    `);
+  }
+
+  /**
+   * 数据库迁移 - 为现有表添加新字段
+   */
+  private migrateSchema(): void {
+    if (!this.db) return;
+
+    // 检查并添加 conf_column_setting 表的新字段
+    const columnInfo = this.db
+      .prepare("PRAGMA table_info(conf_column_setting)")
+      .all() as { name: string }[];
+    
+    const existingColumns = new Set(columnInfo.map(c => c.name));
+
+    const newColumns = [
+      { name: 'physical_min', type: 'REAL' },
+      { name: 'physical_max', type: 'REAL' },
+      { name: 'warning_min', type: 'REAL' },
+      { name: 'warning_max', type: 'REAL' },
+      { name: 'unit', type: 'TEXT' },
+      { name: 'variable_type', type: 'TEXT' }
+    ];
+
+    for (const col of newColumns) {
+      if (!existingColumns.has(col.name)) {
+        this.db.exec(`ALTER TABLE conf_column_setting ADD COLUMN ${col.name} ${col.type};`);
+      }
+    }
   }
 }

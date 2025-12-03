@@ -479,7 +479,7 @@ onMounted(() => {
 
         <!-- 图表容器 -->
         <div class="chart-container">
-          <!-- 性能优化提示 -->
+          <!-- 性能优化提示
           <div 
             v-if="csvData && csvData.tableData && csvData.tableData.length > 2000 && chartType === 'scatter'" 
             class="performance-tip">
@@ -487,7 +487,7 @@ onMounted(() => {
             <div class="tip-text">
               检测到大数据集 ({{ csvData.tableData.length.toLocaleString() }} 个点)，已自动启用性能优化采样
             </div>
-          </div>
+          </div> -->
           
           <DataVisualizationChart
             :selected-column="selectedColumn"

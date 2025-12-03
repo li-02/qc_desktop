@@ -138,7 +138,7 @@ export class FileController extends BaseController {
           .map((row: any) => ({
             [columnName]: row[columnName],
             // 如果有时间列，也一并返回（用于时间序列图）
-            TIMESTAMP: row.TIMESTAMP || row.timestamp || row.time || row.date,
+            TIMESTAMP: row.TIMESTAMP || row.timestamp || row.time || row.date || row.record_time || row.Record_Time || row.RECORD_TIME || row.datetime || row.DateTime || row.DATETIME,
           }))
           .filter((row: any) => row[columnName] !== undefined && row[columnName] !== null);
 
@@ -176,7 +176,7 @@ export class FileController extends BaseController {
     const validDataWithTimestamp = data
       .map(row => ({
         value: row[columnName],
-        timestamp: row.TIMESTAMP || row.timestamp || row.time || row.date
+        timestamp: row.TIMESTAMP || row.timestamp || row.time || row.date || row.record_time || row.Record_Time || row.RECORD_TIME || row.datetime || row.DateTime || row.DATETIME
       }))
       .filter(item => 
         item.value !== null && 

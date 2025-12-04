@@ -1,13 +1,29 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
 import { ElMessage } from "element-plus";
-import { Loading, Refresh, Search, InfoFilled, TrendCharts, DocumentDelete, Connection } from "@element-plus/icons-vue";
+import { Loading, Refresh, Search } from "@element-plus/icons-vue";
 import { useDatasetStore } from "@/stores/useDatasetStore";
+import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import DataVisualizationChart from "../charts/DataVisualizationChart.vue";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
+import type { OutlierResult } from "@shared/types/database";
 
 const datasetStore = useDatasetStore();
+const outlierStore = useOutlierDetectionStore();
 const datasetInfo = computed(() => datasetStore.currentDataset);
+
+// 异常检测结果
+const outlierResults = ref<OutlierResult[]>([]);
+const latestOutlierResult = computed(() => {
+  const completed = outlierResults.value.filter(r => r.status === 'COMPLETED');
+  return completed.length > 0 ? completed[0] : null;
+});
+const totalOutlierCount = computed(() => latestOutlierResult.value?.outlier_count || 0);
+const outlierRate = computed(() => {
+  if (!latestOutlierResult.value) return 0;
+  const rate = (latestOutlierResult.value as any).outlier_rate;
+  return typeof rate === 'number' ? rate : 0;
+});
 const versions = computed(() => datasetStore.versions);
 const currentVersion = computed({
   get: () => datasetStore.currentVersion?.id,
@@ -316,10 +332,33 @@ watch(
   }
 );
 
+// 加载异常检测结果
+const loadOutlierResults = async () => {
+  if (!datasetInfo.value?.id) return;
+  const results = await outlierStore.getDetectionResults(String(datasetInfo.value.id));
+  outlierResults.value = results || [];
+};
+
+// 监听数据集变化，加载异常结果
+watch(
+  () => datasetInfo.value?.id,
+  (newId) => {
+    if (newId) {
+      loadOutlierResults();
+    } else {
+      outlierResults.value = [];
+    }
+  },
+  { immediate: true }
+);
+
 // 组件挂载时，如果已有选中列则加载数据
 onMounted(() => {
   if (selectedColumn.value && datasetInfo.value) {
     loadCsvData();
+  }
+  if (datasetInfo.value?.id) {
+    loadOutlierResults();
   }
 });
 </script>
@@ -390,6 +429,15 @@ onMounted(() => {
               <div class="stat-content">
                 <div class="stat-value">{{ completeRecords.toLocaleString() }}</div>
                 <div class="stat-label">完整记录</div>
+              </div>
+            </div>
+
+            <div class="stat-card" :class="totalOutlierCount > 0 ? 'danger' : 'info'">
+              <div class="stat-icon outlier">🔴</div>
+              <div class="stat-content">
+                <div class="stat-value">{{ totalOutlierCount.toLocaleString() }}</div>
+                <div class="stat-label">异常值</div>
+                <div v-if="outlierRate > 0" class="stat-sub">{{ outlierRate.toFixed(2) }}%</div>
               </div>
             </div>
           </div>
@@ -790,6 +838,14 @@ onMounted(() => {
   background: linear-gradient(to bottom, #10b981, #059669);
 }
 
+.stat-card.danger::before {
+  background: linear-gradient(to bottom, #ef4444, #dc2626);
+}
+
+.stat-card.info::before {
+  background: linear-gradient(to bottom, #6b7280, #4b5563);
+}
+
 .stat-card:hover {
   background: rgba(255, 255, 255, 1);
   border-color: rgba(229, 231, 235, 0.6);
@@ -829,6 +885,14 @@ onMounted(() => {
   background: linear-gradient(135deg, #10b981, #059669);
 }
 
+.stat-card.danger .stat-icon {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+}
+
+.stat-card.info .stat-icon {
+  background: linear-gradient(135deg, #6b7280, #4b5563);
+}
+
 .stat-content {
   flex: 1;
   min-width: 0;
@@ -845,6 +909,12 @@ onMounted(() => {
   font-size: 11px;
   color: #6b7280;
   font-weight: 500;
+}
+
+.stat-sub {
+  font-size: 10px;
+  color: #9ca3af;
+  margin-top: 2px;
 }
 
 /* 数据质量指示器 */

@@ -103,7 +103,7 @@ export type OutlierAction = 'FLAGGED' | 'REMOVED' | 'REPLACED';
 /**
  * 检测结果状态
  */
-export type OutlierResultStatus = 'PENDING' | 'APPLIED' | 'REVERTED';
+export type OutlierResultStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'APPLIED' | 'REVERTED';
 
 /**
  * 异常检测配置表 (conf_outlier_detection)

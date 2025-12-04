@@ -242,7 +242,76 @@ export class OutlierDetectionRepository {
   // ==================== 检测结果管理 ====================
 
   /**
-   * 创建检测结果
+   * 创建检测结果 (新版，支持 dataset_id)
+   */
+  createDetectionResult(result: {
+    dataset_id: number;
+    version_id: number;
+    detection_method: string;
+    method_params?: string;
+    status: string;
+    column_name?: string;
+  }): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO biz_outlier_result 
+        (version_id, detection_method, detection_params, executed_at, status, dataset_id, column_name)
+      VALUES (?, ?, ?, datetime('now'), ?, ?, ?)
+    `);
+
+    const insertResult = stmt.run(
+      result.version_id,
+      result.detection_method,
+      result.method_params ?? null,
+      result.status,
+      result.dataset_id,
+      result.column_name ?? '_MULTI_COLUMN_'
+    );
+
+    return insertResult.lastInsertRowid as number;
+  }
+
+  /**
+   * 更新检测结果
+   */
+  updateDetectionResult(id: number, updates: {
+    status?: string;
+    total_rows?: number;
+    outlier_count?: number;
+    outlier_rate?: number;
+  }): boolean {
+    const fields: string[] = [];
+    const values: (string | number | null)[] = [];
+
+    if (updates.status !== undefined) {
+      fields.push('status = ?');
+      values.push(updates.status);
+    }
+    if (updates.total_rows !== undefined) {
+      fields.push('total_rows = ?');
+      values.push(updates.total_rows);
+    }
+    if (updates.outlier_count !== undefined) {
+      fields.push('outlier_count = ?');
+      values.push(updates.outlier_count);
+    }
+    if (updates.outlier_rate !== undefined) {
+      fields.push('outlier_rate = ?');
+      values.push(updates.outlier_rate);
+    }
+
+    if (fields.length === 0) return false;
+
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(id);
+
+    const sql = `UPDATE biz_outlier_result SET ${fields.join(', ')} WHERE id = ?`;
+    const result = this.db.prepare(sql).run(...values);
+
+    return result.changes > 0;
+  }
+
+  /**
+   * 创建检测结果 (旧版兼容)
    */
   createOutlierResult(result: Omit<OutlierResult, 'id' | 'created_at' | 'updated_at' | 'deleted_at' | 'is_del'>): number {
     const stmt = this.db.prepare(`
@@ -268,6 +337,19 @@ export class OutlierDetectionRepository {
   }
 
   /**
+   * 获取数据集的检测结果
+   */
+  getDetectionResults(datasetId: number): OutlierResult[] {
+    return this.db
+      .prepare(`
+        SELECT * FROM biz_outlier_result 
+        WHERE dataset_id = ? AND is_del = 0 
+        ORDER BY executed_at DESC
+      `)
+      .all(datasetId) as OutlierResult[];
+  }
+
+  /**
    * 获取版本的检测结果
    */
   getOutlierResults(versionId: number, columnName?: string): OutlierResult[] {
@@ -285,6 +367,21 @@ export class OutlierDetectionRepository {
     sql += ' ORDER BY executed_at DESC';
 
     return this.db.prepare(sql).all(...params) as OutlierResult[];
+  }
+
+  /**
+   * 删除检测结果
+   */
+  deleteDetectionResult(id: number): boolean {
+    const result = this.db
+      .prepare(`
+        UPDATE biz_outlier_result 
+        SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = ?
+      `)
+      .run(id);
+
+    return result.changes > 0;
   }
 
   /**
@@ -365,16 +462,101 @@ export class OutlierDetectionRepository {
   }
 
   /**
-   * 获取检测结果的详情
+   * 获取检测结果的详情 (支持分页和列筛选)
    */
-  getOutlierDetails(resultId: number): OutlierDetail[] {
-    return this.db
+  getOutlierDetails(
+    resultId: number,
+    columnName?: string,
+    limit: number = 100,
+    offset: number = 0
+  ): OutlierDetail[] {
+    let sql = `
+      SELECT * FROM biz_outlier_detail 
+      WHERE result_id = ? AND is_del = 0
+    `;
+    const params: (number | string)[] = [resultId];
+
+    if (columnName) {
+      sql += ' AND column_name = ?';
+      params.push(columnName);
+    }
+
+    sql += ' ORDER BY row_index ASC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    return this.db.prepare(sql).all(...params) as OutlierDetail[];
+  }
+
+  /**
+   * 获取异常值详情数量
+   */
+  getOutlierDetailsCount(resultId: number, columnName?: string): number {
+    let sql = `
+      SELECT COUNT(*) as count FROM biz_outlier_detail 
+      WHERE result_id = ? AND is_del = 0
+    `;
+    const params: (number | string)[] = [resultId];
+
+    if (columnName) {
+      sql += ' AND column_name = ?';
+      params.push(columnName);
+    }
+
+    const result = this.db.prepare(sql).get(...params) as { count: number };
+    return result.count;
+  }
+
+  /**
+   * 批量创建异常值详情 (新版，支持更多字段)
+   */
+  batchCreateOutlierDetails(
+    details: Array<{
+      result_id: number;
+      column_name: string;
+      row_index: number;
+      original_value: number;
+      outlier_type: string;
+      threshold_value: number;
+    }>
+  ): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO biz_outlier_detail 
+        (result_id, column_name, row_index, original_value, outlier_type, threshold_value, action)
+      VALUES (?, ?, ?, ?, ?, ?, 'FLAGGED')
+    `);
+
+    let count = 0;
+    const transaction = this.db.transaction(() => {
+      for (const detail of details) {
+        stmt.run(
+          detail.result_id,
+          detail.column_name,
+          detail.row_index,
+          detail.original_value,
+          detail.outlier_type,
+          detail.threshold_value
+        );
+        count++;
+      }
+    });
+
+    transaction();
+    return count;
+  }
+
+  /**
+   * 删除检测结果的所有详情
+   */
+  deleteOutlierDetails(resultId: number): boolean {
+    const result = this.db
       .prepare(`
-        SELECT * FROM biz_outlier_detail 
-        WHERE result_id = ? AND is_del = 0 
-        ORDER BY row_index ASC
+        UPDATE biz_outlier_detail 
+        SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
+        WHERE result_id = ?
       `)
-      .all(resultId) as OutlierDetail[];
+      .run(resultId);
+
+    return result.changes > 0;
   }
 
   /**

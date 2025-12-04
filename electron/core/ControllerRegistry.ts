@@ -4,12 +4,15 @@ import { IPCManager } from "./IPCManager";
 import { ProjectController } from "../controller/ProjectController";
 import { DatasetController } from "../controller/DatasetController";
 import { FileController } from "../controller/FileController";
+import { OutlierDetectionController } from "../controller/OutlierDetectionController";
 
 // 引入新的分层架构
 import { ProjectDBRepository } from "../repository/ProjectDBRepository";
 import { DatasetDBRepository } from "../repository/DatasetDBRepository";
+import { OutlierDetectionRepository } from "../repository/OutlierDetectionRepository";
 import { ProjectService } from "../service/ProjectService";
 import { DatasetService } from "../service/DatasetService";
+import { OutlierDetectionService } from "../service/OutlierDetectionService";
 
 /**
  * 控制器注册器 - 完整重构版
@@ -19,15 +22,18 @@ export class ControllerRegistry {
   // 数据访问层
   private projectRepository!: ProjectDBRepository;
   private datasetRepository!: DatasetDBRepository;
+  private outlierRepository!: OutlierDetectionRepository;
 
   // 业务逻辑层
   private projectService!: ProjectService;
   private datasetService!: DatasetService;
+  private outlierService!: OutlierDetectionService;
 
   // 控制器层
   private projectController!: ProjectController;
   private datasetController!: DatasetController;
   private fileController!: FileController;
+  private outlierController!: OutlierDetectionController;
 
   constructor(projectsDir: string) {
     this.initializeDependencies(projectsDir);
@@ -48,12 +54,18 @@ export class ControllerRegistry {
       this.datasetRepository = new DatasetDBRepository();
       console.log("✓ DatasetRepository 初始化完成");
 
+      this.outlierRepository = new OutlierDetectionRepository();
+      console.log("✓ OutlierDetectionRepository 初始化完成");
+
       // 2. 初始化业务逻辑层 (Service Layer)
       this.projectService = new ProjectService(this.projectRepository, this.datasetRepository);
       console.log("✓ ProjectService 初始化完成");
 
       this.datasetService = new DatasetService(this.datasetRepository, this.projectRepository);
       console.log("✓ DatasetService 初始化完成");
+
+      this.outlierService = new OutlierDetectionService(this.outlierRepository, this.datasetRepository);
+      console.log("✓ OutlierDetectionService 初始化完成");
 
       // 3. 初始化控制器层 (Controller Layer)
       this.projectController = new ProjectController(this.projectService);
@@ -64,6 +76,9 @@ export class ControllerRegistry {
 
       this.fileController = new FileController();
       console.log("✓ FileController 初始化完成");
+
+      this.outlierController = new OutlierDetectionController(this.outlierService);
+      console.log("✓ OutlierDetectionController 初始化完成");
 
       console.log("所有依赖关系初始化完成");
     } catch (error: any) {
@@ -80,6 +95,7 @@ export class ControllerRegistry {
       this.registerProjectRoutes();
       this.registerDatasetRoutes();
       this.registerFileRoutes();
+      this.registerOutlierDetectionRoutes();
 
       console.log("所有控制器路由已注册");
       console.log("已注册路由:", IPCManager.getRegisteredRoutes());
@@ -222,6 +238,102 @@ export class ControllerRegistry {
     });
 
     console.log(`文件处理路由注册完成，共 ${routes.length} 个路由`);
+  }
+
+  /**
+   * 注册异常检测相关路由
+   */
+  private registerOutlierDetectionRoutes() {
+    const routes = [
+      // 检测方法
+      {
+        path: "outlier/get-methods",
+        handler: this.outlierController.getDetectionMethods.bind(this.outlierController),
+        description: "获取可用检测方法",
+      },
+      // 列阈值配置
+      {
+        path: "outlier/get-column-thresholds",
+        handler: this.outlierController.getColumnThresholds.bind(this.outlierController),
+        description: "获取列阈值配置",
+      },
+      {
+        path: "outlier/update-column-threshold",
+        handler: this.outlierController.updateColumnThreshold.bind(this.outlierController),
+        description: "更新列阈值配置",
+      },
+      {
+        path: "outlier/batch-update-thresholds",
+        handler: this.outlierController.batchUpdateColumnThresholds.bind(this.outlierController),
+        description: "批量更新阈值配置",
+      },
+      // 阈值模板
+      {
+        path: "outlier/get-templates",
+        handler: this.outlierController.getThresholdTemplates.bind(this.outlierController),
+        description: "获取阈值模板",
+      },
+      {
+        path: "outlier/apply-template",
+        handler: this.outlierController.applyThresholdTemplate.bind(this.outlierController),
+        description: "应用阈值模板",
+      },
+      // 检测配置 (三级作用域)
+      {
+        path: "outlier/get-detection-configs",
+        handler: this.outlierController.getDetectionConfigs.bind(this.outlierController),
+        description: "获取检测配置",
+      },
+      {
+        path: "outlier/create-detection-config",
+        handler: this.outlierController.createDetectionConfig.bind(this.outlierController),
+        description: "创建检测配置",
+      },
+      {
+        path: "outlier/update-detection-config",
+        handler: this.outlierController.updateDetectionConfig.bind(this.outlierController),
+        description: "更新检测配置",
+      },
+      {
+        path: "outlier/delete-detection-config",
+        handler: this.outlierController.deleteDetectionConfig.bind(this.outlierController),
+        description: "删除检测配置",
+      },
+      // 阈值解析
+      {
+        path: "outlier/resolve-threshold",
+        handler: this.outlierController.resolveColumnThreshold.bind(this.outlierController),
+        description: "解析列阈值(考虑继承)",
+      },
+      // 检测执行
+      {
+        path: "outlier/execute-threshold-detection",
+        handler: this.outlierController.executeThresholdDetection.bind(this.outlierController),
+        description: "执行阈值检测",
+      },
+      {
+        path: "outlier/get-detection-results",
+        handler: this.outlierController.getDetectionResults.bind(this.outlierController),
+        description: "获取检测结果列表",
+      },
+      {
+        path: "outlier/get-result-details",
+        handler: this.outlierController.getDetectionResultDetails.bind(this.outlierController),
+        description: "获取检测结果详情",
+      },
+      {
+        path: "outlier/delete-detection-result",
+        handler: this.outlierController.deleteDetectionResult.bind(this.outlierController),
+        description: "删除检测结果",
+      },
+    ];
+
+    routes.forEach(route => {
+      IPCManager.registerRoute(route.path, route.handler);
+      console.log(`✓ 注册路由: ${route.path} - ${route.description}`);
+    });
+
+    console.log(`异常检测路由注册完成，共 ${routes.length} 个路由`);
   }
 
   /**

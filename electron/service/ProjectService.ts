@@ -87,9 +87,41 @@ export class ProjectService {
       if (isNaN(id)) {
         return { success: false, error: "无效的项目ID" };
       }
+      
+      // 级联软删除数据集
+      const datasetsResult = this.datasetRepository.getDatasetsBySiteId(id);
+      if (datasetsResult.success && datasetsResult.data) {
+        for (const dataset of datasetsResult.data) {
+          await this.datasetRepository.deleteDataset(dataset.id);
+        }
+      }
+
       return this.projectRepository.deleteProject(id);
     } catch (error: any) {
       return { success: false, error: `删除项目失败: ${error.message}` };
+    }
+  }
+
+  async batchDeleteProjects(projectIds: string[]): Promise<ServiceResponse<void>> {
+    try {
+      const ids = projectIds.map(id => parseInt(id)).filter(id => !isNaN(id));
+      if (ids.length === 0) {
+        return { success: true };
+      }
+
+      // 级联软删除数据集
+      for (const id of ids) {
+        const datasetsResult = this.datasetRepository.getDatasetsBySiteId(id);
+        if (datasetsResult.success && datasetsResult.data) {
+          for (const dataset of datasetsResult.data) {
+            await this.datasetRepository.deleteDataset(dataset.id);
+          }
+        }
+      }
+
+      return this.projectRepository.batchDeleteProjects(ids);
+    } catch (error: any) {
+      return { success: false, error: `批量删除项目失败: ${error.message}` };
     }
   }
 

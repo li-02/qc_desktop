@@ -123,6 +123,33 @@ export const useProjectStore = defineStore("project", () => {
     }
   };
 
+  const batchDeleteProjects = async (projectIds: string[]) => {
+    if (!window.electronAPI) {
+      throw new Error("electron API not available");
+    }
+    try {
+      loading.value = true;
+      const result = await window.electronAPI.invoke("projects/batch-delete", { projectIds });
+
+      if (result.success) {
+        if (projectIds.includes(currentProject.value?.id || "")) {
+          currentProject.value = null;
+        }
+        await loadProjects();
+        ElMessage.success(`成功删除 ${projectIds.length} 个项目`);
+        return true;
+      } else {
+        throw new Error(result.error || "批量删除项目失败");
+      }
+    } catch (err: any) {
+      console.error("批量删除项目失败", err);
+      ElMessage.error(err.message || "批量删除项目失败");
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const checkProjectName = async (name: string): Promise<Result<boolean>> => {
     if (!window.electronAPI) {
       throw new Error("electron API not available");
@@ -153,6 +180,7 @@ export const useProjectStore = defineStore("project", () => {
     setCurrentProject,
     createProject,
     deleteProject,
+    batchDeleteProjects,
     checkProjectName,
     findProjectByDatasetId,
   };

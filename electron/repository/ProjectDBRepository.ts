@@ -60,8 +60,30 @@ export class ProjectDBRepository {
 
   deleteProject(id: number): ServiceResponse<void> {
     try {
-      const stmt = this.db.prepare('DELETE FROM sys_site WHERE id = ?');
+      // Soft delete
+      const stmt = this.db.prepare(`
+        UPDATE sys_site 
+        SET is_del = 1, deleted_at = CURRENT_TIMESTAMP 
+        WHERE id = ?
+      `);
       stmt.run(id);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  batchDeleteProjects(ids: number[]): ServiceResponse<void> {
+    try {
+      if (ids.length === 0) return { success: true };
+      
+      const placeholders = ids.map(() => '?').join(',');
+      const stmt = this.db.prepare(`
+        UPDATE sys_site 
+        SET is_del = 1, deleted_at = CURRENT_TIMESTAMP 
+        WHERE id IN (${placeholders})
+      `);
+      stmt.run(...ids);
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };

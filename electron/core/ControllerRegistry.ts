@@ -5,6 +5,7 @@ import { ProjectController } from "../controller/ProjectController";
 import { DatasetController } from "../controller/DatasetController";
 import { FileController } from "../controller/FileController";
 import { OutlierDetectionController } from "../controller/OutlierDetectionController";
+import { CorrelationAnalysisController } from "../controller/CorrelationAnalysisController";
 
 // 引入新的分层架构
 import { ProjectDBRepository } from "../repository/ProjectDBRepository";
@@ -34,6 +35,7 @@ export class ControllerRegistry {
   private datasetController!: DatasetController;
   private fileController!: FileController;
   private outlierController!: OutlierDetectionController;
+  private correlationController!: CorrelationAnalysisController;
 
   constructor(projectsDir: string) {
     this.initializeDependencies(projectsDir);
@@ -80,6 +82,9 @@ export class ControllerRegistry {
       this.outlierController = new OutlierDetectionController(this.outlierService);
       console.log("✓ OutlierDetectionController 初始化完成");
 
+      this.correlationController = new CorrelationAnalysisController();
+      console.log("✓ CorrelationAnalysisController 初始化完成");
+
       console.log("所有依赖关系初始化完成");
     } catch (error: any) {
       console.error("依赖初始化失败:", error);
@@ -96,6 +101,7 @@ export class ControllerRegistry {
       this.registerDatasetRoutes();
       this.registerFileRoutes();
       this.registerOutlierDetectionRoutes();
+      this.registerCorrelationRoutes();
 
       console.log("所有控制器路由已注册");
       console.log("已注册路由:", IPCManager.getRegisteredRoutes());
@@ -134,6 +140,11 @@ export class ControllerRegistry {
         path: "projects/delete",
         handler: this.projectController.deleteProject.bind(this.projectController),
         description: "删除项目",
+      },
+      {
+        path: "projects/batch-delete",
+        handler: this.projectController.batchDeleteProjects.bind(this.projectController),
+        description: "批量删除项目",
       },
       {
         path: "projects/check-name",
@@ -334,6 +345,41 @@ export class ControllerRegistry {
     });
 
     console.log(`异常检测路由注册完成，共 ${routes.length} 个路由`);
+  }
+
+  /**
+   * 注册相关性分析路由
+   */
+  private registerCorrelationRoutes() {
+    const routes = [
+      {
+        path: "correlation/get-history",
+        handler: this.correlationController.getHistory.bind(this.correlationController),
+        description: "获取分析历史",
+      },
+      {
+        path: "correlation/analyze",
+        handler: this.correlationController.analyze.bind(this.correlationController),
+        description: "运行相关性分析",
+      },
+      {
+        path: "correlation/delete-result",
+        handler: this.correlationController.deleteResult.bind(this.correlationController),
+        description: "删除分析结果",
+      },
+      {
+        path: "correlation/batch-delete-results",
+        handler: this.correlationController.batchDeleteResults.bind(this.correlationController),
+        description: "批量删除分析结果",
+      },
+    ];
+
+    routes.forEach(route => {
+      IPCManager.registerRoute(route.path, route.handler);
+      console.log(`✓ 注册路由: ${route.path} - ${route.description}`);
+    });
+
+    console.log(`相关性分析路由注册完成，共 ${routes.length} 个路由`);
   }
 
   /**

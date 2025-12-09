@@ -42,6 +42,7 @@ export class DatabaseManager {
 
     this.initCoreTables();
     this.initOutlierDetectionTables();
+    this.initCorrelationAnalysisTables();
     this.migrateSchema();
   }
 
@@ -227,6 +228,32 @@ export class DatabaseManager {
       
       CREATE INDEX IF NOT EXISTS idx_outlier_detail_result 
         ON biz_outlier_detail(result_id, row_index);
+    `);
+  }
+
+  /**
+   * 初始化相关性分析相关表结构
+   */
+  private initCorrelationAnalysisTables(): void {
+    if (!this.db) return;
+
+    // 相关性分析结果表 (biz_correlation_result)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS biz_correlation_result (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 结果唯一标识
+        dataset_id INTEGER NOT NULL,           -- 数据集ID
+        version_id INTEGER,                    -- 数据版本ID
+        columns TEXT NOT NULL,                 -- 参与分析的列 (JSON数组)
+        method TEXT NOT NULL,                  -- 分析方法 (pearson/spearman/kendall)
+        result_matrix TEXT NOT NULL,           -- 结果矩阵 (JSON格式)
+        significance_level REAL,               -- 显著性水平
+        sample_size INTEGER,                   -- 样本大小
+        executed_at DATETIME DEFAULT CURRENT_TIMESTAMP,  -- 执行时间
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,   -- 创建时间
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,   -- 更新时间
+        deleted_at DATETIME,                   -- 删除时间
+        is_del BOOLEAN DEFAULT 0               -- 软删除标记
+      );
     `);
   }
 

@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
-import { ElMessage, ElNotification } from "element-plus";
-import { Download, Refresh, InfoFilled, Setting } from "@element-plus/icons-vue";
+import { ElMessage, ElNotification, ElMessageBox } from "element-plus";
+import { Download, Refresh, InfoFilled, Setting, Delete } from "@element-plus/icons-vue";
 import type { DatasetInfo } from "@shared/types/projectInterface";
+import type { CorrelationResult } from "@shared/types/database";
 import CorrelationAnalysisChart from "../charts/CorrelationAnalysisChart.vue";
-import { API_ROUTES } from "@shared/constants/apiRoutes";
 
 interface Props {
   datasetInfo?: DatasetInfo | null;
@@ -23,11 +23,17 @@ const emit = defineEmits<{
 // 响应式状态
 const analysisLoading = ref(false);
 const csvData = ref<any>(null);
+const currentCorrelationMatrix = ref<number[][] | null>(null);
 const selectedColumns = ref<string[]>([]);
 const analysisType = ref<"heatmap" | "scatter-matrix" | "network" | "time-lag">("heatmap");
 const correlationMethod = ref<"pearson" | "spearman" | "kendall">("pearson");
 const minCorrelation = ref(0.3);
 const showAdvancedSettings = ref(false);
+
+// 历史记录状态
+const analysisHistory = ref<CorrelationResult[]>([]);
+const selectedHistoryIds = ref<number[]>([]);
+const loadingHistory = ref(false);
 
 // 计算属性
 const datasetColumns = computed(() => {
@@ -111,17 +117,6 @@ const loadCsvData = async () => {
 
 // 生成模拟CSV数据
 const generateMockCsvData = () => {
-  const columns = [
-    "TIMESTAMP",
-    "RH",
-    "NEE_VUT_REF",
-    "TS_F_MDS_1",
-    "SWC_F_MDS_1",
-    "VPD_F_MDS",
-    "TA_F_MDS",
-    "NETRAD",
-    "SW_IN_F",
-  ];
   const tableData = [];
 
   const baseData = {
@@ -161,6 +156,91 @@ const generateMockCsvData = () => {
   };
 };
 
+// 加载历史记录
+const loadHistory = async () => {
+  if (!props.datasetInfo?.id) return;
+  try {
+    loadingHistory.value = true;
+    const results = await (window as any).electronAPI.invoke('correlation:getHistory', props.datasetInfo.id);
+    analysisHistory.value = results || [];
+  } catch (error) {
+    console.error("加载历史记录失败:", error);
+  } finally {
+    loadingHistory.value = false;
+  }
+};
+
+// 删除单条记录
+const deleteHistoryItem = async (id: number) => {
+  try {
+    await ElMessageBox.confirm('确定要删除这条分析记录吗？', '提示', {
+      type: 'warning',
+      confirmButtonText: '确定',
+      cancelButtonText: '取消'
+    });
+    
+    await (window as any).electronAPI.invoke('correlation:deleteResult', id);
+    ElMessage.success('删除成功');
+    loadHistory();
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('删除失败');
+    }
+  }
+};
+
+// 批量删除
+const batchDeleteHistory = async () => {
+  if (selectedHistoryIds.value.length === 0) return;
+  
+  try {
+    await ElMessageBox.confirm(`确定要删除选中的 ${selectedHistoryIds.value.length} 条记录吗？`, '提示', {
+      type: 'warning',
+      confirmButtonText: '确定',
+      cancelButtonText: '取消'
+    });
+    
+    await (window as any).electronAPI.invoke('correlation:batchDeleteResults', [...selectedHistoryIds.value]);
+    ElMessage.success('批量删除成功');
+    selectedHistoryIds.value = [];
+    loadHistory();
+  } catch (error) {
+     if (error !== 'cancel') {
+      ElMessage.error('批量删除失败');
+    }
+  }
+};
+
+// 查看历史结果
+const viewHistoryResult = (result: CorrelationResult) => {
+  try {
+    currentCorrelationMatrix.value = JSON.parse(result.result_matrix);
+    selectedColumns.value = JSON.parse(result.columns);
+    correlationMethod.value = result.method as any;
+    
+    // 如果没有 CSV 数据（因为是历史记录），尝试加载
+    if (!csvData.value) {
+      loadCsvData();
+    }
+  } catch (e) {
+    console.error("解析历史记录失败", e);
+    ElMessage.error("解析历史记录失败");
+  }
+};
+
+const formatTime = (timeStr: string) => {
+  return new Date(timeStr).toLocaleString();
+};
+
+const toggleHistorySelection = (id: number) => {
+  const index = selectedHistoryIds.value.indexOf(id);
+  if (index > -1) {
+    selectedHistoryIds.value.splice(index, 1);
+  } else {
+    selectedHistoryIds.value.push(id);
+  }
+};
+
 // 开始相关性分析
 const startAnalysis = async () => {
   if (selectedColumns.value.length < 2) {
@@ -172,12 +252,48 @@ const startAnalysis = async () => {
     await loadCsvData();
   }
 
-  ElNotification({
-    title: "相关性分析",
-    message: `正在分析 ${selectedColumns.value.length} 个变量的相关性...`,
-    type: "info",
-    duration: 2000,
-  });
+  try {
+    analysisLoading.value = true;
+    
+    // Call backend to analyze and save
+    if (props.datasetInfo?.id && props.datasetInfo?.originalFile?.filePath) {
+      const result = await (window as any).electronAPI.invoke('correlation:analyze', {
+        datasetId: props.datasetInfo.id,
+        versionId: props.datasetInfo.id,
+        filePath: props.datasetInfo.originalFile.filePath,
+        columns: selectedColumns.value,
+        method: correlationMethod.value,
+        missingValueTypes: []
+      });
+      
+      if (result.success) {
+        currentCorrelationMatrix.value = result.data.matrix;
+        ElNotification({
+          title: "相关性分析",
+          message: "分析完成并已保存",
+          type: "success",
+        });
+        loadHistory();
+      } else {
+        ElMessage.error(result.error || "分析失败");
+      }
+    } else {
+      // Fallback for demo
+      ElNotification({
+        title: "相关性分析",
+        message: `正在分析 ${selectedColumns.value.length} 个变量的相关性...`,
+        type: "info",
+        duration: 2000,
+      });
+      // Mock calculation happens in chart if matrix is null
+      currentCorrelationMatrix.value = null; 
+    }
+  } catch (error) {
+    console.error(error);
+    ElMessage.error("分析失败");
+  } finally {
+    analysisLoading.value = false;
+  }
 };
 
 // 快速选择预设变量组合
@@ -226,15 +342,24 @@ const resetSettings = () => {
 // 监听数据集变化
 watch(
   () => props.datasetInfo,
-  () => {
+  (newVal) => {
     selectedColumns.value = [];
     csvData.value = null;
-  }
+    currentCorrelationMatrix.value = null;
+    if (newVal?.id) {
+      loadHistory();
+    } else {
+      analysisHistory.value = [];
+    }
+  },
+  { immediate: true }
 );
 
-// 组件挂载时不自动进行分析，保持空状态
+// 组件挂载
 onMounted(() => {
-  // 组件启动时保持空状态，等待用户手动操作
+  if (props.datasetInfo?.id) {
+    loadHistory();
+  }
 });
 </script>
 
@@ -390,10 +515,60 @@ onMounted(() => {
       </div>
     </div>
 
+    <!-- 历史记录管理 (相关管理栏) -->
+    <div v-if="analysisHistory.length > 0" class="history-section">
+      <div class="section-header">
+        <div class="section-title">🕒 分析历史</div>
+        <div class="header-actions">
+          <el-button 
+            v-if="selectedHistoryIds.length > 0"
+            type="danger" 
+            size="small" 
+            :icon="Delete"
+            @click="batchDeleteHistory">
+            批量删除 ({{ selectedHistoryIds.length }})
+          </el-button>
+        </div>
+      </div>
+      
+      <div class="history-list">
+        <div 
+          v-for="item in analysisHistory" 
+          :key="item.id" 
+          class="history-item">
+          <div class="history-checkbox">
+            <el-checkbox 
+              :model-value="selectedHistoryIds.includes(item.id)"
+              @change="toggleHistorySelection(item.id)"
+            />
+          </div>
+          <div class="history-content" @click="viewHistoryResult(item)">
+            <div class="history-main">
+              <span class="history-method">{{ item.method }}</span>
+              <span class="history-size">样本: {{ item.sample_size }}</span>
+            </div>
+            <div class="history-meta">
+              {{ formatTime(item.executed_at) }}
+            </div>
+          </div>
+          <div class="history-actions">
+            <el-button 
+              type="danger" 
+              link 
+              size="small" 
+              @click.stop="deleteHistoryItem(item.id)">
+              <el-icon><Delete /></el-icon>
+            </el-button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 图表展示区域 -->
     <div class="chart-section">
       <CorrelationAnalysisChart
         :csv-data="csvData"
+        :correlation-matrix="currentCorrelationMatrix"
         :selected-columns="selectedColumns"
         :analysis-type="analysisType"
         :correlation-method="correlationMethod"
@@ -543,6 +718,87 @@ onMounted(() => {
   font-size: 13px;
   color: #6b7280;
   text-align: center;
+}
+
+/* 历史记录区域 */
+.history-section {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(229, 231, 235, 0.4);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(248, 250, 252, 0.5);
+  border: 1px solid rgba(229, 231, 235, 0.5);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.history-item:hover {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(16, 185, 129, 0.3);
+  transform: translateX(4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.history-checkbox {
+  margin-right: 12px;
+}
+
+.history-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.history-method {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 14px;
+  text-transform: capitalize;
+}
+
+.history-size {
+  font-size: 12px;
+  color: #6b7280;
+  background: rgba(229, 231, 235, 0.5);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.history-meta {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.history-actions {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.history-item:hover .history-actions {
+  opacity: 1;
 }
 
 /* 图表区域样式 */

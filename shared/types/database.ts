@@ -73,7 +73,22 @@ export interface ColumnStats {
   std_dev?: number;
 }
 
-// ==================== 异常检测相关类型 ====================
+
+/**
+ * 相关性分析结果表 (biz_correlation_result)
+ */
+export interface CorrelationResult extends BaseEntity {
+  id: number;
+  dataset_id: number;
+  version_id?: number;
+  columns: string; // JSON array of column names
+  method: 'pearson' | 'spearman' | 'kendall';
+  result_matrix: string; // JSON matrix
+  significance_level?: number;
+  sample_size: number;
+  executed_at: string;
+}
+
 
 /**
  * 异常检测配置作用域

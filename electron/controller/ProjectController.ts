@@ -162,6 +162,25 @@ export class ProjectController extends BaseController {
   }
 
   /**
+   * 批量删除项目
+   */
+  async batchDeleteProjects(args: { projectIds: string[] }, event: IpcMainInvokeEvent) {
+    return this.handleAsync(async () => {
+      if (!args.projectIds || !Array.isArray(args.projectIds) || args.projectIds.length === 0) {
+        throw new Error("项目ID列表不能为空");
+      }
+
+      const result = await this.projectService.batchDeleteProjects(args.projectIds);
+
+      if (!result.success) {
+        throw new Error(result.error || "批量删除项目失败");
+      }
+
+      return {};
+    });
+  }
+
+  /**
    * 检查项目名称
    */
   async checkProjectName(

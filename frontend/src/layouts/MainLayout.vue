@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRouter } from "vue-router";
 import emitter from "@/utils/eventBus";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { DataAnalysis, HomeFilled, Operation, PieChart, Plus, Upload, Expand, Fold } from "@element-plus/icons-vue";
+import { Plus, Refresh, ArrowDown, ArrowUp, CaretLeft, CaretRight, Sort, Delete, Files, Close } from "@element-plus/icons-vue";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 
@@ -13,19 +13,88 @@ const datasetStore = useDatasetStore();
 // 侧边栏状态
 const isCollapsed = ref(false);
 const expandedProjects = ref<Set<string>>(new Set());
+const isBatchMode = ref(false);
+const selectedProjectIds = ref<Set<string>>(new Set());
+
+// 排序状态
+const sortType = ref<'date' | 'name'>('date');
+const sortOrder = ref<'asc' | 'desc'>('asc');
+
+// 排序后的项目列表
+const sortedProjects = computed(() => {
+  const projects = [...projectStore.projects];
+  return projects.sort((a, b) => {
+    if (sortType.value === 'date') {
+      return sortOrder.value === 'asc' 
+        ? a.createdAt - b.createdAt 
+        : b.createdAt - a.createdAt;
+    } else {
+      return sortOrder.value === 'asc'
+        ? a.name.localeCompare(b.name)
+        : b.name.localeCompare(a.name);
+    }
+  });
+});
+
+// 处理排序命令
+const handleSortCommand = (command: string) => {
+  const [type, order] = command.split('-');
+  sortType.value = type as 'date' | 'name';
+  sortOrder.value = order as 'asc' | 'desc';
+};
+
+// 批量删除处理
+const toggleBatchMode = () => {
+  isBatchMode.value = !isBatchMode.value;
+  selectedProjectIds.value.clear();
+};
+
+const isAllSelected = computed(() => {
+  return sortedProjects.value.length > 0 && selectedProjectIds.value.size === sortedProjects.value.length;
+});
+
+const toggleSelectAll = (val: any) => {
+  if (val) {
+    sortedProjects.value.forEach(p => selectedProjectIds.value.add(p.id));
+  } else {
+    selectedProjectIds.value.clear();
+  }
+};
+
+const toggleProjectSelection = (projectId: string) => {
+  if (selectedProjectIds.value.has(projectId)) {
+    selectedProjectIds.value.delete(projectId);
+  } else {
+    selectedProjectIds.value.add(projectId);
+  }
+};
+
+const handleBatchDelete = async () => {
+  if (selectedProjectIds.value.size === 0) return;
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除选中的 ${selectedProjectIds.value.size} 个项目吗? 此操作不可恢复。`,
+      "批量删除项目",
+      {
+        confirmButtonText: "确定",
+        cancelButtonText: "取消",
+        type: "warning",
+      }
+    );
+
+    await projectStore.batchDeleteProjects(Array.from(selectedProjectIds.value));
+    selectedProjectIds.value.clear();
+    isBatchMode.value = false;
+  } catch (error) {
+    if (error !== "cancel") {
+      console.error(error);
+    }
+  }
+};
 
 // 路由相关
-const route = useRoute();
 const router = useRouter();
-const activeIndex = computed(() => route.path);
-
-// 主菜单项
-const mainMenuItems = [
-  { name: "首页", path: "/", icon: HomeFilled },
-  { name: "数据视图", path: "/data-view", icon: DataAnalysis },
-  { name: "异常值检测", path: "/outlier-detection", icon: Operation },
-  { name: "缺失值插补", path: "/missing-value-imputation", icon: PieChart },
-];
 
 // 侧边栏控制
 const toggleCollapse = () => {
@@ -223,23 +292,78 @@ onUnmounted(() => {
             <div class="app-subtitle">Eco Monitor Desktop</div>
           </div>
         </div>
-        <button class="collapse-btn" @click="toggleCollapse" :title="isCollapsed ? '展开侧边栏' : '折叠侧边栏'">
-          <el-icon class="collapse-icon">
-            <Expand v-if="isCollapsed" />
-            <Fold v-else />
-          </el-icon>
-        </button>
       </div>
+
+      <!-- 侧边栏折叠按钮 -->
+      <button class="collapse-btn" @click="toggleCollapse" :title="isCollapsed ? '展开侧边栏' : '折叠侧边栏'">
+        <el-icon class="collapse-icon">
+          <CaretRight v-if="isCollapsed" />
+          <CaretLeft v-else />
+        </el-icon>
+      </button>
 
       <!-- 项目管理区域 -->
       <div class="projects-section">
         <div class="section-header" v-show="!isCollapsed">
-          <div class="section-title">项目管理</div>
-          <div class="section-actions">
-            <button class="action-btn" @click="expandAllProjects" title="展开所有项目">⬇️</button>
-            <button class="action-btn" @click="collapseAllProjects" title="折叠所有项目">⬆️</button>
-            <button class="action-btn" @click="projectStore.loadProjects" title="刷新项目列表">🔄</button>
-            <button class="action-btn" @click="createNewProject" title="新建项目">➕</button>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div class="section-title">项目管理</div>
+            <span v-if="isBatchMode && selectedProjectIds.size > 0" style="font-size: 12px; color: #6b7280; background: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 4px;">
+              已选 {{ selectedProjectIds.size }}
+            </span>
+          </div>
+          
+          <!-- 批量模式操作栏 -->
+          <div v-if="isBatchMode" class="section-actions" style="align-items: center">
+            <el-checkbox
+              :model-value="isAllSelected"
+              @change="toggleSelectAll"
+              size="small"
+              style="margin-right: 8px; height: 24px;"
+            >全选</el-checkbox>
+            
+            <button 
+              class="action-btn delete-btn" 
+              @click="handleBatchDelete" 
+              title="删除选中"
+              :disabled="selectedProjectIds.size === 0"
+              :style="{ color: selectedProjectIds.size > 0 ? '#dc2626' : '#9ca3af' }">
+              <el-icon><Delete /></el-icon>
+            </button>
+            <button class="action-btn" @click="toggleBatchMode" title="退出批量模式">
+              <el-icon><Close /></el-icon>
+            </button>
+          </div>
+
+          <!-- 正常模式操作栏 -->
+          <div v-else class="section-actions">
+            <button class="action-btn" @click="projectStore.loadProjects" title="刷新项目列表">
+              <el-icon><Refresh /></el-icon>
+            </button>
+            <el-dropdown trigger="click" @command="handleSortCommand">
+              <button class="action-btn" title="排序">
+                <el-icon><Sort /></el-icon>
+              </button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="date-asc" :class="{ active: sortType === 'date' && sortOrder === 'asc' }">创建时间 (正序)</el-dropdown-item>
+                  <el-dropdown-item command="date-desc" :class="{ active: sortType === 'date' && sortOrder === 'desc' }">创建时间 (倒序)</el-dropdown-item>
+                  <el-dropdown-item command="name-asc" :class="{ active: sortType === 'name' && sortOrder === 'asc' }">项目名称 (正序)</el-dropdown-item>
+                  <el-dropdown-item command="name-desc" :class="{ active: sortType === 'name' && sortOrder === 'desc' }">项目名称 (倒序)</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+            <button class="action-btn" @click="expandAllProjects" title="展开所有项目">
+              <el-icon><ArrowDown /></el-icon>
+            </button>
+            <button class="action-btn" @click="collapseAllProjects" title="折叠所有项目">
+              <el-icon><ArrowUp /></el-icon>
+            </button>
+            <button class="action-btn" @click="toggleBatchMode" title="批量管理">
+              <el-icon><Files /></el-icon>
+            </button>
+            <button class="action-btn" @click="createNewProject" title="新建项目">
+              <el-icon><Plus /></el-icon>
+            </button>
           </div>
         </div>
 
@@ -258,27 +382,29 @@ onUnmounted(() => {
           <!-- 项目列表 -->
           <div v-else class="projects-container">
             <div
-              v-for="project in projectStore.projectsSortedByDate"
+              v-for="project in sortedProjects"
               :key="project.id"
               :class="[
                 'project-item',
                 {
                   active: projectStore.currentProject?.id === project.id,
+                  'batch-mode': isBatchMode
                 },
               ]"
-              @click="selectProject(project.id)">
+              @click="isBatchMode ? toggleProjectSelection(project.id) : selectProject(project.id)">
+              
+              <!-- 批量选择复选框 -->
+              <div v-if="isBatchMode" class="project-checkbox">
+                <el-checkbox
+                  :model-value="selectedProjectIds.has(project.id)"
+                  @change="toggleProjectSelection(project.id)"
+                  @click.stop
+                />
+              </div>
+
               <!-- 项目头部 -->
               <div class="project-header">
                 <div class="project-main">
-                  <button
-                    v-if="project.datasets?.length > 0"
-                    class="project-expand-btn"
-                    :class="{ expanded: isProjectExpanded(project.id) }"
-                    @click.stop="toggleProjectExpanded(project.id)">
-                    ▶
-                  </button>
-                  <div v-else class="project-expand-placeholder"></div>
-
                   <div class="project-icon">
                     {{ getProjectIcon(project.siteInfo) }}
                   </div>
@@ -295,15 +421,25 @@ onUnmounted(() => {
                   </div>
                 </div>
 
-                <div class="project-actions">
-                  <button class="project-action-btn" @click.stop="handleImportData(project.id)" title="上传数据">
-                    ➕
-                  </button>
+                <div class="project-right">
+                  <div class="project-actions">
+                    <button class="project-action-btn" @click.stop="handleImportData(project.id)" title="上传数据集">
+                      <el-icon><Plus /></el-icon>
+                    </button>
+                    <button
+                      class="project-action-btn delete-btn"
+                      @click.stop="confirmDeleteProject(project.id)"
+                      title="删除项目">
+                      <el-icon><Delete /></el-icon>
+                    </button>
+                  </div>
+
                   <button
-                    class="project-action-btn delete-btn"
-                    @click.stop="confirmDeleteProject(project.id)"
-                    title="删除项目">
-                    🗑️
+                    v-if="project.datasets?.length > 0"
+                    class="project-expand-btn"
+                    :class="{ expanded: isProjectExpanded(project.id) }"
+                    @click.stop="toggleProjectExpanded(project.id)">
+                    <el-icon><CaretRight /></el-icon>
                   </button>
                 </div>
               </div>
@@ -345,7 +481,7 @@ onUnmounted(() => {
                         class="dataset-delete-btn"
                         @click.stop="confirmDeleteDataset(project.id, dataset.id)"
                         title="删除数据集">
-                        🗑️
+                        <el-icon><Delete /></el-icon>
                       </button>
                     </div>
                     <div class="dataset-meta">修改于 {{ formatRelativeTime(dataset.createdAt) }}</div>
@@ -446,7 +582,8 @@ onUnmounted(() => {
   box-shadow: 4px 0 24px rgba(0, 0, 0, 0.06);
   position: relative;
   transition: width 0.3s ease-in-out;
-  overflow: hidden;
+  overflow: visible;
+  z-index: 20;
 }
 
 .sidebar.collapsed {
@@ -474,29 +611,36 @@ onUnmounted(() => {
   z-index: 10;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   flex-shrink: 0;
 }
 
 .sidebar.collapsed .app-header {
-  padding: 24px 16px 16px;
+  padding: 24px 12px 16px;
+  justify-content: center;
 }
 
 .app-title {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sidebar.collapsed .app-title {
+  justify-content: center;
 }
 
 .app-icon {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  border-radius: 12px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: 18px;
   box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
   position: relative;
   flex-shrink: 0;
@@ -507,7 +651,7 @@ onUnmounted(() => {
   position: absolute;
   inset: 2px;
   background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
-  border-radius: 8px;
+  border-radius: 6px;
   opacity: 0.8;
 }
 
@@ -523,6 +667,8 @@ onUnmounted(() => {
   transition:
     opacity 0.2s ease,
     transform 0.2s ease;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .sidebar.collapsed .app-title-text {
@@ -533,7 +679,7 @@ onUnmounted(() => {
 }
 
 .app-name {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   color: #1f2937;
   letter-spacing: -0.02em;
@@ -541,7 +687,7 @@ onUnmounted(() => {
 }
 
 .app-subtitle {
-  font-size: 11px;
+  font-size: 10px;
   color: #6b7280;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -549,51 +695,48 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-/* 侧边栏底部 - 折叠按钮 */
-.sidebar-footer {
-  padding: 16px 20px;
-  border-top: 1px solid rgba(229, 231, 235, 0.3);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.sidebar.collapsed .sidebar-footer {
-  padding: 16px;
-}
-
+/* 侧边栏折叠按钮 - 悬浮在右侧边缘 */
 .collapse-btn {
-  width: 36px;
-  height: 36px;
-  border: none;
-  background: rgba(107, 114, 128, 0.1);
-  border-radius: 10px;
+  position: absolute;
+  top: 50%;
+  right: -12px;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #6b7280;
-  flex-shrink: 0;
+  color: #9ca3af;
+  z-index: 100;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  padding: 0;
 }
 
 .collapse-btn:hover {
-  background: rgba(16, 185, 129, 0.1);
-  color: #059669;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  border-color: #10b981;
+  background: #f0fdf4;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+  transform: translateY(-50%) scale(1.1);
 }
 
 .collapse-icon {
-  font-size: 18px;
+  font-size: 12px;
   transition: color 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* 项目管理区域 */
 .projects-section {
   flex: 1;
-  padding: 20px 16px;
+  padding: 0 16px 20px;
   overflow-y: auto;
   position: relative;
   z-index: 10;
@@ -614,8 +757,13 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
-  padding: 0 4px;
+  margin-bottom: 0;
+  padding: 16px 4px 8px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(248, 250, 252, 0.95);
+  backdrop-filter: blur(10px);
 }
 
 .section-title {
@@ -628,22 +776,22 @@ onUnmounted(() => {
 
 .section-actions {
   display: flex;
-  gap: 6px;
+  gap: 4px;
 }
 
 .action-btn {
   width: 24px;
   height: 24px;
   border: none;
-  background: rgba(107, 114, 128, 0.1);
-  border-radius: 6px;
+  background: transparent;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #6b7280;
-  font-size: 12px;
+  color: #9ca3af;
+  font-size: 14px;
 }
 
 .action-btn:hover {
@@ -672,6 +820,25 @@ onUnmounted(() => {
 .project-item.collapsed {
   padding: 12px;
   text-align: center;
+}
+
+.project-item.batch-mode {
+  cursor: default;
+}
+
+.project-checkbox {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+}
+
+.project-item.batch-mode .project-header,
+.project-item.batch-mode .project-stats,
+.project-item.batch-mode .datasets-list {
+  padding-left: 24px;
+  transition: padding-left 0.2s ease;
 }
 
 .project-item::before {
@@ -722,37 +889,37 @@ onUnmounted(() => {
   flex: 1;
 }
 
+.project-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .project-expand-btn {
   width: 20px;
   height: 20px;
   border: none;
-  background: rgba(107, 114, 128, 0.1);
+  background: transparent;
   border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #6b7280;
-  font-size: 10px;
+  color: #9ca3af;
+  font-size: 14px;
   flex-shrink: 0;
 }
 
 .project-expand-btn:hover {
-  background: rgba(16, 185, 129, 0.2);
-  color: #059669;
+  background: rgba(107, 114, 128, 0.1);
+  color: #1f2937;
 }
 
 .project-expand-btn.expanded {
   transform: rotate(90deg);
-  background: rgba(16, 185, 129, 0.2);
-  color: #059669;
-}
-
-.project-expand-placeholder {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
+  background: rgba(107, 114, 128, 0.1);
+  color: #1f2937;
 }
 
 .project-icon {
@@ -815,7 +982,7 @@ onUnmounted(() => {
   cursor: pointer;
   transition: all 0.2s ease;
   color: #6b7280;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .project-action-btn:hover {
@@ -971,7 +1138,7 @@ onUnmounted(() => {
   cursor: pointer;
   transition: all 0.2s ease;
   color: #dc2626;
-  font-size: 8px;
+  font-size: 10px;
   opacity: 0;
   margin-left: 4px;
 }
@@ -1191,6 +1358,11 @@ onUnmounted(() => {
 
 .project-item:nth-child(4) {
   animation-delay: 0.3s;
+}
+
+:deep(.el-dropdown-menu__item.active) {
+  color: #10b981;
+  background-color: #ecfdf5;
 }
 
 /* Element Plus 样式覆盖 */

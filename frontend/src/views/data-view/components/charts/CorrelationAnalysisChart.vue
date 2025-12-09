@@ -7,6 +7,7 @@ interface Props {
     tableData: Array<any>;
     targetColumn: string;
   } | null;
+  correlationMatrix?: number[][] | null; // Added
   selectedColumns: string[];
   analysisType: "heatmap" | "scatter-matrix" | "network" | "time-lag";
   correlationMethod: "pearson" | "spearman" | "kendall";
@@ -17,6 +18,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
   csvData: null,
+  correlationMatrix: null,
   minCorrelation: 0.1,
 });
 
@@ -105,6 +107,10 @@ const extractDataFromCsv = (csvData: any, columnName: string): number[] => {
 
 // 计算相关性矩阵
 const calculateCorrelationMatrix = (): { matrix: number[][]; labels: string[] } => {
+  if (props.correlationMatrix && props.correlationMatrix.length > 0) {
+    return { matrix: props.correlationMatrix, labels: props.selectedColumns };
+  }
+
   if (!props.csvData || props.selectedColumns.length < 2) {
     return { matrix: [], labels: [] };
   }
@@ -647,6 +653,7 @@ watch(
     () => props.analysisType,
     () => props.correlationMethod,
     () => props.csvData,
+    () => props.correlationMatrix,
     () => props.minCorrelation,
   ],
   () => {

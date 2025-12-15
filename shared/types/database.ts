@@ -19,6 +19,7 @@ export interface Dataset extends BaseEntity {
   site_id: number;
   dataset_name: string;
   source_file_path?: string;
+  time_column?: string;  // 时间列名称 (解析时自动识别)
   import_time: string;
   description?: string;
 }
@@ -145,6 +146,8 @@ export interface OutlierResult extends BaseEntity {
   detection_method: DetectionMethodId;
   outlier_indices?: string; // JSON 数组
   outlier_count: number;
+  total_rows?: number;
+  outlier_rate?: number;
   detection_params?: string; // 实际使用的参数
   executed_at: string;
   status: OutlierResultStatus;
@@ -156,8 +159,10 @@ export interface OutlierResult extends BaseEntity {
 export interface OutlierDetail extends BaseEntity {
   id: number;
   result_id: number;
+  column_name?: string;
   row_index: number;
   original_value?: number;
+  time_point?: string;
   action: OutlierAction;
   replaced_value?: number;
   is_confirmed: number; // 0 or 1
@@ -205,6 +210,18 @@ export interface ResolvedThresholdConfig {
   unit?: string;
   variableType?: string;
   source: OutlierDetectionScopeType;
+}
+
+/**
+ * 异常检测列统计表 (biz_outlier_column_stat)
+ */
+export interface OutlierColumnStat extends BaseEntity {
+  id: number;
+  result_id: number;
+  column_name: string;
+  outlier_count: number;
+  min_threshold?: number;
+  max_threshold?: number;
 }
 
 /**

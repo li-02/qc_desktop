@@ -2,9 +2,17 @@ import { BaseController } from "./BaseController";
 import { IpcMainInvokeEvent } from "electron";
 import { Worker } from "worker_threads";
 import * as path from "path";
+import { normalizeTimestamp, formatTimestamp } from "../utils/timeUtils";
+import { SettingsRepository } from "../repository/SettingsRepository";
 
 export class FileController extends BaseController {
   private fileParserWorker: Worker | null = null;
+  private settingsRepository: SettingsRepository;
+
+  constructor() {
+    super();
+    this.settingsRepository = new SettingsRepository();
+  }
 
   /**
    * 创建文件解析Worker
@@ -129,26 +137,48 @@ export class FileController extends BaseController {
       // 使用worker解析文件，读取全部数据
       const result = await this.parseFileWithWorker("csv", fileContent, -1, []);
 
+      // 获取时区设置
+      const timezoneResult = this.settingsRepository.getTimezone();
+      const timezone = timezoneResult.success ? timezoneResult.data! : 'UTC+8';
+
       // 如果指定了列名，只返回该列的数据和统计信息
       if (args.columnName && result.tableData) {
         const columnName = args.columnName;
 
-        // 过滤出包含指定列的数据
+        // 识别时间列
+        const timestampKey = this.findTimestampKey(result.tableData);
+
+        // 过滤出包含指定列的数据，并标准化时间戳
         const columnData = result.tableData
-          .map((row: any) => ({
-            [columnName]: row[columnName],
-            // 如果有时间列，也一并返回（用于时间序列图）
-            TIMESTAMP: row.TIMESTAMP || row.timestamp || row.time || row.date || row.record_time || row.Record_Time || row.RECORD_TIME || row.datetime || row.DateTime || row.DATETIME,
-          }))
+          .map((row: any) => {
+            const rawTimestamp = timestampKey ? row[timestampKey] : null;
+            const epochMs = rawTimestamp ? normalizeTimestamp(rawTimestamp, timezone) : null;
+            
+            return {
+              [columnName]: row[columnName],
+              TIMESTAMP: rawTimestamp,
+              _epochMs: epochMs,
+              _formattedTime: epochMs ? formatTimestamp(epochMs, timezone) : null,
+            };
+          })
           .filter((row: any) => row[columnName] !== undefined && row[columnName] !== null);
 
+        // 按时间排序（如果有有效的时间戳）
+        columnData.sort((a: any, b: any) => {
+          if (a._epochMs === null && b._epochMs === null) return 0;
+          if (a._epochMs === null) return 1;
+          if (b._epochMs === null) return -1;
+          return a._epochMs - b._epochMs;
+        });
+
         // 计算统计信息
-        const columnStatistics = this.calculateColumnStatistics(result.tableData, columnName);
+        const columnStatistics = this.calculateColumnStatistics(result.tableData, columnName, timezone);
 
         return {
           tableData: columnData,
           targetColumn: args.columnName,
           statistics: columnStatistics,
+          timezone: timezone,
         };
       }
 
@@ -157,11 +187,53 @@ export class FileController extends BaseController {
   }
 
   /**
+   * 识别时间列的键名
+   */
+  private findTimestampKey(tableData: any[]): string | null {
+    if (!tableData || tableData.length === 0) {
+      return null;
+    }
+
+    const firstRow = tableData[0];
+    const keys = Object.keys(firstRow);
+
+    // 1. 优先匹配常见的时间列名
+    const priorityKeys = [
+      'TIMESTAMP', 'timestamp', 'Timestamp',
+      'Date', 'date', 'DATE',
+      'Time', 'time', 'TIME',
+      'record_time', 'Record_Time', 'RECORD_TIME',
+      'datetime', 'DateTime', 'DATETIME',
+      'time_stamp', 'Time_Stamp', 'TIME_STAMP'
+    ];
+
+    for (const key of priorityKeys) {
+      if (keys.includes(key)) {
+        return key;
+      }
+    }
+
+    // 2. 如果没找到，尝试智能识别内容
+    for (const key of keys) {
+      const value = firstRow[key];
+      if (typeof value === 'string') {
+        // 简单的日期格式检查：包含 - / : 且能被 Date 解析
+        if ((value.includes('-') || value.includes('/') || value.includes(':')) && !isNaN(Date.parse(value))) {
+          return key;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * 计算列的统计信息
    */
   private calculateColumnStatistics(
     data: any[],
-    columnName: string
+    columnName: string,
+    timezone: string = 'UTC+8'
   ): {
     mean: number;
     std: number;
@@ -172,12 +244,21 @@ export class FileController extends BaseController {
     minTimestamp?: string;
     maxTimestamp?: string;
   } {
+    // 识别时间列
+    const timestampKey = this.findTimestampKey(data);
+
     // 提取列数据，保留时间戳信息
     const validDataWithTimestamp = data
-      .map(row => ({
-        value: row[columnName],
-        timestamp: row.TIMESTAMP || row.timestamp || row.time || row.date || row.record_time || row.Record_Time || row.RECORD_TIME || row.datetime || row.DateTime || row.DATETIME
-      }))
+      .map(row => {
+        const rawTimestamp = timestampKey ? row[timestampKey] : null;
+        const epochMs = rawTimestamp ? normalizeTimestamp(rawTimestamp, timezone) : null;
+        return {
+          value: row[columnName],
+          timestamp: rawTimestamp,
+          epochMs: epochMs,
+          formattedTime: epochMs ? formatTimestamp(epochMs, timezone) : null
+        };
+      })
       .filter(item => 
         item.value !== null && 
         item.value !== undefined && 

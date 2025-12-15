@@ -1,5 +1,6 @@
 import { BaseController } from './BaseController';
 import { CorrelationAnalysisService } from '../service/CorrelationAnalysisService';
+import { IpcMainInvokeEvent } from 'electron';
 
 export class CorrelationAnalysisController extends BaseController {
   private service: CorrelationAnalysisService;
@@ -12,28 +13,28 @@ export class CorrelationAnalysisController extends BaseController {
   /**
    * 获取历史记录
    */
-  async getHistory(_: any, datasetId: number) {
-    return this.handleAsync(() => this.service.getHistory(datasetId));
+  async getHistory(args: { datasetId: number }, event: IpcMainInvokeEvent) {
+    return this.handleAsync(() => this.service.getHistory(args.datasetId));
   }
 
   /**
    * 运行分析
    */
-  async analyze(_: any, params: any) {
-    return this.handleAsync(() => this.service.calculateCorrelationMatrix(params));
+  async analyze(args: any, event: IpcMainInvokeEvent) {
+    return this.handleAsync(() => this.service.calculateCorrelationMatrix(args));
   }
 
   /**
    * 删除单条记录
    */
-  async deleteResult(_: any, id: number) {
-    return this.handleAsync(() => this.service.deleteResult(id));
+  async deleteResult(args: { id: number }, event: IpcMainInvokeEvent) {
+    return this.handleAsync(() => this.service.deleteResult(args.id));
   }
 
   /**
    * 批量删除记录
    */
-  async batchDeleteResults(_: any, ids: number[]) {
-    return this.handleAsync(() => this.service.batchDeleteResults(ids));
+  async batchDeleteResults(args: { ids: number[] }, event: IpcMainInvokeEvent) {
+    return this.handleAsync(() => this.service.batchDeleteResults(args.ids));
   }
 }

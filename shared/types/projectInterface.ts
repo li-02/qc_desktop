@@ -9,6 +9,20 @@ export interface ProjectBaseInfo {
   path: string;
   createdAt: number;
 }
+
+export interface DatasetBaseInfo {
+  id: string;
+  name: string; //数据集名字
+  type: string;
+  dirPath: string; // 数据集目录
+  originalFile: string;
+  fileCount?: number;
+  totalSizeBytes?: number;
+  originalFileSizeBytes?: number;
+  createdAt: number;
+  belongTo: string; // 所属项目 id
+}
+
 // 项目信息
 export interface ProjectInfo extends ProjectBaseInfo {
   lastUpdated: number;
@@ -17,15 +31,7 @@ export interface ProjectInfo extends ProjectBaseInfo {
     latitude: string;
     altitude: string;
   };
-  datasets: {
-    id: string;
-    name: string; //数据集名字
-    type: string;
-    dirPath: string; // 数据集目录
-    originalFile: string;
-    createdAt: number;
-    belongTo: string; // 所属项目 id
-  }[];
+  datasets: DatasetBaseInfo[];
 }
 export interface ColumnMissingStatus {
   [columnName: string]: number; // 列名: 缺失值计数
@@ -78,6 +84,7 @@ export interface DatasetInfo {
   belongTo: string;
   dirPath: string;
   missingValueTypes: string[];
+  timeColumn?: string;  // 时间列名称 (解析时自动识别)
   originalFile: {
     name: string;
     filePath: string;

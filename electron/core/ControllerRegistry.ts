@@ -6,14 +6,17 @@ import { DatasetController } from "../controller/DatasetController";
 import { FileController } from "../controller/FileController";
 import { OutlierDetectionController } from "../controller/OutlierDetectionController";
 import { CorrelationAnalysisController } from "../controller/CorrelationAnalysisController";
+import { SettingsController } from "../controller/SettingsController";
 
 // 引入新的分层架构
 import { ProjectDBRepository } from "../repository/ProjectDBRepository";
 import { DatasetDBRepository } from "../repository/DatasetDBRepository";
 import { OutlierDetectionRepository } from "../repository/OutlierDetectionRepository";
+import { SettingsRepository } from "../repository/SettingsRepository";
 import { ProjectService } from "../service/ProjectService";
 import { DatasetService } from "../service/DatasetService";
 import { OutlierDetectionService } from "../service/OutlierDetectionService";
+import { SettingsService } from "../service/SettingsService";
 
 /**
  * 控制器注册器 - 完整重构版
@@ -24,11 +27,13 @@ export class ControllerRegistry {
   private projectRepository!: ProjectDBRepository;
   private datasetRepository!: DatasetDBRepository;
   private outlierRepository!: OutlierDetectionRepository;
+  private settingsRepository!: SettingsRepository;
 
   // 业务逻辑层
   private projectService!: ProjectService;
   private datasetService!: DatasetService;
   private outlierService!: OutlierDetectionService;
+  private settingsService!: SettingsService;
 
   // 控制器层
   private projectController!: ProjectController;
@@ -36,6 +41,7 @@ export class ControllerRegistry {
   private fileController!: FileController;
   private outlierController!: OutlierDetectionController;
   private correlationController!: CorrelationAnalysisController;
+  private settingsController!: SettingsController;
 
   constructor(projectsDir: string) {
     this.initializeDependencies(projectsDir);
@@ -59,6 +65,9 @@ export class ControllerRegistry {
       this.outlierRepository = new OutlierDetectionRepository();
       console.log("✓ OutlierDetectionRepository 初始化完成");
 
+      this.settingsRepository = new SettingsRepository();
+      console.log("✓ SettingsRepository 初始化完成");
+
       // 2. 初始化业务逻辑层 (Service Layer)
       this.projectService = new ProjectService(this.projectRepository, this.datasetRepository);
       console.log("✓ ProjectService 初始化完成");
@@ -68,6 +77,9 @@ export class ControllerRegistry {
 
       this.outlierService = new OutlierDetectionService(this.outlierRepository, this.datasetRepository);
       console.log("✓ OutlierDetectionService 初始化完成");
+
+      this.settingsService = new SettingsService(this.settingsRepository);
+      console.log("✓ SettingsService 初始化完成");
 
       // 3. 初始化控制器层 (Controller Layer)
       this.projectController = new ProjectController(this.projectService);
@@ -84,6 +96,9 @@ export class ControllerRegistry {
 
       this.correlationController = new CorrelationAnalysisController();
       console.log("✓ CorrelationAnalysisController 初始化完成");
+
+      this.settingsController = new SettingsController(this.settingsService);
+      console.log("✓ SettingsController 初始化完成");
 
       console.log("所有依赖关系初始化完成");
     } catch (error: any) {
@@ -102,6 +117,7 @@ export class ControllerRegistry {
       this.registerFileRoutes();
       this.registerOutlierDetectionRoutes();
       this.registerCorrelationRoutes();
+      this.registerSettingsRoutes();
 
       console.log("所有控制器路由已注册");
       console.log("已注册路由:", IPCManager.getRegisteredRoutes());
@@ -333,6 +349,11 @@ export class ControllerRegistry {
         description: "获取检测结果详情",
       },
       {
+        path: "outlier/get-result-stats",
+        handler: this.outlierController.getOutlierResultStats.bind(this.outlierController),
+        description: "获取检测结果统计",
+      },
+      {
         path: "outlier/delete-detection-result",
         handler: this.outlierController.deleteDetectionResult.bind(this.outlierController),
         description: "删除检测结果",
@@ -380,6 +401,51 @@ export class ControllerRegistry {
     });
 
     console.log(`相关性分析路由注册完成，共 ${routes.length} 个路由`);
+  }
+
+  /**
+   * 注册系统设置相关路由
+   */
+  private registerSettingsRoutes() {
+    const routes = [
+      {
+        path: "settings/get-all",
+        handler: this.settingsController.getAllSettings.bind(this.settingsController),
+        description: "获取所有系统设置",
+      },
+      {
+        path: "settings/get",
+        handler: this.settingsController.getSetting.bind(this.settingsController),
+        description: "获取单个设置",
+      },
+      {
+        path: "settings/update",
+        handler: this.settingsController.updateSetting.bind(this.settingsController),
+        description: "更新单个设置",
+      },
+      {
+        path: "settings/update-batch",
+        handler: this.settingsController.updateSettings.bind(this.settingsController),
+        description: "批量更新设置",
+      },
+      {
+        path: "settings/get-timezone",
+        handler: this.settingsController.getTimezone.bind(this.settingsController),
+        description: "获取时区设置",
+      },
+      {
+        path: "settings/set-timezone",
+        handler: this.settingsController.setTimezone.bind(this.settingsController),
+        description: "设置时区",
+      },
+    ];
+
+    routes.forEach(route => {
+      IPCManager.registerRoute(route.path, route.handler);
+      console.log(`✓ 注册路由: ${route.path} - ${route.description}`);
+    });
+
+    console.log(`系统设置路由注册完成，共 ${routes.length} 个路由`);
   }
 
   /**

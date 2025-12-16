@@ -3,7 +3,7 @@ import { computed, ref } from "vue";
 // 第三步 上传文件
 import type { UploadInstance } from "element-plus";
 import { ElMessage } from "element-plus";
-import { UploadFilled } from "@element-plus/icons-vue";
+import { UploadFilled, TrendCharts, Odometer, Sunny, Pouring, Lightning, Document, Plus, Location } from "@element-plus/icons-vue";
 // import type {ElectronWindow} from "@shared/types/window";
 import type { TableColumns } from "@pureadmin/table";
 import PureTable from "@pureadmin/table";
@@ -28,51 +28,6 @@ const stepForm = ref([
 ]);
 const projectStore = useProjectStore();
 const datasetStore = useDatasetStore();
-// 表单需要的所有数据
-const datasetName = ref("");
-const selectedDataType = ref("flux"); // 默认选中第一个数据类型
-const selectedFile = ref<File>();
-const missingValueTypes = ref([]); // 选中的缺失值类型
-// 文件处理状态
-const fileProcessing = ref(false);
-
-// 第二步 选择数据类型
-const dataOptions = [
-  {
-    value: "flux",
-    label: "通量数据",
-    description: "碳/水等通量观测数据",
-  },
-  {
-    value: "aqi",
-    label: "空气质量数据",
-    description: "大气污染物数据",
-  },
-  {
-    value: "nai",
-    label: "负氧离子数据",
-    description: "负氧离子浓度监测数据",
-  },
-  {
-    value: "sapflow",
-    label: "茎流数据",
-    description: "茎流量",
-  },
-  {
-    value: "micrometeorology",
-    label: "微气象数据",
-    description: "微气象数据",
-  },
-];
-
-// 表格相关数据
-const tableData = ref([]);
-const columns = ref<TableColumns[]>([]);
-const totalRowCount = ref<number>(0);
-
-const uploadRef = ref<UploadInstance | null>(null);
-const fileList = ref<any[]>([]); //用于控制上传组件显示的文件列表
-
 // 第四步 确定缺失值类型
 const missingTypesList = ref([
   {
@@ -92,6 +47,58 @@ const missingTypesList = ref([
     label: "空值",
   },
 ]);
+
+// 表单需要的所有数据
+const datasetName = ref("");
+const selectedDataType = ref("flux"); // 默认选中第一个数据类型
+const selectedFile = ref<File>();
+const missingValueTypes = ref(missingTypesList.value.map(t => t.value)); // 选中的缺失值类型
+// 文件处理状态
+const fileProcessing = ref(false);
+
+// 第二步 选择数据类型
+const dataOptions = [
+  {
+    value: "flux",
+    label: "通量数据",
+    description: "碳/水等通量观测数据",
+    icon: TrendCharts,
+  },
+  {
+    value: "aqi",
+    label: "空气质量数据",
+    description: "大气污染物数据",
+    icon: Odometer,
+  },
+  {
+    value: "nai",
+    label: "负氧离子数据",
+    description: "负氧离子浓度监测数据",
+    icon: Lightning,
+  },
+  {
+    value: "sapflow",
+    label: "茎流数据",
+    description: "茎流量",
+    icon: Pouring,
+  },
+  {
+    value: "micrometeorology",
+    label: "微气象数据",
+    description: "微气象数据",
+    icon: Sunny,
+  },
+];
+
+// 表格相关数据
+const tableData = ref([]);
+const columns = ref<TableColumns[]>([]);
+const totalRowCount = ref<number>(0);
+
+const uploadRef = ref<UploadInstance | null>(null);
+const fileList = ref<any[]>([]); //用于控制上传组件显示的文件列表
+
+// 第四步 确定缺失值类型
 const isAdding = ref(false);
 const optionName = ref("");
 // 优化列定义，确保每列有合理宽度
@@ -100,22 +107,22 @@ const optimizedColumns = computed(() => {
     // 原始列定义复制
     const optimizedColumn = { ...column };
 
+
     // 如果是对象，添加width和minWidth属性
     if (typeof optimizedColumn === "object") {
-      // 根据列标题长度动态设置最小宽度
+    // 根据列标题长度动态设置最小宽度
       const titleLength = optimizedColumn.label?.toString().length || 0;
-      const minColWidth = Math.max(150, titleLength * 10); // 最小150px，或者按标题字符数*10的宽度
+      const minColWidth = Math.max(100, titleLength * 12); // 最小100px
 
-      // 设置列宽属性
-      optimizedColumn.width = minColWidth;
+      // 设置列宽属性 - 移除固定width以允许自适应
+      // optimizedColumn.width = minColWidth;
       optimizedColumn.minWidth = minColWidth;
 
-      // 添加单元格样式，确保内容不溢出
+      // @ts-ignore
       optimizedColumn.cellStyle = {
         whiteSpace: "nowrap",
         overflow: "hidden",
         textOverflow: "ellipsis",
-        maxWidth: `${minColWidth}px`,
       };
 
       // 添加tooltip，当文本被截断时显示完整内容
@@ -125,6 +132,23 @@ const optimizedColumns = computed(() => {
     return optimizedColumn;
   });
 });
+
+const projectInfoDisplay = computed(() => {
+  if (!projectStore.currentProject) return null;
+  const { name, siteInfo } = projectStore.currentProject;
+  const lat = parseFloat(siteInfo.latitude);
+  const lon = parseFloat(siteInfo.longitude);
+  const alt = siteInfo.altitude;
+
+  const latStr = !isNaN(lat) ? `${Math.abs(lat).toFixed(1)}°${lat >= 0 ? "N" : "S"}` : "-";
+  const lonStr = !isNaN(lon) ? `${Math.abs(lon).toFixed(1)}°${lon >= 0 ? "E" : "W"}` : "-";
+
+  return {
+    name,
+    coords: `${lonStr} • ${latStr} • ${alt}m`,
+  };
+});
+
 /**
  * 点击增加缺失值类型
  */
@@ -202,6 +226,7 @@ const submitImportOption = async () => {
         file: {
           name: String(selectedFile.value!.name),
           size: String(selectedFile.value!.size),
+          // @ts-ignore
           path: window.electronAPI.getFilePath(selectedFile.value!),
         },
         missingValueTypes: missingValueTypes.value.map(v => String(v)),
@@ -234,6 +259,7 @@ const handleFileChange = (file: any) => {
       return;
     }
     selectedFile.value = file.raw;
+    // @ts-ignore
     const filePath = window.electronAPI.getFilePath(file.raw);
     // 更新文件列表
     fileList.value = [
@@ -350,146 +376,162 @@ defineExpose({
   <el-dialog
     v-model="dialogVisible"
     title="导入数据"
-    width="700px"
-    class="fixed-steps-dialog"
+    width="750px"
+    class="fixed-steps-dialog emerald-glassmorphism"
     destroy-on-close
     @closed="handleClosed">
-    <el-steps class="w-full" :space="200" :active="currentStep" finish-status="success">
-      <el-step title="选择数据型" />
+    <el-steps class="dialog-steps" :active="currentStep" finish-status="success" align-center>
+      <el-step title="选择数据类型" />
       <el-step title="上传文件" />
       <el-step title="配置参数" />
     </el-steps>
 
-    <div v-if="currentStep === 0">
-      <el-radio-group v-model="selectedDataType" class="space-y-2.5 w-full flex flex-col">
-        <div
-          v-for="(option, index) in dataOptions"
-          :key="index"
-          class="flex w-full h-[60px] cursor-pointer rounded transition-all duration-200 !my-1"
-          :class="[
-            selectedDataType === option.value
-              ? 'border-2 border-blue-500'
-              : 'border border-gray-300 hover:border-blue-400 hover:shadow-md',
-          ]"
-          @click="selectedDataType = option.value">
-          <el-radio :value="option.value" class="flex w-full">
-            <div class="flex justify-between items-center w-full">
-              <span class="text-base font-medium text-gray-800">{{ option.label }}</span>
-              <span class="text-sm text-gray-500 !mr-2.5">{{ option.description }}</span>
+    <div class="dialog-content-wrapper">
+      <div v-if="currentStep === 0" class="step-container fade-in">
+        <div class="data-type-grid">
+          <div
+            v-for="(option, index) in dataOptions"
+            :key="index"
+            class="data-type-card"
+            :class="{ 'is-active': selectedDataType === option.value }"
+            @click="selectedDataType = option.value">
+            <div class="card-icon">
+              <el-icon><component :is="option.icon" /></el-icon>
             </div>
-          </el-radio>
-        </div>
-      </el-radio-group>
-    </div>
 
-    <div v-if="currentStep === 1">
-      <div class="mb-4">
-        <el-input
-          v-model="datasetName"
-          placeholder="请输入数据集名称"
-          clearable
-          class="w-full"
-          :maxlength="50"
-          show-word-limit />
+            <div class="card-content">
+              <h3 class="card-title">{{ option.label }}</h3>
+              <p class="card-desc">{{ option.description }}</p>
+            </div>
+
+            <div class="card-radio">
+              <div v-if="selectedDataType === option.value" class="radio-inner"></div>
+            </div>
+          </div>
+        </div>
       </div>
-      <el-upload
-        ref="uploadRef"
-        class="upload-demo"
-        action="#"
-        :auto-upload="false"
-        :limit="1"
-        drag
-        :file-list="fileList"
-        :on-change="handleFileChange"
-        :on-exceed="handleExceed"
-        :on-remove="handleRemove">
-        <el-icon class="el-icon--upload">
-          <upload-filled />
-        </el-icon>
-        <div class="el-upload__text">托拽文件至此处或<em>点击上传</em></div>
-        <template #tip>
-          <div class="el-upload__tip">支持 CSV, Excel(xlsx/xls), JSON 格式文件，单次最大 50MB</div>
-        </template>
-      </el-upload>
-    </div>
 
-    <div v-if="currentStep === 2">
-      <div class="step-content flex flex-col">
-        <div class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden mb-4">
-          <!-- 文件信息区域-->
-          <div class="bg-blue-500 text-white px-4 py-3 flex justify-between items-center">
-            <span class="font-medium">当前文件：{{ fileList[0]?.name }}</span>
-            <span v-if="totalRowCount > 0" class="text-sm bg-blue-600 px-2 py-0.5 rounded">
-              总行数: {{ totalRowCount }} (显示前 {{ tableData.length }} 行)
-            </span>
-          </div>
-
-          <!-- 表格预览部分，保持内容但使用卡片内部样式 -->
-          <div class="p-4 bg-gray-50 relative">
-            <div v-if="columns.length > 0" class="table-container overflow-auto">
-              <!-- 表格样式优化：添加圆角和边框 -->
-              <pure-table
-                :data="tableData"
-                :columns="optimizedColumns"
-                height="300"
-                stripe
-                class="border border-gray-200 rounded-md data-preview-table"
-                :header-cell-style="{
-                  backgroundColor: '#f8fafc',
-                  color: '#4b5563',
-                  fontWeight: '600',
-                }" />
-            </div>
-
-            <!-- 无数据时显示的提示，使用更统一的空状态样式 -->
-            <div
-              v-else-if="!fileProcessing"
-              class="h-48 flex flex-col items-center justify-center text-gray-500 bg-gray-50 border border-dashed border-gray-300 rounded-md">
-              <el-icon class="text-3xl mb-2">
-                <document />
-              </el-icon>
-              <span>请上传文件以预览数据</span>
-            </div>
-          </div>
+      <div v-if="currentStep === 1" class="step-container fade-in">
+        <div class="input-group">
+          <div class="input-label">数据集名称</div>
+          <el-input
+            v-model="datasetName"
+            placeholder="请输入数据集名称"
+            clearable
+            size="large"
+            class="custom-input"
+            :maxlength="50"
+            show-word-limit />
         </div>
-
-        <!-- 参数配置区域，使用相同的卡片风格 -->
-        <div class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-          <div class="bg-blue-500 text-white px-4 py-2">
-            <span class="font-medium">配置参数</span>
+        <el-upload
+          ref="uploadRef"
+          class="upload-demo custom-upload"
+          action="#"
+          :auto-upload="false"
+          :limit="1"
+          drag
+          :file-list="fileList"
+          :on-change="handleFileChange"
+          :on-exceed="handleExceed"
+          :on-remove="handleRemove">
+          <div class="upload-content">
+            <div class="upload-icon-wrapper">
+              <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+            </div>
+            <div class="upload-text">
+              <h3>点击或拖拽文件到此处上传</h3>
+              <p>支持 CSV, Excel (xlsx/xls) 格式文件</p>
+              <p class="upload-limit">单次最大 50MB</p>
+            </div>
           </div>
-          <div class="p-4">
-            <div class="flex items-center bg-gray-50 border border-gray-300 rounded p-3">
-              <label class="text-sm text-gray-700 font-medium min-w-24">缺失值表示:</label>
-              <div class="relative flex-1 ml-2">
-                <el-select v-model="missingValueTypes" placeholder="缺失值示例" class="w-full" multiple>
-                  <el-option
-                    v-for="item in missingTypesList"
-                    :key="item.value"
-                    :label="item.label"
-                    :value="item.value" />
-                  <template #footer>
-                    <el-button
-                      v-if="!isAdding"
-                      text
-                      bg
-                      size="small"
-                      @click="onAddOption"
-                      class="text-blue-500 hover:bg-blue-50">
-                      <el-icon class="mr-1">
-                        <plus />
-                      </el-icon>
-                      新增示例
-                    </el-button>
-                    <div v-else class="p-2">
-                      <el-input v-model="optionName" class="option-input mb-2" placeholder="输入新示例" size="small" />
-                      <div class="flex gap-2">
-                        <el-button type="primary" size="small" @click="onConfirm">确认</el-button>
-                        <el-button size="small" @click="clearInputOption">取消</el-button>
+        </el-upload>
+      </div>
+
+      <div v-if="currentStep === 2" class="fade-in">
+        <div class="step-content flex-column">
+          <div class="info-card overview-card">
+            <!-- 项目信息头部 -->
+            <div class="project-header" v-if="projectInfoDisplay">
+              <div class="project-icon">
+                <el-icon><TrendCharts /></el-icon>
+              </div>
+              <div class="project-details">
+                <div class="project-name">{{ projectInfoDisplay.name }}</div>
+                <div class="project-coords">{{ projectInfoDisplay.coords }}</div>
+              </div>
+            </div>
+
+            <!-- 表格预览部分 -->
+            <div class="preview-container">
+              <div v-if="columns.length > 0" class="table-container">
+                <!-- 表格样式优化 -->
+                <pure-table
+                  :data="tableData"
+                  :columns="optimizedColumns"
+                  height="240"
+                  stripe
+                  class="data-preview-table"
+                  :header-cell-style="{
+                    backgroundColor: '#f8fafc',
+                    color: '#4b5563',
+                    fontWeight: '600',
+                  }" />
+              </div>
+
+              <!-- 无数据时显示的提示 -->
+              <div
+                v-else-if="!fileProcessing"
+                class="empty-preview">
+                <el-icon class="preview-icon">
+                  <document />
+                </el-icon>
+                <span>请上传文件以预览数据</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 参数配置区域 -->
+          <div class="info-card">
+            <div class="section-header">
+              <span class="header-title">配置参数</span>
+            </div>
+            <div class="config-body">
+              <div class="config-item">
+                <label class="config-label">缺失值表示:</label>
+                <div class="config-content">
+                  <el-select
+                    v-model="missingValueTypes"
+                    placeholder="缺失值示例"
+                    class="full-width-input"
+                    multiple>
+                    <el-option
+                      v-for="item in missingTypesList"
+                      :key="item.value"
+                      :label="item.label"
+                      :value="item.value" />
+                    <template #footer>
+                      <el-button
+                        v-if="!isAdding"
+                        text
+                        bg
+                        size="small"
+                        @click="onAddOption"
+                        class="btn-text-primary">
+                        <el-icon class="btn-icon">
+                          <plus />
+                        </el-icon>
+                        新增示例
+                      </el-button>
+                      <div v-else class="add-option-container">
+                        <el-input v-model="optionName" class="option-input mb-2" placeholder="输入新示例" size="small" />
+                        <div class="button-group">
+                          <el-button type="primary" size="small" color="#10b981" @click="onConfirm">确认</el-button>
+                          <el-button size="small" @click="clearInputOption">取消</el-button>
+                        </div>
                       </div>
-                    </div>
-                  </template>
-                </el-select>
+                    </template>
+                  </el-select>
+                </div>
               </div>
             </div>
           </div>
@@ -499,11 +541,12 @@ defineExpose({
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="close">取消</el-button>
-        <el-button @click="prevStep" :disabled="currentStep === 0">上一步</el-button>
-        <el-button @click="nextStep" :disabled="currentStep === 2">下一步</el-button>
+        <el-button class="btn-secondary" @click="close">取消</el-button>
+        <el-button class="btn-secondary" @click="prevStep" :disabled="currentStep === 0">上一步</el-button>
+        <el-button class="btn-secondary" @click="nextStep" :disabled="currentStep === 2">下一步</el-button>
         <el-button
           type="primary"
+          class="btn-primary"
           :loading="loading"
           :disabled="currentStep !== 2 || loading"
           @click="submitImportOption">
@@ -514,141 +557,547 @@ defineExpose({
   </el-dialog>
 </template>
 
-<style scoped>
-.fixed-steps-dialog :deep(.el-dialog__body) {
-  padding: 20px;
-  height: 510px; /* 设置固定高度 */
+<style>
+/* Global Dialog Overrides - Non-scoped to ensure they apply to teleported dialog */
+.fixed-steps-dialog.el-dialog {
+  border-radius: 20px !important;
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  display: flex !important;
+  flex-direction: column !important;
+  height: 680px !important; /* Increased from 600px */
+  max-height: 90vh !important;
+  margin-top: 5vh !important; /* Adjusted */
+  --el-dialog-padding-primary: 0;
+  --el-dialog-content-font-size: 14px;
 }
 
-/* 关键样式：调整PlusStepsForm组件内部布局 */
-.fixed-steps-dialog :deep(.plus-steps-form) {
+.fixed-steps-dialog .el-dialog__header {
+  margin: 0;
+  padding: 16px 24px;
+  border-bottom: 1px solid rgba(16, 185, 129, 0.1);
+  background: linear-gradient(to right, #f0fdf4, #ffffff);
+  margin-right: 0;
+  flex-shrink: 0;
+}
+
+.fixed-steps-dialog .el-dialog__title {
+  color: #047857;
+  font-weight: 700;
+  font-size: 1.25rem;
+}
+
+.fixed-steps-dialog .el-dialog__headerbtn .el-dialog__close {
+  font-size: 1.25rem;
+  color: #9ca3af;
+  transition: all 0.2s;
+}
+
+.fixed-steps-dialog .el-dialog__headerbtn:hover .el-dialog__close {
+  color: #10b981;
+  transform: rotate(90deg);
+}
+
+.fixed-steps-dialog .el-dialog__body {
+  padding: 0 !important;
+  flex: 1 !important;
+  height: auto !important; /* Override explicit height from element styling if any */
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.fixed-steps-dialog .el-dialog__footer {
+  padding: 16px 30px;
+  border-top: 1px solid #f3f4f6;
+  flex-shrink: 0;
+  background-color: white; /* Ensure background is solid */
+}
+</style>
+
+<style scoped>
+/* Dialog & Layout */
+.fixed-steps-dialog {
+  --el-color-primary: #10b981;
+  --el-color-primary-light-3: #6ee7b7;
+  --el-color-primary-light-5: #a7f3d0;
+  --el-color-primary-light-7: #d1fae5;
+  --el-color-primary-light-8: #ecfdf5;
+  --el-color-primary-light-9: #f0fdf4;
+  --el-color-primary-dark-2: #059669;
+}
+
+.dialog-content-wrapper {
+  /* padding moved to overrides */
   display: flex;
   flex-direction: column;
-  height: 100%;
 }
 
-/* 内容区域样式，使其可滚动 */
-.fixed-steps-dialog :deep(.steps-content) {
-  flex: 1;
-  overflow-y: auto;
-  padding-bottom: 70px; /* 为底部按钮预留空间 */
+/* Animations */
+.fade-in {
+  animation: fadeIn 0.4s ease-out;
 }
 
-/* 步骤内容区域 */
-.step-content {
-  min-height: 350px;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Stepper Customization */
+.dialog-steps {
+  width: 100%;
+  padding: 10px 30px 0; /* Moved padding here */
+  margin-bottom: 5px;
+  flex-shrink: 0;
+}
+
+:deep(.el-step__head.is-process) {
+  color: #10b981;
+  border-color: #10b981;
+}
+
+:deep(.el-step__head.is-process .el-step__icon) {
+  background: #ecfdf5;
+  border: 2px solid #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+
+:deep(.el-step__title.is-process) {
+  font-weight: 700;
+  color: #10b981;
+}
+
+:deep(.el-step__head.is-success) {
+  color: #10b981;
+  border-color: #10b981;
+}
+
+:deep(.el-step__title.is-success) {
+  color: #10b981;
+  font-weight: 600;
+}
+
+/* Step 0: Data Type Cards */
+.step-container {
+  padding: 8px 4px;
+  margin: auto 0;
   width: 100%;
 }
 
-/* 按钮区域固定在底部 */
-.fixed-steps-dialog :deep(.steps-action) {
+.data-type-grid {
+  display: grid;
+  grid-template-columns: repeat(1, 1fr);
+  gap: 20px;
+}
+
+@media (min-width: 640px) {
+  .data-type-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.data-type-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 24px;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  height: 110px;
+  overflow: hidden;
+}
+
+.data-type-card::before {
+  content: "";
   position: absolute;
-  bottom: 20px;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(to bottom, #10b981, #34d399);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.data-type-card:hover {
+  border-color: #a7f3d0;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.08);
+  transform: translateY(-4px);
+}
+
+.data-type-card:hover::before {
+  opacity: 1;
+}
+
+.data-type-card.is-active {
+  background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
+  border-color: #10b981;
+  box-shadow: 0 0 0 1px #10b981, 0 10px 20px -3px rgba(16, 185, 129, 0.15);
+}
+
+.data-type-card.is-active::before {
+  opacity: 1;
+}
+
+.card-icon {
+  margin-right: 20px;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f3f4f6;
+  color: #9ca3af;
+  transition: all 0.3s ease;
+}
+
+.data-type-card:hover .card-icon {
+  background-color: #d1fae5;
+  color: #059669;
+  transform: scale(1.05);
+}
+
+.data-type-card.is-active .card-icon {
+  background: linear-gradient(135deg, #34d399 0%, #059669 100%);
+  color: white;
+  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);
+}
+
+.card-content {
+  flex: 1;
+  min-width: 0;
+  padding-right: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.card-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #374151;
+  margin: 0 0 4px 0;
+}
+
+.card-desc {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+.card-radio {
+  position: absolute;
+  top: 50%;
   right: 20px;
-  width: calc(100% - 40px);
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #d1d5db;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background-color: white;
-  padding-top: 10px;
-  border-top: 1px solid #ebeef5;
+  transition: all 0.3s;
+}
+
+.data-type-card.is-active .card-radio {
+  border-color: #10b981;
+  background-color: #10b981;
+}
+
+.radio-inner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: white;
+}
+
+/* Step 1: Upload & Input */
+.input-group {
+  margin-bottom: 24px;
+}
+
+.input-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.custom-input :deep(.el-input__wrapper) {
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px #e5e7eb inset;
+  padding: 8px 15px;
+  transition: all 0.3s;
+}
+
+.custom-input :deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px #a7f3d0 inset;
+}
+
+.custom-input :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2) inset, 0 0 0 1px #10b981 inset !important;
+}
+
+/* Upload Styling */
+.custom-upload :deep(.el-upload-dragger) {
+  padding: 20px;
+  height: auto;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed #d1d5db;
+  border-radius: 12px;
+  background-color: #f9fafb;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.custom-upload :deep(.el-upload-dragger:hover) {
+  border-color: #10b981;
+  background-color: #ecfdf5;
+}
+
+.upload-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  transition: all 0.3s;
+}
+
+.custom-upload :deep(.el-upload-dragger:hover) .upload-icon-wrapper {
+  background-color: #d1fae5;
+  transform: scale(1.1);
+}
+
+.custom-upload .el-icon--upload {
+  font-size: 24px;
+  color: #9ca3af;
+  margin: 0;
+  transition: color 0.3s;
+}
+
+.custom-upload :deep(.el-upload-dragger:hover) .el-icon--upload {
+  color: #10b981;
+}
+
+.upload-text h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 4px 0;
+}
+
+.upload-text p {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: 0 0 2px 0;
+}
+
+.upload-limit {
+  font-size: 0.8rem !important;
+  color: #9ca3af !important;
+  margin-top: 8px !important;
+}
+
+/* Step 2: Info & Config */
+.info-card {
+  background-color: white;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  margin-bottom: 8px;
+  transition: box-shadow 0.3s;
+}
+
+.info-card:hover {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+/* Overview Card Styles matching screenshot */
+.overview-card {
+  background: #ecfdf5 !important; /* Emerald-50 */
+  border: none !important;
+  padding: 20px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.project-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.project-icon {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 24px;
+  box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.3);
+}
+
+.project-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.project-name {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.project-coords {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+/* Original Styles to Keep or Override */
+.preview-container {
+  padding: 8px;
+  background-color: #fff;
+}
+
+.data-preview-table {
+  border-radius: 8px;
+  border: 1px solid #f3f4f6;
+}
+
+/* Dialog Footer */
+.dialog-footer {
   display: flex;
   justify-content: flex-end;
+  gap: 12px;
 }
 
-/* 表格容器样式，确保水平滚动正常工作 */
-.table-container {
-  width: 100%;
-  overflow-x: auto;
-  position: relative;
+.btn-secondary {
+  border-radius: 8px !important;
+  padding: 10px 24px !important;
+  height: 40px !important;
+  font-weight: 500 !important;
 }
 
-/* 表格样式优化 */
-:deep(.data-preview-table) {
-  width: 100%;
-  table-layout: fixed; /* 固定表格布局，更好地控制列宽 */
-  box-shadow: none;
-  border-radius: 6px;
+.btn-secondary:hover {
+  background-color: #ecfdf5 !important;
+  color: #059669 !important;
+  border-color: #a7f3d0 !important;
 }
 
-:deep(.data-preview-table .table-header) {
-  background-color: #f8fafc;
-  position: sticky;
-  top: 0;
-  z-index: 10;
+.btn-primary {
+  border-radius: 8px !important;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  border: none !important;
+  padding: 10px 24px !important;
+  height: 40px !important;
+  font-weight: 600 !important;
+  box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.3);
+  transition: all 0.3s !important;
 }
 
-:deep(.data-preview-table th) {
-  font-weight: 600;
-  color: #4b5563;
-  padding: 10px 12px;
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.4) !important;
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* Global Dialog Overrides REMOVED - Moved to non-scoped style */
+
+.dialog-content-wrapper {
+  padding: 0 30px 10px; /* Adjust padding */
+  flex: 1;
+  overflow-y: auto;
+}
+
+.config-item {
+  display: flex;
+  align-items: center;
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px;
+  transition: all 0.3s;
+  gap: 16px; /* Added spacing */
+}
+
+.config-item:hover {
+  border-color: #d1fae5;
+  background-color: #f0fdf4;
+}
+
+.config-label {
+  font-weight: 500;
+  color: #374151;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-:deep(.data-preview-table tr) {
-  transition: background-color 0.2s ease;
+.config-content {
+  flex: 1;
+  min-width: 0;
 }
 
-:deep(.data-preview-table tr:hover) {
-  background-color: #f1f5f9;
-}
-
-:deep(.data-preview-table td) {
-  color: #334155;
-  padding: 8px 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* 确保水平滚动条显示正常 */
-:deep(.pure-table .el-scrollbar__wrap) {
-  overflow-x: auto !important;
-}
-
-:deep(.el-upload-dragger) {
-  height: 280px;
-}
-
-:deep(.el-upload-dragger .el-icon--upload) {
-  margin-top: 35px;
-}
-
-:deep(.el-radio) {
+.full-width-input {
   width: 100%;
-  height: 100%;
-  margin: 0 10px;
-  padding: 0;
 }
 
-:deep(.el-radio__input) {
-  height: 24px;
-  width: 24px;
+.config-body {
+  padding: 20px;
 }
 
-:deep(.el-radio__inner) {
-  width: 24px;
-  height: 24px;
-  background-color: #ecf0f1;
+/* Scrollbar Customization */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
-:deep(.el-radio__input.is-checked .el-radio__inner) {
-  background-color: #3498db;
-  border-color: #3498db;
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
 }
 
-:deep(.el-radio__input.is-checked .el-radio__inner::after) {
-  transform: translate(-50%, -50%) scale(1);
-  content: "✓";
-  background-color: transparent;
-  color: white;
-  font-size: 12px;
-  width: auto;
-  height: auto;
-  border-radius: 0;
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
 }
 
-:deep(.el-radio__label) {
-  padding-left: 10px;
-  width: 100%;
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }
 </style>

@@ -44,10 +44,6 @@ export const useProjectStore = defineStore("project", () => {
           }
         }
 
-        if (projects.value.length > 0 && !currentProject.value) {
-          currentProject.value = projects.value[0];
-        }
-
         return projects.value;
       } else {
         throw new Error(result.error || "获取项目列表失败");

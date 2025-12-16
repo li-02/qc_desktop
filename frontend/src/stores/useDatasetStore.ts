@@ -38,7 +38,7 @@ export const useDatasetStore = defineStore("dataset", () => {
       loading.value = true;
       const project = projectStore.projects.find(p => p.id === targetProjectId);
       if (project) {
-        datasets.value = project.datasets.map(d => ({
+        datasets.value = project.datasets.map((d: any) => ({
           id: d.id,
           name: d.name,
           type: d.type,
@@ -195,6 +195,11 @@ export const useDatasetStore = defineStore("dataset", () => {
     () => projectStore.currentProject,
     newProject => {
       if (newProject) {
+        // 切换项目时，清除当前选中的数据集
+        currentDataset.value = null;
+        versions.value = [];
+        currentVersion.value = null;
+        currentVersionStats.value = null;
         loadDatasets(newProject.id);
       } else {
         datasets.value = [];

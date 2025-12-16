@@ -1,6 +1,8 @@
 import { ProjectDBRepository } from "../repository/ProjectDBRepository";
 import { DatasetDBRepository } from "../repository/DatasetDBRepository";
 import { Site, Dataset } from "@shared/types/database";
+import * as fs from "fs";
+import * as path from "path";
 import {
   ProjectInfo,
   CreateProjectRequest,
@@ -180,10 +182,59 @@ export class ProjectService {
         altitude: site.altitude?.toString() || "",
       },
       datasets: datasets.map(d => ({
+        ...((): {
+          dirPath: string;
+          fileCount: number;
+          totalSizeBytes: number;
+          originalFileSizeBytes: number;
+        } => {
+          const sourceFilePath = d.source_file_path || "";
+          const dirPath = sourceFilePath ? path.dirname(sourceFilePath) : "";
+
+          let fileCount = 0;
+          let totalSizeBytes = 0;
+          let originalFileSizeBytes = 0;
+
+          try {
+            if (sourceFilePath && fs.existsSync(sourceFilePath)) {
+              originalFileSizeBytes = fs.statSync(sourceFilePath).size;
+            }
+          } catch {
+            originalFileSizeBytes = 0;
+          }
+
+          try {
+            if (dirPath && fs.existsSync(dirPath)) {
+              const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+              for (const entry of entries) {
+                if (!entry.isFile()) continue;
+                const fp = path.join(dirPath, entry.name);
+                try {
+                  const st = fs.statSync(fp);
+                  fileCount += 1;
+                  totalSizeBytes += st.size;
+                } catch {
+                  // ignore
+                }
+              }
+            } else if (sourceFilePath && fs.existsSync(sourceFilePath)) {
+              fileCount = 1;
+              totalSizeBytes = originalFileSizeBytes;
+            }
+          } catch {
+            // ignore
+          }
+
+          return {
+            dirPath,
+            fileCount,
+            totalSizeBytes,
+            originalFileSizeBytes,
+          };
+        })(),
         id: d.id.toString(),
         name: d.dataset_name,
         type: "csv",
-        dirPath: "",
         originalFile: d.source_file_path || "",
         createdAt: new Date(d.import_time).getTime(),
         belongTo: site.id.toString()

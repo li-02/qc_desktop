@@ -1,5 +1,4 @@
-import { ServiceResponse } from '@shared/types/common';
-import { FileParseResult } from '@shared/types/projectInterface';
+import { ServiceResponse, FileParseResult } from '@shared/types/projectInterface';
 import { CorrelationAnalysisRepository } from '../repository/CorrelationAnalysisRepository';
 import { CorrelationResult } from '@shared/types/database';
 

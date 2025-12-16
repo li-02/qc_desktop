@@ -24,10 +24,10 @@ export class DatasetService {
   }
 
   async importDataset(request: ImportDatasetRequest): Promise<ServiceResponse<{
-      datasetId: string;
-      datasetName: string;
-      path: string;
-    }>> {
+    datasetId: string;
+    datasetName: string;
+    path: string;
+  }>> {
     try {
       const validationResult = await this.validateImportRequest(request);
       if (!validationResult.success) {
@@ -36,7 +36,7 @@ export class DatasetService {
 
       const projectId = parseInt(request.projectId);
       if (isNaN(projectId)) throw new Error("无效的项目ID");
-      
+
       const projectResult = this.projectRepository.getProjectById(projectId);
       if (!projectResult.success) {
         throw new Error("项目不存在");
@@ -44,7 +44,7 @@ export class DatasetService {
 
       const datasetsResult = this.datasetRepository.getDatasetsBySiteId(projectId);
       if (datasetsResult.success && datasetsResult.data!.some(d => d.dataset_name === request.datasetName)) {
-         throw new Error(`数据集名称 "${request.datasetName}" 已存在`);
+        throw new Error(`数据集名称 "${request.datasetName}" 已存在`);
       }
 
       const baseDataDir = path.join(process.cwd(), "data");
@@ -52,22 +52,26 @@ export class DatasetService {
       if (!fs.existsSync(datasetDir)) {
         fs.mkdirSync(datasetDir, { recursive: true });
       }
-      
+
       const originalExt = path.extname(request.file.name);
       const savedFileName = `original${originalExt}`;
       const savedFilePath = path.join(datasetDir, savedFileName);
-      
+
       fs.copyFileSync(request.file.path, savedFilePath);
+
+      // 识别时间列
+      const timeColumn = this.findTimestampColumn(request.columns);
 
       const datasetIdResult = this.datasetRepository.createDataset({
         site_id: projectId,
         dataset_name: request.datasetName,
         source_file_path: savedFilePath,
+        time_column: timeColumn || undefined,
         description: ""
       });
-      
+
       if (!datasetIdResult.success) {
-         throw new Error(datasetIdResult.error);
+        throw new Error(datasetIdResult.error);
       }
       const datasetId = datasetIdResult.data!;
 
@@ -78,41 +82,42 @@ export class DatasetService {
         file_path: savedFilePath,
         remark: 'Initial Import'
       });
-      
+
       if (!versionIdResult.success) {
-         throw new Error(versionIdResult.error);
+        throw new Error(versionIdResult.error);
       }
       const versionId = versionIdResult.data!;
 
       const dataQuality = await this.performFullFileAnalysis(savedFilePath, request.missingValueTypes, originalExt);
       if (dataQuality.success) {
-         const dq = dataQuality.data!;
-         this.datasetRepository.createStatVersionDetail({
-           version_id: versionId,
-           total_rows: dq.totalRecords,
-           total_cols: request.columns.length,
-           total_missing_count: dq.totalMissingCount,
-           total_outlier_count: 0,
-           column_stats_json: JSON.stringify({
-             columnMissingStatus: dq.columnMissingStatus,
-             missingValueStats: dq.missingValueStats,
-             columnStatistics: dq.columnStatistics
-           })
-         });
+        const dq = dataQuality.data!;
+        this.datasetRepository.createStatVersionDetail({
+          version_id: versionId,
+          total_rows: dq.totalRecords,
+          total_cols: request.columns.length,
+          total_missing_count: dq.totalMissingCount,
+          total_outlier_count: 0,
+          column_stats_json: JSON.stringify({
+            columnMissingStatus: dq.columnMissingStatus,
+            missingValueStats: dq.missingValueStats,
+            columnStatistics: dq.columnStatistics
+          })
+        });
       }
 
+      // 为列设置正确的 data_type，时间列设置为 datetime
       const columnSettings = request.columns.map((col, index) => ({
         dataset_id: datasetId,
         column_name: col,
         column_index: index,
         is_active: 1,
-        data_type: 'text',
+        data_type: col === timeColumn ? 'datetime' : 'text',
         min_threshold: null,
         max_threshold: null
       } as any));
       const saveSettingsResult = this.datasetRepository.saveColumnSettings(columnSettings);
       if (!saveSettingsResult.success) {
-         throw new Error(`保存列设置失败: ${saveSettingsResult.error}`);
+        throw new Error(`保存列设置失败: ${saveSettingsResult.error}`);
       }
 
       return {
@@ -139,11 +144,11 @@ export class DatasetService {
 
       const datasets = datasetsResult.data!;
       const datasetInfos: DatasetInfo[] = [];
-      
+
       for (const d of datasets) {
         datasetInfos.push(await this.mapDatasetToInfo(d));
       }
-      
+
       return { success: true, data: datasetInfos };
     } catch (error: any) {
       return { success: false, error: error.message };
@@ -195,17 +200,17 @@ export class DatasetService {
             columnMissingStatus: {}
           };
           if (stat.column_stats_json) {
-             try {
-                const colStats = JSON.parse(stat.column_stats_json);
-                if (colStats.columnMissingStatus) {
-                   dataQuality.missingValueStats = colStats.missingValueStats || {};
-                   dataQuality.columnMissingStatus = colStats.columnMissingStatus || {};
-                   dataQuality.columnStatistics = colStats.columnStatistics || {};
-                } else {
-                   // Fallback for old format where it was just the missing status map
-                   dataQuality.columnMissingStatus = colStats;
-                }
-             } catch (e) {}
+            try {
+              const colStats = JSON.parse(stat.column_stats_json);
+              if (colStats.columnMissingStatus) {
+                dataQuality.missingValueStats = colStats.missingValueStats || {};
+                dataQuality.columnMissingStatus = colStats.columnMissingStatus || {};
+                dataQuality.columnStatistics = colStats.columnStatistics || {};
+              } else {
+                // Fallback for old format where it was just the missing status map
+                dataQuality.columnMissingStatus = colStats;
+              }
+            } catch (e) { }
           }
         }
       }
@@ -219,6 +224,7 @@ export class DatasetService {
         belongTo: dataset.site_id.toString(),
         dirPath: path.dirname(dataset.source_file_path || ""),
         missingValueTypes: [], // Store in db?
+        timeColumn: dataset.time_column || undefined,
         originalFile: {
           name: path.basename(dataset.source_file_path || ""),
           filePath: dataset.source_file_path || "",
@@ -334,7 +340,7 @@ export class DatasetService {
 
       const updateData: any = {};
       if (updates.name) updateData.dataset_name = updates.name;
-      
+
       const result = this.datasetRepository.updateDataset(dId, updateData);
       if (!result.success) return { success: false, error: result.error };
 
@@ -350,79 +356,80 @@ export class DatasetService {
     method: string,
     options: any
   ): Promise<ServiceResponse<any>> {
-     // TODO: Implement actual imputation logic using python scripts or other methods
-     console.log(`Performing imputation on dataset ${datasetId} using ${method}`, options);
-     return { success: false, error: "插补功能暂未实现 (Database Refactor Pending)" };
+    // TODO: Implement actual imputation logic using python scripts or other methods
+    console.log(`Performing imputation on dataset ${datasetId} using ${method}`, options);
+    return { success: false, error: "插补功能暂未实现 (Database Refactor Pending)" };
   }
 
   private async mapDatasetToInfo(d: Dataset): Promise<DatasetInfo> {
-     const versionsResult = this.datasetRepository.getVersionsByDatasetId(d.id);
-     const versions = versionsResult.success ? versionsResult.data! : [];
-     const latestVersion = versions[0];
-     
-     let dataQuality: DataQualityInfo = {
-        totalRecords: 0,
-        completeRecords: 0,
-        missingValueStats: {},
-        totalMissingCount: 0,
-        qualityPercentage: 0,
-        analyzedAt: 0,
-        columnMissingStatus: {}
-     };
+    const versionsResult = this.datasetRepository.getVersionsByDatasetId(d.id);
+    const versions = versionsResult.success ? versionsResult.data! : [];
+    const latestVersion = versions[0];
 
-     if (latestVersion) {
-       const statResult = this.datasetRepository.getStatByVersionId(latestVersion.id);
-       if (statResult.success) {
-         const stat = statResult.data!;
-         let columnMissingStatus = {};
-         let missingValueStats = {};
-         let columnStatistics = {};
+    let dataQuality: DataQualityInfo = {
+      totalRecords: 0,
+      completeRecords: 0,
+      missingValueStats: {},
+      totalMissingCount: 0,
+      qualityPercentage: 0,
+      analyzedAt: 0,
+      columnMissingStatus: {}
+    };
 
-         if (stat.column_stats_json) {
-            try {
-                const parsed = JSON.parse(stat.column_stats_json);
-                if (parsed.columnMissingStatus) {
-                    columnMissingStatus = parsed.columnMissingStatus;
-                    missingValueStats = parsed.missingValueStats || {};
-                    columnStatistics = parsed.columnStatistics || {};
-                } else {
-                    columnMissingStatus = parsed;
-                }
-            } catch(e) {}
-         }
+    if (latestVersion) {
+      const statResult = this.datasetRepository.getStatByVersionId(latestVersion.id);
+      if (statResult.success) {
+        const stat = statResult.data!;
+        let columnMissingStatus = {};
+        let missingValueStats = {};
+        let columnStatistics = {};
 
-         dataQuality = {
-            totalRecords: stat.total_rows,
-            completeRecords: stat.total_rows - stat.total_missing_count,
-            missingValueStats: missingValueStats,
-            totalMissingCount: stat.total_missing_count,
-            qualityPercentage: stat.total_rows > 0 ? ((stat.total_rows - stat.total_missing_count) / stat.total_rows) * 100 : 100,
-            analyzedAt: new Date(stat.calculated_at).getTime(),
-            columnMissingStatus: columnMissingStatus,
-            columnStatistics: columnStatistics
-         };
-       }
-     }
+        if (stat.column_stats_json) {
+          try {
+            const parsed = JSON.parse(stat.column_stats_json);
+            if (parsed.columnMissingStatus) {
+              columnMissingStatus = parsed.columnMissingStatus;
+              missingValueStats = parsed.missingValueStats || {};
+              columnStatistics = parsed.columnStatistics || {};
+            } else {
+              columnMissingStatus = parsed;
+            }
+          } catch (e) { }
+        }
 
-     return {
-       id: d.id.toString(),
-       name: d.dataset_name,
-       type: "csv",
-       createdAt: new Date(d.import_time).getTime(),
-       updatedAt: new Date(d.import_time).getTime(),
-       belongTo: d.site_id.toString(),
-       dirPath: path.dirname(d.source_file_path || ""),
-       missingValueTypes: [],
-       originalFile: {
-         name: path.basename(d.source_file_path || ""),
-         filePath: d.source_file_path || "",
-         size: "0",
-         rows: dataQuality.totalRecords,
-         columns: this.datasetRepository.getColumnSettings(d.id).success ? this.datasetRepository.getColumnSettings(d.id).data!.map(c => c.column_name) : [],
-         dataQuality: dataQuality
-       },
-       processedFiles: []
-     };
+        dataQuality = {
+          totalRecords: stat.total_rows,
+          completeRecords: stat.total_rows - stat.total_missing_count,
+          missingValueStats: missingValueStats,
+          totalMissingCount: stat.total_missing_count,
+          qualityPercentage: stat.total_rows > 0 ? ((stat.total_rows - stat.total_missing_count) / stat.total_rows) * 100 : 100,
+          analyzedAt: new Date(stat.calculated_at).getTime(),
+          columnMissingStatus: columnMissingStatus,
+          columnStatistics: columnStatistics
+        };
+      }
+    }
+
+    return {
+      id: d.id.toString(),
+      name: d.dataset_name,
+      type: "csv",
+      createdAt: new Date(d.import_time).getTime(),
+      updatedAt: new Date(d.import_time).getTime(),
+      belongTo: d.site_id.toString(),
+      dirPath: path.dirname(d.source_file_path || ""),
+      missingValueTypes: [],
+      timeColumn: d.time_column || undefined,
+      originalFile: {
+        name: path.basename(d.source_file_path || ""),
+        filePath: d.source_file_path || "",
+        size: "0",
+        rows: dataQuality.totalRecords,
+        columns: this.datasetRepository.getColumnSettings(d.id).success ? this.datasetRepository.getColumnSettings(d.id).data!.map(c => c.column_name) : [],
+        dataQuality: dataQuality
+      },
+      processedFiles: []
+    };
   }
 
   private async validateImportRequest(request: ImportDatasetRequest): Promise<ServiceResponse<void>> {
@@ -432,6 +439,48 @@ export class DatasetService {
     if (!request.columns || request.columns.length === 0) return { success: false, error: "列信息不能为空" };
     if (typeof request.rows !== "number" || request.rows <= 0) return { success: false, error: "行数必须是正整数" };
     return { success: true };
+  }
+
+  /**
+   * 识别时间列的列名
+   * 基于常见的时间列名称模式进行匹配
+   */
+  private findTimestampColumn(columns: string[]): string | null {
+    if (!columns || columns.length === 0) {
+      return null;
+    }
+
+    // 优先匹配常见的时间列名（不区分大小写）
+    const priorityPatterns = [
+      /^timestamp$/i,
+      /^date$/i,
+      /^time$/i,
+      /^record_time$/i,
+      /^datetime$/i,
+      /^time_stamp$/i,
+      /^date_time$/i,
+      /^record_date$/i,
+      /^observation_time$/i,
+      /^obs_time$/i,
+    ];
+
+    for (const pattern of priorityPatterns) {
+      const match = columns.find(col => pattern.test(col));
+      if (match) {
+        return match;
+      }
+    }
+
+    // 如果没有精确匹配，尝试包含时间相关关键词的列
+    const timeKeywords = ['time', 'date', 'timestamp'];
+    for (const col of columns) {
+      const lowerCol = col.toLowerCase();
+      if (timeKeywords.some(keyword => lowerCol.includes(keyword))) {
+        return col;
+      }
+    }
+
+    return null;
   }
 
   private async performFullFileAnalysis(
@@ -484,8 +533,8 @@ export class DatasetService {
         qualityPercentage:
           parseResult.totalRows > 0
             ? ((parseResult.totalRows - Math.floor(parseResult.totalMissingCount / parseResult.columns.length)) /
-                parseResult.totalRows) *
-              100
+              parseResult.totalRows) *
+            100
             : 100,
         analyzedAt: Date.now(),
         columnMissingStatus: parseResult.columnMissingStatus || {},

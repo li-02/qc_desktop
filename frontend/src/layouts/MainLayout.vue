@@ -3,12 +3,23 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import emitter from "@/utils/eventBus";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Plus, Refresh, ArrowDown, ArrowUp, CaretLeft, CaretRight, Sort, Delete, Files, Close } from "@element-plus/icons-vue";
+import { Plus, Refresh, ArrowDown, ArrowUp, CaretLeft, CaretRight, Sort, Delete, Files, Close, Setting } from "@element-plus/icons-vue";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
+import SettingsDialog from "@/components/dialogs/SettingsDialog.vue";
 
 const projectStore = useProjectStore();
 const datasetStore = useDatasetStore();
+const settingsStore = useSettingsStore();
+
+// 设置对话框引用
+const settingsDialogRef = ref<InstanceType<typeof SettingsDialog> | null>(null);
+
+// 打开设置对话框
+const openSettingsDialog = () => {
+  settingsDialogRef.value?.open();
+};
 
 // 侧边栏状态
 const isCollapsed = ref(false);
@@ -133,7 +144,13 @@ const selectProject = (projectId: string) => {
   const project = projectStore.projects.find(p => p.id === projectId);
   if (project) {
     projectStore.setCurrentProject(projectId);
+    router.push("/");
   }
+};
+
+const handleProjectClick = (projectId: string) => {
+  selectProject(projectId);
+  toggleProjectExpanded(projectId);
 };
 
 // 数据集选择
@@ -215,14 +232,31 @@ const formatCoordinate = (value: string, direction: string): string => {
   return `${Math.abs(num).toFixed(1)}°${direction}`;
 };
 
+const formatBytes = (bytes: number): string => {
+  if (!bytes || bytes <= 0) return "0 B";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+};
+
 const getTotalFiles = (project: any): number => {
-  return project.datasets?.length * 4 || 0; // 模拟计算
+  const datasets = Array.isArray(project?.datasets) ? project.datasets : [];
+  return datasets.reduce((sum: number, d: any) => {
+    const fc = typeof d?.fileCount === "number" ? d.fileCount : 0;
+    // 如果后端暂未返回 fileCount，则至少按 1 个原始文件计
+    return sum + (fc > 0 ? fc : (d?.originalFile ? 1 : 0));
+  }, 0);
 };
 
 const getTotalSize = (project: any): string => {
-  const size = (project.datasets?.length || 0) * 0.5; // 模拟计算 GB
-  if (size < 1) return `${(size * 1024).toFixed(0)} MB`;
-  return `${size.toFixed(1)} GB`;
+  const datasets = Array.isArray(project?.datasets) ? project.datasets : [];
+  const totalBytes = datasets.reduce((sum: number, d: any) => {
+    if (typeof d?.totalSizeBytes === "number" && d.totalSizeBytes > 0) return sum + d.totalSizeBytes;
+    if (typeof d?.originalFileSizeBytes === "number" && d.originalFileSizeBytes > 0) return sum + d.originalFileSizeBytes;
+    return sum;
+  }, 0);
+  return formatBytes(totalBytes);
 };
 
 const getDatasetIcon = (type: string): string => {
@@ -266,8 +300,12 @@ const handleImportSuccess = () => {
   }
 };
 
-onMounted(() => {
-  projectStore.loadProjects();
+onMounted(async () => {
+  await projectStore.loadProjects();
+  if (!projectStore.currentProject && sortedProjects.value.length > 0) {
+    selectProject(sortedProjects.value[0].id);
+  }
+  settingsStore.initSettings(); // 初始化系统设置
   emitter.on("data-imported", handleImportSuccess);
 });
 
@@ -289,9 +327,12 @@ onUnmounted(() => {
           </div>
           <div v-if="!isCollapsed" class="app-title-text">
             <div class="app-name">生态监测平台</div>
-            <div class="app-subtitle">Eco Monitor Desktop</div>
+            <div class="app-subtitle">生态监测桌面端</div>
           </div>
         </div>
+        <button v-if="!isCollapsed" class="settings-btn" @click="openSettingsDialog" title="系统设置">
+          <el-icon><Setting /></el-icon>
+        </button>
       </div>
 
       <!-- 侧边栏折叠按钮 -->
@@ -391,7 +432,7 @@ onUnmounted(() => {
                   'batch-mode': isBatchMode
                 },
               ]"
-              @click="isBatchMode ? toggleProjectSelection(project.id) : selectProject(project.id)">
+              @click="isBatchMode ? toggleProjectSelection(project.id) : handleProjectClick(project.id)">
               
               <!-- 批量选择复选框 -->
               <div v-if="isBatchMode" class="project-checkbox">
@@ -554,6 +595,9 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- 设置对话框 -->
+    <SettingsDialog ref="settingsDialogRef" />
   </div>
 </template>
 
@@ -676,6 +720,32 @@ onUnmounted(() => {
   transform: translateX(-20px);
   width: 0;
   overflow: hidden;
+}
+
+/* 设置按钮 */
+.settings-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #6b7280;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+
+.settings-btn:hover {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  transform: rotate(30deg);
+}
+
+.settings-btn .el-icon {
+  font-size: 16px;
 }
 
 .app-name {
@@ -801,10 +871,6 @@ onUnmounted(() => {
 }
 
 /* 项目列表 */
-.projects-container {
-  space-y: 8px;
-}
-
 .project-item {
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid rgba(229, 231, 235, 0.4);
@@ -1032,6 +1098,7 @@ onUnmounted(() => {
 .datasets-list {
   margin-top: 12px;
   padding-left: 16px;
+  padding-right: 6px;
   border-left: 2px solid rgba(229, 231, 235, 0.3);
   max-height: 0;
   overflow: hidden;

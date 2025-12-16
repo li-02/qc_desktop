@@ -6,7 +6,7 @@ export class DatabaseManager {
   private static instance: DatabaseManager;
   private db: Database | null = null;
 
-  private constructor() {}
+  private constructor() { }
 
   public static getInstance(): DatabaseManager {
     if (!DatabaseManager.instance) {
@@ -41,6 +41,7 @@ export class DatabaseManager {
     if (!this.db) return;
 
     this.initCoreTables();
+    this.initSystemSettingsTables();
     this.initOutlierDetectionTables();
     this.initCorrelationAnalysisTables();
     this.migrateSchema();
@@ -75,6 +76,7 @@ export class DatabaseManager {
         site_id INTEGER NOT NULL,              -- 所属站点ID
         dataset_name TEXT NOT NULL,            -- 数据集名称 (通常为文件名)
         source_file_path TEXT,                 -- 原始文件路径
+        time_column TEXT,                      -- 时间列名称 (解析时自动识别)
         import_time DATETIME DEFAULT CURRENT_TIMESTAMP,  -- 导入时间
         description TEXT,                      -- 数据集描述
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,   -- 创建时间
@@ -218,6 +220,22 @@ export class DatabaseManager {
       );
     `);
 
+    // 异常检测列统计表 (biz_outlier_column_stat)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS biz_outlier_column_stat (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 统计唯一标识
+        result_id INTEGER NOT NULL,            -- 所属检测结果ID
+        column_name TEXT NOT NULL,             -- 列名
+        outlier_count INTEGER DEFAULT 0,       -- 异常值数量
+        min_threshold REAL,                    -- 最小阈值
+        max_threshold REAL,                    -- 最大阈值
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,  -- 创建时间
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,  -- 更新时间
+        deleted_at DATETIME,                   -- 删除时间
+        is_del BOOLEAN DEFAULT 0               -- 软删除标记
+      );
+    `);
+
     // 创建索引以提升查询性能
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_outlier_detection_scope 
@@ -228,7 +246,45 @@ export class DatabaseManager {
       
       CREATE INDEX IF NOT EXISTS idx_outlier_detail_result 
         ON biz_outlier_detail(result_id, row_index);
+        
+      CREATE INDEX IF NOT EXISTS idx_outlier_column_stat_result 
+        ON biz_outlier_column_stat(result_id);
     `);
+  }
+
+  /**
+   * 初始化系统设置表结构
+   */
+  private initSystemSettingsTables(): void {
+    if (!this.db) return;
+
+    // 系统设置表 (sys_settings)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS sys_settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 设置唯一标识
+        setting_key TEXT NOT NULL UNIQUE,      -- 设置键名
+        setting_value TEXT,                    -- 设置值 (JSON格式存储复杂值)
+        setting_type TEXT DEFAULT 'string',    -- 值类型 (string/number/boolean/json)
+        description TEXT,                      -- 设置描述
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,  -- 创建时间
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP   -- 更新时间
+      );
+    `);
+
+    // 插入默认设置（如果不存在）
+    const defaultSettings = [
+      { key: 'timezone', value: 'UTC+8', type: 'string', description: '系统时区设置，用于解析无时区的时间字符串' },
+      { key: 'dateFormat', value: 'YYYY-MM-DD HH:mm', type: 'string', description: '日期时间显示格式' },
+    ];
+
+    const insertStmt = this.db.prepare(`
+      INSERT OR IGNORE INTO sys_settings (setting_key, setting_value, setting_type, description)
+      VALUES (?, ?, ?, ?)
+    `);
+
+    for (const setting of defaultSettings) {
+      insertStmt.run(setting.key, setting.value, setting.type, setting.description);
+    }
   }
 
   /**
@@ -263,11 +319,28 @@ export class DatabaseManager {
   private migrateSchema(): void {
     if (!this.db) return;
 
+    // 检查并添加 sys_dataset 表的新字段
+    const datasetInfo = this.db
+      .prepare("PRAGMA table_info(sys_dataset)")
+      .all() as { name: string }[];
+
+    const datasetColumns = new Set(datasetInfo.map(c => c.name));
+
+    const datasetNewColumns = [
+      { name: 'time_column', type: 'TEXT' }
+    ];
+
+    for (const col of datasetNewColumns) {
+      if (!datasetColumns.has(col.name)) {
+        this.db.exec(`ALTER TABLE sys_dataset ADD COLUMN ${col.name} ${col.type};`);
+      }
+    }
+
     // 检查并添加 conf_column_setting 表的新字段
     const columnSettingInfo = this.db
       .prepare("PRAGMA table_info(conf_column_setting)")
       .all() as { name: string }[];
-    
+
     const columnSettingColumns = new Set(columnSettingInfo.map(c => c.name));
 
     const columnSettingNewColumns = [
@@ -289,7 +362,7 @@ export class DatabaseManager {
     const outlierResultInfo = this.db
       .prepare("PRAGMA table_info(biz_outlier_result)")
       .all() as { name: string }[];
-    
+
     const outlierResultColumns = new Set(outlierResultInfo.map(c => c.name));
 
     const outlierResultNewColumns = [
@@ -301,6 +374,23 @@ export class DatabaseManager {
     for (const col of outlierResultNewColumns) {
       if (!outlierResultColumns.has(col.name)) {
         this.db.exec(`ALTER TABLE biz_outlier_result ADD COLUMN ${col.name} ${col.type};`);
+      }
+    }
+
+    // 检查并添加 biz_outlier_detail 表的新字段
+    const outlierDetailInfo = this.db
+      .prepare("PRAGMA table_info(biz_outlier_detail)")
+      .all() as { name: string }[];
+
+    const outlierDetailColumns = new Set(outlierDetailInfo.map(c => c.name));
+
+    const outlierDetailNewColumns = [
+      { name: 'time_point', type: 'DATETIME' }
+    ];
+
+    for (const col of outlierDetailNewColumns) {
+      if (!outlierDetailColumns.has(col.name)) {
+        this.db.exec(`ALTER TABLE biz_outlier_detail ADD COLUMN ${col.name} ${col.type};`);
       }
     }
 
@@ -317,9 +407,9 @@ export class DatabaseManager {
 
     // 检查当前表的 CHECK 约束是否需要更新
     const tableInfo = this.db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='biz_outlier_result'").get() as { sql: string } | undefined;
-    
+
     if (!tableInfo) return;
-    
+
     // 如果已经包含 'RUNNING' 和 'COMPLETED' 状态，则不需要迁移
     if (tableInfo.sql.includes('RUNNING') && tableInfo.sql.includes('COMPLETED') && tableInfo.sql.includes('FAILED')) {
       return;

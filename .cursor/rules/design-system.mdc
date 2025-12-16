@@ -1,0 +1,161 @@
+---
+description: Application Design System & UI Style Guide
+globs: **/*.vue, **/*.css, **/*.scss
+alwaysApply: true
+---
+# Application Design System Specification
+
+## Core Design Philosophy
+- **Theme**: Eco-friendly, Modern, Clean, Data-Centric
+- **Visual Style**: Glassmorphism (Frosted Glass), Soft Gradients, Floating Cards
+- **Primary Color**: Emerald Green (`#10b981`) representing nature/ecology
+- **Interaction**: Smooth transitions, Hover lift effects, Scale animations
+
+## Design Tokens
+
+### Colors
+- **Primary (Emerald)**:
+  - Main: `#10b981` (Emerald-500)
+  - Hover: `#059669` (Emerald-600)
+  - Active: `#047857` (Emerald-700)
+  - Light/Bg: `#ecfdf5` (Emerald-50), `rgba(16, 185, 129, 0.08)`
+  - Gradient: `linear-gradient(135deg, #10b981 0%, #059669 100%)`
+
+- **Secondary (Accents)**:
+  - Blue: `#3b82f6` (Info/Weather)
+  - Purple: `#8b5cf6` (Data/Files)
+  - Cyan: `#06b6d4` (Size/Storage)
+  - Amber: `#f59e0b` (Processing/Warning)
+  - Red: `#ef4444` (Error/Delete)
+
+- **Backgrounds**:
+  - **App Base**: `linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%)`
+  - **Glass Panel**: `rgba(255, 255, 255, 0.7)` with `backdrop-filter: blur(20px)`
+  - **Sidebar**: `linear-gradient(160deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.9) 30%, rgba(240, 253, 244, 0.85) 70%, rgba(236, 253, 245, 0.9) 100%)`
+  - **Hover State**: `rgba(255, 255, 255, 0.9)`
+
+- **Typography Colors**:
+  - Primary: `#1f2937` (Gray-800)
+  - Secondary: `#6b7280` (Gray-500)
+  - Tertiary: `#9ca3af` (Gray-400)
+
+### UI Elements
+
+- **Shadows**:
+  - Base: `0 2px 8px rgba(0, 0, 0, 0.04)`
+  - Hover: `0 8px 25px rgba(0, 0, 0, 0.08)`
+  - Glow (Primary): `0 4px 20px rgba(16, 185, 129, 0.15)`
+  - Icon Shadow: `0 2px 8px rgba(16, 185, 129, 0.2)`
+
+- **Borders**:
+  - Default: `1px solid rgba(229, 231, 235, 0.4)`
+  - Hover: `rgba(16, 185, 129, 0.3)`
+
+- **Radius**:
+  - Card: `12px` or `16px`
+  - Icon Box: `10px` or `12px`
+  - Button: `4px` or `8px`
+
+- **Transitions**:
+  - Standard: `all 0.3s cubic-bezier(0.4, 0, 0.2, 1)`
+
+## Component Patterns
+
+### Dialogs
+- **Header**:
+  - Background: `linear-gradient(to right, #ecfdf5, #ffffff)`
+  - Title Color: `#047857` (Emerald-700)
+  - Bottom Border: `1px solid #f0fdf4`
+- **Body**: Padding `24px 32px`.
+- **Footer**: Top border `1px solid #f3f4f6`, right-aligned buttons.
+
+### Selection Cards (Grid Layout)
+- **Container**: Rounded-xl, Border (Gray-200), White bg.
+- **Active State**:
+  - Background: `rgba(236, 253, 245, 0.9)` (Emerald-50)
+  - Border: `1px solid #10b981` (Emerald-500)
+  - Shadow: `0 4px 6px -1px rgba(16, 185, 129, 0.1)`
+- **Hover State**: Lift effect (`-translate-y-1`), shadow increase.
+- **Icon**: Large (Text-3xl), wrapped in a container with Emerald gradient background when active.
+
+### Cards (Glass Card)
+```css
+.card {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(229, 231, 235, 0.4);
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.card:hover {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(16, 185, 129, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+}
+
+/* Optional Gradient Stripe */
+.card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(to bottom, #10b981, #059669);
+  transform: scaleY(0);
+  transition: transform 0.3s ease;
+}
+
+.card:hover::before {
+  transform: scaleY(1);
+}
+```
+
+### Buttons
+```css
+/* Primary Button */
+.btn-primary {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%); /* Emerald-500 to 600 */
+  color: white;
+  border: none;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  transition: all 0.2s;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%); /* Emerald-600 to 700 */
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.4);
+}
+```
+
+### Icons
+```css
+.icon-container {
+  width: 32px; /* or 40px, 48px */
+  height: 32px;
+  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  border-radius: 8px; /* or 10px, 12px */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+```
+
+### Layout
+- Use `flex` and `grid` for layouts.
+- Spacing should be consistent (4px, 8px, 12px, 16px, 24px).
+- Main content areas should have padding (usually 24px).
+
+## CSS Implementation Guidelines
+- Use scoped CSS in Vue components.
+- Prefer `rgba` for colors to control opacity properly for glassmorphism.
+- Use `backdrop-filter` for depth.
+- Ensure text contrast is sufficient.

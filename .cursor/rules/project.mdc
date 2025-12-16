@@ -17,9 +17,11 @@ Electron 主进程：electron/main.ts
 
 vue文件布局为script-template-style
 
-使用原生CSS实现样式
+使用原生CSS实现样式，严禁使用TailwindCSS
 
-设计风格要求和frontend/src/layouts/MainLayout.vue中的风格一致
+
+设计风格必须严格遵循 .cursor/rules/design-system.mdc 中定义的规范
+参考 frontend/src/layouts/MainLayout.vue 中的实现细节
 
 📦 附加要求
 添加合理的用户反馈机制（如 ElMessage、ElNotification）

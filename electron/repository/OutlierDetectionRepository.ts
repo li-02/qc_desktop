@@ -278,6 +278,7 @@ export class OutlierDetectionRepository {
     total_rows?: number;
     outlier_count?: number;
     outlier_rate?: number;
+    detection_params?: string;
   }): boolean {
     const fields: string[] = [];
     const values: (string | number | null)[] = [];
@@ -297,6 +298,10 @@ export class OutlierDetectionRepository {
     if (updates.outlier_rate !== undefined) {
       fields.push('outlier_rate = ?');
       values.push(updates.outlier_rate);
+    }
+    if (updates.detection_params !== undefined) {
+      fields.push('detection_params = ?');
+      values.push(updates.detection_params);
     }
 
     if (fields.length === 0) return false;
@@ -517,12 +522,13 @@ export class OutlierDetectionRepository {
       original_value: number;
       outlier_type: string;
       threshold_value: number;
+      time_point?: string;
     }>
   ): number {
     const stmt = this.db.prepare(`
       INSERT INTO biz_outlier_detail 
-        (result_id, column_name, row_index, original_value, outlier_type, threshold_value, action)
-      VALUES (?, ?, ?, ?, ?, ?, 'FLAGGED')
+        (result_id, column_name, row_index, original_value, outlier_type, threshold_value, time_point, action)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'FLAGGED')
     `);
 
     let count = 0;
@@ -534,7 +540,8 @@ export class OutlierDetectionRepository {
           detail.row_index,
           detail.original_value,
           detail.outlier_type,
-          detail.threshold_value
+          detail.threshold_value,
+          detail.time_point ?? null
         );
         count++;
       }
@@ -645,5 +652,107 @@ export class OutlierDetectionRepository {
     }
 
     return { total_outliers: total, by_column: byColumn, by_method: byMethod };
+  }
+
+  /**
+   * 批量创建异常检测列统计
+   */
+  batchCreateOutlierColumnStats(
+    stats: Array<{
+      result_id: number;
+      column_name: string;
+      outlier_count: number;
+      min_threshold?: number;
+      max_threshold?: number;
+    }>
+  ): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO biz_outlier_column_stat 
+        (result_id, column_name, outlier_count, min_threshold, max_threshold)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+
+    let count = 0;
+    const transaction = this.db.transaction(() => {
+      for (const stat of stats) {
+        stmt.run(
+          stat.result_id,
+          stat.column_name,
+          stat.outlier_count,
+          stat.min_threshold ?? null,
+          stat.max_threshold ?? null
+        );
+        count++;
+      }
+    });
+
+    transaction();
+    return count;
+  }
+
+  /**
+   * 删除检测结果的列统计
+   */
+  deleteOutlierColumnStats(resultId: number): boolean {
+    const result = this.db
+      .prepare(`
+        UPDATE biz_outlier_column_stat 
+        SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
+        WHERE result_id = ?
+      `)
+      .run(resultId);
+
+    return result.changes > 0;
+  }
+
+  /**
+   * 获取检测结果的列统计数据
+   * 优先从 biz_outlier_column_stat 获取，如果没有则从 biz_outlier_detail 聚合（兼容旧数据）
+   */
+  getOutlierColumnStats(resultId: number): Array<{
+    columnName: string;
+    outlierCount: number;
+    minThreshold: number | null;
+    maxThreshold: number | null;
+  }> {
+    // 1. 尝试从 biz_outlier_column_stat 获取
+    const stats = this.db
+      .prepare(`
+        SELECT column_name, outlier_count, min_threshold, max_threshold
+        FROM biz_outlier_column_stat
+        WHERE result_id = ? AND is_del = 0
+      `)
+      .all(resultId) as Array<{
+        column_name: string;
+        outlier_count: number;
+        min_threshold: number | null;
+        max_threshold: number | null;
+      }>;
+
+    if (stats.length > 0) {
+      return stats.map(s => ({
+        columnName: s.column_name,
+        outlierCount: s.outlier_count,
+        minThreshold: s.min_threshold,
+        maxThreshold: s.max_threshold
+      }));
+    }
+
+    // 2. 回退到旧逻辑：从 biz_outlier_detail 聚合
+    const results = this.db
+      .prepare(`
+        SELECT column_name as columnName, COUNT(*) as outlierCount
+        FROM biz_outlier_detail 
+        WHERE result_id = ? AND is_del = 0
+        GROUP BY column_name
+      `)
+      .all(resultId) as Array<{ columnName: string; outlierCount: number }>;
+
+    return results.map(r => ({
+      columnName: r.columnName,
+      outlierCount: r.outlierCount,
+      minThreshold: null,
+      maxThreshold: null
+    }));
   }
 }

@@ -1,30 +1,53 @@
 <script setup lang="ts">
-import { ElMessage } from "element-plus";
-import { computed, ref } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { computed } from "vue";
+import { useRouter } from "vue-router";
 import { useProjectStore } from "@/stores/useProjectStore";
+import { useDatasetStore } from "@/stores/useDatasetStore";
 import emitter from "@/utils/eventBus";
 
+const router = useRouter();
 const projectStore = useProjectStore();
+const datasetStore = useDatasetStore();
+
 const datasets = computed(() => projectStore.currentProject?.datasets || []);
 
 const selectDataset = (dataset: any) => {
-  ElMessage.info(`选择了数据集: ${dataset.name}`);
-  // 这里可以设置当前数据集到store
+  if (projectStore.currentProject) {
+    datasetStore.setCurrentDataset(dataset.id);
+    router.push(`/data-view?dataset=${dataset.id}`);
+  }
 };
 
 const handleImportData = () => {
   emitter.emit("open-import-data-dialog");
 };
 
-const getIconColor = (type: string) => {
-  const colors: Record<string, string> = {
-    emerald: "icon-emerald",
-    flux: "icon-flux",
-    sapflow: "icon-sapflow",
-    aqi: "icon-aqi",
-    micrometeorology: "icon-micrometeorology",
-  };
-  return colors[type] || "icon-default";
+const handleRefresh = async () => {
+  await projectStore.loadProjects();
+  ElMessage.success("数据集已刷新");
+};
+
+const handleDelete = async (dataset: any) => {
+  if (!projectStore.currentProject) return;
+  
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除数据集 "${dataset.name}" 吗? 此操作不可恢复。`,
+      "删除数据集",
+      {
+        confirmButtonText: "删除",
+        cancelButtonText: "取消",
+        type: "warning",
+      }
+    );
+    
+    await datasetStore.deleteDataset(projectStore.currentProject.id, dataset.id);
+  } catch (error) {
+    if (error !== "cancel") {
+      console.error(error);
+    }
+  }
 };
 
 const getIconName = (type: string) => {
@@ -49,6 +72,17 @@ const getTypeTagClass = (type: string) => {
   return styles[type] || "tag-default";
 };
 
+const getDatasetTypeLabel = (type: string): string => {
+  const labelMap: Record<string, string> = {
+    flux: "通量数据",
+    micrometeorology: "微气象",
+    aqi: "空气质量",
+    sapflow: "茎流数据",
+    nai: "负氧离子",
+  };
+  return labelMap[type] || type;
+};
+
 const formatRelativeTime = (timestamp: number): string => {
   const now = Date.now();
   const diff = now - timestamp;
@@ -67,23 +101,23 @@ const formatRelativeTime = (timestamp: number): string => {
     <div class="section-header">
       <div class="section-title">数据集列表</div>
       <div class="section-actions">
-        <button class="action-btn" title="刷新数据集">🔄</button>
+        <button class="action-btn" title="刷新" @click="handleRefresh">🔄</button>
         <button class="action-btn" title="添加数据集" @click="handleImportData">➕</button>
       </div>
     </div>
 
     <div class="dataset-list">
-      <!-- 空状态 -->
+      <!-- Empty State -->
       <div v-if="datasets.length === 0" class="empty-state">
         <div class="empty-icon">📂</div>
         <div class="empty-text">
           暂无数据集<br />
-          请先导入数据集
+          请导入您的第一个数据集
         </div>
-        <button class="empty-action">导入第一个数据集</button>
+        <button class="empty-action" @click="handleImportData">导入数据集</button>
       </div>
 
-      <!-- 数据集列表 -->
+      <!-- Dataset List -->
       <div v-else class="datasets-container">
         <div v-for="dataset in datasets" :key="dataset.id" class="dataset-item" @click="selectDataset(dataset)">
           <div class="dataset-header">
@@ -96,18 +130,18 @@ const formatRelativeTime = (timestamp: number): string => {
             <div class="dataset-info">
               <div class="dataset-name">{{ dataset.name }}</div>
               <div class="dataset-type-badge" :class="getTypeTagClass(dataset.type)">
-                {{ dataset.type }}
+                {{ getDatasetTypeLabel(dataset.type) }}
               </div>
             </div>
 
-            <button class="dataset-delete-btn" title="删除数据集">🗑️</button>
+            <button class="dataset-delete-btn" title="删除数据集" @click.stop="handleDelete(dataset)">🗑️</button>
           </div>
 
           <div class="dataset-meta">
             <div class="dataset-description">
               {{ dataset.originalFile || "未指定文件" }}
             </div>
-            <div class="dataset-time">修改于 {{ formatRelativeTime(dataset.createdAt || Date.now()) }}</div>
+            <div class="dataset-time">更新于 {{ formatRelativeTime(dataset.createdAt || Date.now()) }}</div>
           </div>
         </div>
       </div>

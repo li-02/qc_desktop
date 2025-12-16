@@ -1,223 +1,110 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import {
-  DataAnalysis,
   FolderOpened,
-  Upload,
-  Plus,
   View,
   TrendCharts,
   ArrowRight,
   Document,
   Histogram,
-  Clock,
   SuccessFilled,
   WarningFilled,
-  Loading,
   Monitor,
   DataLine,
   PieChart,
 } from "@element-plus/icons-vue";
 import { useProjectStore } from "@/stores/useProjectStore";
-import { useDatasetStore } from "@/stores/useDatasetStore";
 import emitter from "@/utils/eventBus";
 import ProjectInfoCard from "./components/ProjectInfoCard.vue";
 import DatasetInfoCard from "./components/DatasetInfoCard.vue";
 
 const router = useRouter();
 const projectStore = useProjectStore();
-const datasetStore = useDatasetStore();
 
-// 项目基本信息
-const projectInfo = ref({
-  name: "密云水库生态监测站",
-  coordinates: "116.8°E, 40.3°N",
-  altitude: "156m",
-  establishDate: "2024-01-15",
-  datasetCount: 4,
-  totalRecords: "16.5k",
-});
-
-// 数据集列表
-const datasets = ref([
-  {
-    id: 1,
-    name: "通量数据",
-    fileName: "CO2_flux_2024.csv",
-    iconName: "Odometer",
-    records: "8.7k",
-    status: "complete",
-    color: "emerald",
-    lastUpdate: "2小时前",
-  },
-  {
-    id: 2,
-    name: "微气象数据",
-    fileName: "weather_2024.xlsx",
-    iconName: "Cloudy",
-    records: "4.4k",
-    status: "warning",
-    color: "blue",
-    lastUpdate: "1天前",
-  },
-  {
-    id: 3,
-    name: "茎流数据",
-    fileName: "sapflow_spring.csv",
-    iconName: "Histogram",
-    records: "2.2k",
-    status: "error",
-    color: "green",
-    lastUpdate: "3天前",
-  },
-  {
-    id: 4,
-    name: "空气质量数据",
-    fileName: "AQI_monitoring.csv",
-    iconName: "Flag",
-    records: "1.2k",
-    status: "complete",
-    color: "purple",
-    lastUpdate: "5天前",
-  },
-]);
-
-// 数据处理步骤
+// Data processing steps
 const processSteps = ref([
   {
     iconName: "Histogram",
     title: "数据视图",
-    desc: "浏览和探索数据，了解数据基本情况",
+    desc: "浏览和探索数据基础信息",
     color: "blue",
     route: "/data-view",
   },
   {
     iconName: "WarnTriangleFilled",
     title: "异常值检测",
-    desc: "识别和处理数据中的异常值",
+    desc: "识别并处理异常数据",
     color: "orange",
     route: "/outlier-detection",
   },
   {
     iconName: "HelpFilled",
     title: "缺失值插补",
-    desc: "修复和填补数据中的缺失值",
+    desc: "修复缺失的数据值",
     color: "purple",
     route: "/missing-value-imputation",
   },
 ]);
 
-// 最近活动记录
-const recentActivities = ref([
-  {
-    id: 1,
-    action: "数据导入",
-    target: "CO2_flux_2024.csv",
-    time: "2小时前",
-    status: "success",
-    icon: "Upload",
-  },
-  {
-    id: 2,
-    action: "异常值检测",
-    target: "微气象数据",
-    time: "1天前",
-    status: "success",
-    icon: "WarningFilled",
-  },
-  {
-    id: 3,
-    action: "缺失值插补",
-    target: "茎流数据",
-    time: "2天前",
-    status: "processing",
-    icon: "Loading",
-  },
-  {
-    id: 4,
-    action: "数据导出",
-    target: "空气质量数据",
-    time: "3天前",
-    status: "success",
-    icon: "Download",
-  },
-]);
+// Helper formatters
+const formatBytes = (bytes?: number): string => {
+  if (!bytes || bytes <= 0) return "0 B";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+};
 
-// 快速统计数据
-const quickStats = ref([
-  {
-    title: "总记录数",
-    value: "16.5k",
-    change: "+12.5%",
-    trend: "up",
-    color: "emerald",
-    icon: "DataLine",
-  },
-  {
-    title: "数据完整率",
-    value: "87.5%",
-    change: "+2.1%",
-    trend: "up",
-    color: "blue",
-    icon: "PieChart",
-  },
-  {
-    title: "处理任务",
-    value: "8",
-    change: "-3",
-    trend: "down",
-    color: "orange",
-    icon: "Monitor",
-  },
-  {
-    title: "存储使用",
-    value: "2.3GB",
-    change: "+156MB",
-    trend: "up",
-    color: "purple",
-    icon: "FolderOpened",
-  },
-]);
+// Computed statistics based on real data
+const quickStats = computed(() => {
+  const project = projectStore.currentProject;
+  const datasets = project?.datasets || [];
 
+  const totalSize = datasets.reduce((sum, d) => {
+    return sum + (d.totalSizeBytes || d.originalFileSizeBytes || 0);
+  }, 0);
+
+  const totalFiles = datasets.reduce((sum, d) => {
+    return sum + (d.fileCount || (d.originalFile ? 1 : 0));
+  }, 0);
+
+  return [
+    {
+      title: "总大小",
+      value: formatBytes(totalSize),
+      trend: "up",
+      color: "emerald",
+      icon: "FolderOpened",
+    },
+    {
+      title: "数据集",
+      value: datasets.length.toString(),
+      trend: "up",
+      color: "blue",
+      icon: "DataLine",
+    },
+    {
+      title: "文件总数",
+      value: totalFiles.toString(),
+      trend: "up",
+      color: "orange",
+      icon: "Monitor",
+    },
+    {
+      title: "最后更新",
+      value: project?.lastUpdated ? new Date(project.lastUpdated).toLocaleDateString() : "-",
+      trend: "neutral",
+      color: "purple",
+      icon: "PieChart",
+    },
+  ];
+});
+
+// Event handlers
 const handleCreateProject = () => {
   emitter.emit("open-create-project-dialog");
-};
-// 获取状态颜色
-const getStatusColor = (status: string) => {
-  const statusMap: Record<string, string> = {
-    success: "#10b981",
-    processing: "#f59e0b",
-    warning: "#ef4444",
-    error: "#ef4444",
-  };
-  return statusMap[status] || "#6b7280";
-};
-
-// 获取趋势颜色
-const getTrendColor = (trend: string) => {
-  return trend === "up" ? "#10b981" : "#ef4444";
-};
-
-// 事件处理
-const handleImportData = () => {
-  emitter.emit("open-import-data-dialog");
-};
-
-const selectDataset = (dataset: any) => {
-  ElMessage.info(`选择了数据集: ${dataset.name}`);
-  // 这里可以设置当前数据集到store
-};
-
-const viewDataset = (dataset: any) => {
-  ElMessage.info(`查看数据集: ${dataset.name}`);
-  router.push(`/data-view?dataset=${dataset.id}`);
-};
-
-const processDataset = (dataset: any) => {
-  ElMessage.info(`处理数据集: ${dataset.name}`);
-  router.push(`/data-processing?dataset=${dataset.id}`);
 };
 
 const navigateToStep = (route: string) => {
@@ -225,45 +112,37 @@ const navigateToStep = (route: string) => {
 };
 
 const quickViewData = () => {
-  if (datasets.value.length > 0) {
-    viewDataset(datasets.value[0]);
+  const datasets = projectStore.currentProject?.datasets || [];
+  if (datasets.length > 0) {
+    ElMessage.info(`正在查看数据集: ${datasets[0].name}`);
+    router.push(`/data-view?dataset=${datasets[0].id}`);
   } else {
     ElMessage.warning("请先导入数据集");
   }
 };
 
 const showGuide = () => {
-  ElMessage.info("打开使用指南");
-  // 这里可以打开帮助文档或引导页面
+  ElMessage.info("功能开发中");
 };
-
-// 初始化数据
-onMounted(() => {
-  // 从store加载实际的项目和数据集信息
-  if (projectStore.currentProject) {
-    projectInfo.value.name = projectStore.currentProject.name;
-    projectInfo.value.datasetCount = projectStore.currentProject.datasets?.length || 0;
-  }
-});
 </script>
 
 <template>
   <div v-if="projectStore.hasProjects" class="home-container">
-    <!-- 顶部项目信息 -->
+    <!-- Top Project Info -->
     <ProjectInfoCard />
 
-    <!-- 主内容区域 -->
+    <!-- Main Content Area -->
     <div class="main-content">
-      <!-- 第一行：数据集管理 + 数据处理工作流 -->
+      <!-- Row 1: Dataset Management + Workflow -->
       <div class="row-layout">
-        <!-- 左侧：数据集管理 -->
+        <!-- Left: Dataset Management -->
         <div class="column-half dataset-section">
           <div class="dataset-wrapper">
             <DatasetInfoCard />
           </div>
         </div>
 
-        <!-- 右侧：数据处理工作流 -->
+        <!-- Right: Workflow -->
         <div class="column-half workflow-section">
           <div class="workflow-card">
             <div class="section-header">
@@ -294,10 +173,10 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 第二行：统计概览 + 最近活动 -->
+      <!-- Row 2: Stats Overview -->
       <div class="row-layout">
-        <!-- 左侧：快速统计 -->
-        <div class="column-half stats-section">
+        <!-- Full Width: Quick Stats -->
+        <div class="column-full stats-section">
           <div class="stats-container">
             <div class="section-header">
               <h2 class="section-title">数据概览</h2>
@@ -315,45 +194,14 @@ onMounted(() => {
                 <div class="stat-content">
                   <h4 class="stat-title">{{ stat.title }}</h4>
                   <div class="stat-value">{{ stat.value }}</div>
-                  <div class="stat-change" :style="{ color: getTrendColor(stat.trend) }">
-                    {{ stat.change }}
-                  </div>
                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 右侧：最近活动 -->
-        <div class="column-half activity-section">
-          <div class="activity-card">
-            <div class="section-header">
-              <h2 class="section-title">最近活动</h2>
-            </div>
-            <div class="activity-list">
-              <div v-for="activity in recentActivities" :key="activity.id" class="activity-item">
-                <div
-                  class="activity-icon-container"
-                  :style="{ backgroundColor: getStatusColor(activity.status) + '20' }">
-                  <el-icon class="activity-icon" :style="{ color: getStatusColor(activity.status) }">
-                    <Upload v-if="activity.icon === 'Upload'" />
-                    <WarningFilled v-else-if="activity.icon === 'WarningFilled'" />
-                    <Loading v-else-if="activity.icon === 'Loading'" />
-                    <Document v-else-if="activity.icon === 'Download'" />
-                  </el-icon>
-                </div>
-                <div class="activity-content">
-                  <div class="activity-action">{{ activity.action }}</div>
-                  <div class="activity-target">{{ activity.target }}</div>
-                </div>
-                <div class="activity-time">{{ activity.time }}</div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 快速开始提示 -->
+      <!-- Quick Start -->
       <div class="quick-start-card">
         <div class="quick-start-content">
           <div class="quick-start-icon">
@@ -362,9 +210,9 @@ onMounted(() => {
             </el-icon>
           </div>
           <div class="quick-start-text">
-            <h3 class="start-title">开始数据分析</h3>
+            <h3 class="start-title">开始分析</h3>
             <p class="start-desc">
-              选择一个数据集开始分析，或导入新的数据文件。建议先查看数据概况，然后根据需要进行异常值检测和缺失值处理。
+              选择一个数据集开始，或导入新文件。建议先查看数据视图，然后进行异常值检测。
             </p>
             <div class="start-buttons">
               <el-button type="primary" @click="quickViewData" class="start-button-primary">
@@ -386,13 +234,13 @@ onMounted(() => {
     </div>
   </div>
 
-  <!-- 无项目状态 -->
+  <!-- Empty State -->
   <div v-else class="empty-state">
     <div class="empty-content">
       <h1 class="empty-title">开始您的生态监测之旅</h1>
       <p class="empty-desc">
         您还没有创建任何站点。<br />
-        创建第一个站点来开始管理您的生态监测数据。
+        创建第一个站点以开始管理生态数据。
       </p>
       <el-button type="primary" size="large" @click="handleCreateProject" class="create-button">
         <el-icon class="button-icon">
@@ -450,6 +298,15 @@ onMounted(() => {
 /* 列布局 */
 .column-half {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.column-full {
+  flex: 1;
+  width: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;

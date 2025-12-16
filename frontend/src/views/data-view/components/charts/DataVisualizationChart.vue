@@ -30,19 +30,22 @@ const SAMPLING_CONFIG = {
   ZOOM_THRESHOLD: 0.1, // 缩放阈值，小于此值时显示全部数据
 };
 
+// 时间序列数据点类型
+type TimeSeriesPoint = { time: string; value: number; epochMs?: number };
+
 /**
  * 智能数据采样函数
  * 根据数据量和缩放级别进行采样
  */
 const sampleTimeSeriesData = (
-  timeData: Array<{ time: string; value: number }>,
+  timeData: Array<TimeSeriesPoint>,
   maxPoints: number = SAMPLING_CONFIG.MAX_POINTS
-): Array<{ time: string; value: number }> => {
+): Array<TimeSeriesPoint> => {
   if (timeData.length <= maxPoints) {
     return timeData;
   }
 
-  const sampledData: Array<{ time: string; value: number }> = [];
+  const sampledData: Array<TimeSeriesPoint> = [];
   const step = Math.ceil(timeData.length / maxPoints);
 
   // 确保包含第一个和最后一个数据点
@@ -81,8 +84,13 @@ const sampleTimeSeriesData = (
     sampledData.push(timeData[timeData.length - 1]);
   }
 
-  // 按时间排序
-  sampledData.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+  // 按 epochMs 排序（优先），否则按时间字符串排序
+  sampledData.sort((a, b) => {
+    if (a.epochMs && b.epochMs) {
+      return a.epochMs - b.epochMs;
+    }
+    return new Date(a.time).getTime() - new Date(b.time).getTime();
+  });
 
   console.log(`数据采样: ${timeData.length} -> ${sampledData.length} 个点`);
   return sampledData;
@@ -201,10 +209,36 @@ const extractDataFromCsv = (csvData: any, columnName: string): number[] => {
 };
 
 // 从CSV数据中提取时间序列数据
-const extractTimeSeriesFromCsv = (csvData: any, columnName: string): Array<{ time: string; value: number }> => {
+// 优先使用后端返回的标准化时间数据（_epochMs, _formattedTime）
+const extractTimeSeriesFromCsv = (csvData: any, columnName: string): Array<{ time: string; value: number; epochMs?: number }> => {
   if (!csvData || !csvData.tableData || !Array.isArray(csvData.tableData)) {
     return [];
   }
+
+  // 检查是否有后端标准化的时间数据
+  const hasStandardizedTime = csvData.tableData.length > 0 && csvData.tableData[0]._epochMs !== undefined;
+
+  if (hasStandardizedTime) {
+    console.log('使用后端标准化的时间数据');
+    
+    // 使用后端已标准化的数据，数据已按时间排序
+    return csvData.tableData
+      .map((row: any) => {
+        const value = row[columnName];
+        if (value !== null && value !== undefined && !isNaN(Number(value))) {
+          return {
+            time: row._formattedTime || row.TIMESTAMP || String(row._epochMs),
+            value: Number(value),
+            epochMs: row._epochMs,
+          };
+        }
+        return null;
+      })
+      .filter((item: any) => item !== null);
+  }
+
+  // 回退到前端识别逻辑（兼容旧数据）
+  console.log('使用前端时间列识别逻辑');
 
   // 智能识别时间戳列
   let timestampKey = '';
@@ -232,7 +266,6 @@ const extractTimeSeriesFromCsv = (csvData: any, columnName: string): Array<{ tim
         // 检查是否为字符串且包含日期特征
         if (typeof value === 'string') {
             // 简单的日期格式检查：包含 - / : 且能被 Date 解析
-            // 排除纯数字字符串（虽然 Date.parse 可能接受，但通常不是我们想要的格式）
             if ((value.includes('-') || value.includes('/') || value.includes(':')) && !isNaN(Date.parse(value))) {
                  timestampKey = key;
                  break;
@@ -263,7 +296,7 @@ const extractTimeSeriesFromCsv = (csvData: any, columnName: string): Array<{ tim
 
   console.log(`识别到的时间列名: ${timestampKey}`);
 
-  return csvData.tableData
+  const result = csvData.tableData
     .map((row: any) => {
       const value = row[columnName];
       const timestamp = row[timestampKey];
@@ -273,11 +306,22 @@ const extractTimeSeriesFromCsv = (csvData: any, columnName: string): Array<{ tim
         return {
           time: String(timestamp),
           value: Number(value),
+          epochMs: Date.parse(String(timestamp)) || undefined,
         };
       }
       return null;
     })
-    .filter((item: any) => item !== null) as Array<{ time: string; value: number }>;
+    .filter((item: any) => item !== null) as Array<{ time: string; value: number; epochMs?: number }>;
+
+  // 按 epochMs 排序（如果有的话）
+  result.sort((a, b) => {
+    if (a.epochMs && b.epochMs) {
+      return a.epochMs - b.epochMs;
+    }
+    return 0;
+  });
+
+  return result;
 };
 
 // 使用你的真实数据生成图表数据

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Loading, Refresh, Search, Setting, Check, Close, VideoPlay, Delete } from "@element-plus/icons-vue";
+import { Loading, Refresh, Search, Setting, Check, Close, VideoPlay, Delete, View } from "@element-plus/icons-vue";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
-import type { ColumnSetting, OutlierResult } from "@shared/types/database";
+import type { ColumnSetting, OutlierResult, OutlierDetail } from "@shared/types/database";
+import OutlierChart from "../charts/OutlierChart.vue";
 
 const datasetStore = useDatasetStore();
 const outlierStore = useOutlierDetectionStore();
@@ -25,6 +26,14 @@ const lastDetectionSummary = ref<{
     maxThreshold: number | null;
   }>;
 } | null>(null);
+
+// 详情展示状态
+const currentResultId = ref<number | null>(null);
+const resultDetails = ref<OutlierDetail[]>([]);
+const detailLoading = ref(false);
+const detailPage = ref(1);
+const detailPageSize = ref(100);
+
 const executing = ref(false);
 
 // 本地状态
@@ -47,7 +56,15 @@ const editForm = ref<{
 
 // 计算属性
 const filteredColumns = computed(() => {
-  if (!searchText.value) return outlierStore.columnThresholds;
+  const timeColumn = datasetInfo.value?.timeColumn;
+  
+  if (!searchText.value) {
+    // 默认不显示时间列（根据数据集解析时识别的时间列名称）
+    if (timeColumn) {
+      return outlierStore.columnThresholds.filter(col => col.column_name !== timeColumn);
+    }
+    return outlierStore.columnThresholds;
+  }
   const search = searchText.value.toLowerCase();
   return outlierStore.columnThresholds.filter(col => 
     col.column_name.toLowerCase().includes(search)
@@ -104,12 +121,107 @@ const executeDetection = async () => {
     
     if (result) {
       lastDetectionSummary.value = result.summary;
-      await loadDetectionResults();
+      currentResultId.value = result.resultId;
+      detailPage.value = 1; // 重置页码
+      await Promise.all([
+        loadDetectionResults(),
+        loadResultDetails()
+      ]);
     }
   } finally {
     executing.value = false;
   }
 };
+
+const loadResultDetails = async () => {
+  if (!currentResultId.value) return;
+  
+  detailLoading.value = true;
+  try {
+    const res = await outlierStore.getDetectionResultDetails(
+      String(currentResultId.value),
+      undefined,
+      detailPageSize.value,
+      (detailPage.value - 1) * detailPageSize.value
+    );
+    resultDetails.value = res.details;
+  } catch (error) {
+    console.error("加载详情失败:", error);
+    ElMessage.error("加载详情失败");
+  } finally {
+    detailLoading.value = false;
+  }
+};
+
+const viewResult = async (result: OutlierResult) => {
+  currentResultId.value = result.id;
+  // 重构 summary 对象以适配显示
+  let summary = null;
+  if (result.outlier_count !== undefined) {
+      // 尝试解析 detection_params 来获取列信息
+      let columnsChecked = 0;
+      let columnResults: any[] = [];
+      try {
+          if (result.detection_params) {
+              const params = JSON.parse(result.detection_params);
+              if (params.columns && Array.isArray(params.columns)) {
+                  columnsChecked = params.columns.length;
+                  
+                  if (params.columnResults) {
+                      columnResults = params.columnResults;
+                  }
+              }
+          }
+      } catch (e) {
+          console.error("解析参数失败", e);
+      }
+
+      // 关键修正：如果 columnResults 为空但有异常值，或者我们要确保数据准确性，尝试从后端获取实时统计
+      // 这种情况常见于历史记录或者参数解析不完整的旧数据
+      if (columnResults.length === 0 && (result.outlier_count > 0 || columnsChecked > 0)) {
+          const stats = await outlierStore.getOutlierResultStats(String(result.id));
+          if (stats && stats.length > 0) {
+              columnResults = stats;
+              // 如果之前没解析出列数，现在可以用统计到的列数修正
+              if (columnsChecked === 0) {
+                  columnsChecked = stats.length;
+              }
+          } else if (columnResults.length === 0 && columnsChecked > 0) {
+              // 如果统计返回也没数据，且明确有检查列，可能是真的没有异常值
+              // 构造一个全 0 的结果
+               try {
+                  const params = JSON.parse(result.detection_params || '{}');
+                  if (params.columns) {
+                      columnResults = params.columns.map((c: string) => ({
+                          columnName: c,
+                          outlierCount: 0 
+                      }));
+                  }
+              } catch (e) {}
+          }
+      }
+
+      summary = {
+          totalRows: result.total_rows ?? 0,
+          columnsChecked: columnsChecked,
+          outlierCount: result.outlier_count,
+          outlierRate: result.outlier_rate ?? 0,
+          columnResults: columnResults
+      };
+      
+      lastDetectionSummary.value = summary;
+  }
+  
+  // 滚动到详情区域
+  const detailsEl = document.querySelector('.analysis-section');
+  if (detailsEl) {
+      detailsEl.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  detailPage.value = 1;
+  await loadResultDetails();
+};
+
 
 const deleteResult = async (resultId: number) => {
   try {
@@ -380,6 +492,20 @@ onMounted(() => {
         </div>
       </div>
 
+      <!-- 详细分析区域 -->
+      <div v-if="currentResultId && (lastDetectionSummary || resultDetails.length > 0)" class="analysis-section">
+        <div class="section-header">
+          <div class="section-title">📈 异常分析详情</div>
+        </div>
+        
+        <OutlierChart 
+          :summary="lastDetectionSummary" 
+          :details="resultDetails"
+          :loading="detailLoading"
+        />
+        
+      </div>
+
       <!-- 历史检测结果 -->
       <div v-if="detectionResults.length > 0" class="history-section">
         <div class="section-header">
@@ -395,9 +521,14 @@ onMounted(() => {
               <span class="history-time">{{ formatDateTime(result.executed_at) }}</span>
               <span class="history-count">{{ result.outlier_count }} 个异常</span>
             </div>
-            <el-button size="small" text type="danger" @click="deleteResult(result.id)">
-              <el-icon><Delete /></el-icon>
-            </el-button>
+            <div class="history-actions">
+              <el-button size="small" text type="primary" @click="viewResult(result)">
+                <el-icon><View /></el-icon>
+              </el-button>
+              <el-button size="small" text type="danger" @click="deleteResult(result.id)">
+                <el-icon><Delete /></el-icon>
+              </el-button>
+            </div>
           </div>
         </div>
       </div>

@@ -28,38 +28,38 @@ interface ThresholdTemplate {
  */
 export const useOutlierDetectionStore = defineStore("outlierDetection", () => {
   // ==================== 状态 ====================
-  
+
   // 检测方法
   const detectionMethods = ref<DetectionMethod[]>([]);
-  
+
   // 列阈值配置
   const columnThresholds = ref<ColumnSetting[]>([]);
-  
+
   // 阈值模板
   const thresholdTemplates = ref<Record<string, ThresholdTemplate>>({});
-  
+
   // 检测配置 (三级作用域)
   const detectionConfigs = ref<OutlierDetectionConfig[]>([]);
-  
+
   // 加载状态
   const loading = ref(false);
   const saving = ref(false);
 
   // ==================== 计算属性 ====================
-  
-  const availableMethods = computed(() => 
+
+  const availableMethods = computed(() =>
     detectionMethods.value.filter(m => m.isAvailable)
   );
 
-  const thresholdMethods = computed(() => 
+  const thresholdMethods = computed(() =>
     detectionMethods.value.filter(m => m.category === 'threshold')
   );
 
-  const statisticalMethods = computed(() => 
+  const statisticalMethods = computed(() =>
     detectionMethods.value.filter(m => m.category === 'statistical')
   );
 
-  const mlMethods = computed(() => 
+  const mlMethods = computed(() =>
     detectionMethods.value.filter(m => m.category === 'ml' || m.category === 'dl')
   );
 
@@ -457,6 +457,26 @@ export const useOutlierDetectionStore = defineStore("outlierDetection", () => {
   };
 
   /**
+   * 获取检测结果统计信息 (用于补全)
+   */
+  const getOutlierResultStats = async (resultId: string) => {
+    try {
+      const result = await window.electronAPI.invoke(
+        API_ROUTES.OUTLIER.GET_RESULT_STATS,
+        { resultId }
+      );
+      if (result.success) {
+        return result.data.stats;
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error: any) {
+      console.error("获取检测统计失败:", error);
+      return [];
+    }
+  };
+
+  /**
    * 删除检测结果
    */
   const deleteDetectionResult = async (resultId: string) => {
@@ -494,13 +514,13 @@ export const useOutlierDetectionStore = defineStore("outlierDetection", () => {
     detectionConfigs,
     loading,
     saving,
-    
+
     // 计算属性
     availableMethods,
     thresholdMethods,
     statisticalMethods,
     mlMethods,
-    
+
     // Actions
     loadDetectionMethods,
     loadColumnThresholds,
@@ -513,13 +533,14 @@ export const useOutlierDetectionStore = defineStore("outlierDetection", () => {
     updateDetectionConfig,
     deleteDetectionConfig,
     resolveColumnThreshold,
-    
+
     // 检测执行
     executeThresholdDetection,
     getDetectionResults,
     getDetectionResultDetails,
+    getOutlierResultStats,
     deleteDetectionResult,
-    
+
     reset
   };
 });

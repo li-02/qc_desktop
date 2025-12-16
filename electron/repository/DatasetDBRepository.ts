@@ -11,8 +11,8 @@ export class DatasetDBRepository {
   createDataset(dataset: Omit<Dataset, 'id' | 'import_time' | 'created_at' | 'updated_at' | 'is_del' | 'deleted_at'>): ServiceResponse<number> {
     try {
       const stmt = this.db.prepare(`
-        INSERT INTO sys_dataset (site_id, dataset_name, source_file_path, description)
-        VALUES (@site_id, @dataset_name, @source_file_path, @description)
+        INSERT INTO sys_dataset (site_id, dataset_name, source_file_path, time_column, description)
+        VALUES (@site_id, @dataset_name, @source_file_path, @time_column, @description)
       `);
       const info = stmt.run(dataset);
       return { success: true, data: Number(info.lastInsertRowid) };
@@ -132,10 +132,10 @@ export class DatasetDBRepository {
     try {
       this.db.transaction(() => {
         if (settings.length > 0) {
-            deleteExisting.run(settings[0].dataset_id);
-            for (const setting of settings) {
-                insert.run(setting);
-            }
+          deleteExisting.run(settings[0].dataset_id);
+          for (const setting of settings) {
+            insert.run(setting);
+          }
         }
       })();
       return { success: true };

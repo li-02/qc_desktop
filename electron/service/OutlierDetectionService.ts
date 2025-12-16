@@ -280,7 +280,7 @@ export class OutlierDetectionService {
   ): ServiceResponse<void> {
     try {
       const updateData: Partial<OutlierDetectionConfig> = {};
-      
+
       if (updates.detection_method) updateData.detection_method = updates.detection_method;
       if (updates.method_params) updateData.method_params = JSON.stringify(updates.method_params);
       if (updates.priority !== undefined) updateData.priority = updates.priority;
@@ -456,7 +456,7 @@ export class OutlierDetectionService {
     try {
       // 1. 获取列阈值配置
       const columns = this.outlierRepo.getColumnThresholds(datasetId);
-      const targetColumns = columnNames 
+      const targetColumns = columnNames
         ? columns.filter(c => columnNames.includes(c.column_name))
         : columns.filter(c => c.min_threshold !== null || c.max_threshold !== null);
 
@@ -490,7 +490,7 @@ export class OutlierDetectionService {
       // 4. 读取 CSV 数据并检测
       const fs = require('fs');
       const path = require('path');
-      
+
       if (!fs.existsSync(filePath)) {
         this.outlierRepo.updateDetectionResult(resultId, { status: 'FAILED' });
         return { success: false, error: `数据文件不存在: ${filePath}` };
@@ -498,7 +498,7 @@ export class OutlierDetectionService {
 
       const csvContent = fs.readFileSync(filePath, 'utf-8');
       const lines = csvContent.split('\n').filter((line: string) => line.trim());
-      
+
       if (lines.length < 2) {
         this.outlierRepo.updateDetectionResult(resultId, { status: 'FAILED' });
         return { success: false, error: '数据文件为空或格式错误' };
@@ -506,7 +506,14 @@ export class OutlierDetectionService {
 
       const headers = lines[0].split(',').map((h: string) => h.trim().replace(/"/g, ''));
       const totalRows = lines.length - 1;
-      
+
+      // 尝试识别时间列
+      const timeColIndex = headers.findIndex((h: string) => {
+        const upper = h.toUpperCase();
+        return upper === 'TIMESTAMP' || upper === 'DATE' || upper === 'TIME' || upper === 'DATETIME' ||
+          upper.includes('TIME') || upper.includes('DATE');
+      });
+
       // 5. 对每列执行阈值检测
       const columnResults: Array<{
         columnName: string;
@@ -514,7 +521,7 @@ export class OutlierDetectionService {
         minThreshold: number | null;
         maxThreshold: number | null;
       }> = [];
-      
+
       let totalOutliers = 0;
       const outlierDetails: Array<{
         result_id: number;
@@ -523,6 +530,7 @@ export class OutlierDetectionService {
         original_value: number;
         outlier_type: string;
         threshold_value: number;
+        time_point?: string;
       }> = [];
 
       for (const col of targetColumns) {
@@ -539,7 +547,7 @@ export class OutlierDetectionService {
 
           const rawValue = values[colIndex].trim().replace(/"/g, '');
           const value = parseFloat(rawValue);
-          
+
           if (isNaN(value)) continue;
 
           // 检测是否超出阈值
@@ -560,16 +568,22 @@ export class OutlierDetectionService {
           if (isOutlier) {
             outlierCount++;
             totalOutliers++;
-            
+
             // 只记录前1000个异常值详情（避免数据量过大）
             if (outlierDetails.length < 1000) {
+              let timePoint: string | undefined;
+              if (timeColIndex !== -1 && timeColIndex < values.length) {
+                timePoint = values[timeColIndex].trim().replace(/"/g, '');
+              }
+
               outlierDetails.push({
                 result_id: resultId,
                 column_name: col.column_name,
                 row_index: i,
                 original_value: value,
                 outlier_type: outlierType,
-                threshold_value: thresholdValue
+                threshold_value: thresholdValue,
+                time_point: timePoint
               });
             }
           }
@@ -590,12 +604,22 @@ export class OutlierDetectionService {
 
       // 7. 更新检测结果
       const outlierRate = totalRows > 0 ? (totalOutliers / (totalRows * targetColumns.length)) * 100 : 0;
-      
+
+      // 更新检测结果（包含 columnResults）
+      const finalParams = {
+        columns: targetColumns.map(c => c.column_name),
+        columnResults: columnResults.map(r => ({
+          columnName: r.columnName,
+          outlierCount: r.outlierCount
+        }))
+      };
+
       this.outlierRepo.updateDetectionResult(resultId, {
         status: 'COMPLETED',
         total_rows: totalRows,
         outlier_count: totalOutliers,
-        outlier_rate: outlierRate
+        outlier_rate: outlierRate,
+        detection_params: JSON.stringify(finalParams)
       });
 
       return {
@@ -650,12 +674,31 @@ export class OutlierDetectionService {
   }
 
   /**
+   * 获取检测结果的统计信息 (用于补全历史记录缺失的统计)
+   */
+  getOutlierResultStats(resultId: number): ServiceResponse<Array<{
+    columnName: string;
+    outlierCount: number;
+    minThreshold: number | null;
+    maxThreshold: number | null;
+  }>> {
+    try {
+      const stats = this.outlierRepo.getOutlierColumnStats(resultId);
+      return { success: true, data: stats };
+    } catch (error: any) {
+      return { success: false, error: `获取检测统计失败: ${error.message}` };
+    }
+  }
+
+  /**
    * 删除检测结果
    */
   deleteDetectionResult(resultId: number): ServiceResponse<void> {
     try {
       // 先删除详情
       this.outlierRepo.deleteOutlierDetails(resultId);
+      // 删除列统计
+      this.outlierRepo.deleteOutlierColumnStats(resultId);
       // 再删除结果
       const success = this.outlierRepo.deleteDetectionResult(resultId);
       if (!success) {

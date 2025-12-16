@@ -483,6 +483,32 @@ export class OutlierDetectionController extends BaseController {
   }
 
   /**
+   * 获取检测结果统计 (用于补全历史记录缺失的统计)
+   */
+  async getOutlierResultStats(
+    args: { resultId: string },
+    _event: IpcMainInvokeEvent
+  ) {
+    return this.handleAsync(async () => {
+      if (!args.resultId) {
+        throw new Error('结果ID不能为空');
+      }
+
+      const resultId = parseInt(args.resultId);
+      if (isNaN(resultId)) {
+        throw new Error('无效的结果ID');
+      }
+
+      const result = this.outlierService.getOutlierResultStats(resultId);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      return { stats: result.data };
+    });
+  }
+
+  /**
    * 删除检测结果
    */
   async deleteDetectionResult(

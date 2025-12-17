@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { useDatasetStore } from "@/stores/useDatasetStore";
-import DatasetCard from "./components/DatasetCard.vue";
+
 import DataAnalysisTabs from "./components/DataAnalysisTabs.vue";
 
 // Store
@@ -113,7 +113,7 @@ watch(currentDataset, (newDataset, oldDataset) => {
   <div class="data-view-container">
     <div class="content-wrapper">
       <!-- 数据集信息卡片 -->
-      <DatasetCard @refresh="refreshDatasetInfo" @export="handleExportData" />
+
 
       <!-- 主要功能区域 -->
       <div v-if="hasDataset" class="main-content-grid">
@@ -151,9 +151,11 @@ watch(currentDataset, (newDataset, oldDataset) => {
 /* 主容器 */
 .data-view-container {
   width: 100%;
-  min-height: 100vh;
+  height: 100%; /* 适配父容器高度 */
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
-  /* padding: 24px; */
+  overflow: hidden; /* 防止外层滚动 */
+  display: flex;
+  flex-direction: column;
 }
 
 /* 内容包装器 */
@@ -163,20 +165,28 @@ watch(currentDataset, (newDataset, oldDataset) => {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  /* gap: 24px; */
+  flex: 1; /* 填充剩余空间 */
+  overflow: hidden;
+  padding: 16px; /* 添加一点内边距，根据需要调整 */
+  box-sizing: border-box;
 }
 
 /* 主要功能区域网格 */
 .main-content-grid {
-  display: grid;
-  /* grid-template-columns: 1fr; */
-  /* gap: 24px; */
-  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  margin-top: 0;
 }
 
 /* 数据分析选项卡区域 */
 .analysis-tabs-section {
   width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* 空状态容器 */

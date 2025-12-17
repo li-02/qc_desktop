@@ -213,8 +213,8 @@ defineExpose({
       </div>
 
       <!-- 异常检测 -->
-      <div v-else-if="activeTab === 'outlier'" class="tab-panel">
-        <div class="panel-wrapper">
+      <div v-else-if="activeTab === 'outlier'" class="tab-panel full-height-panel">
+        <div class="panel-wrapper full-height-wrapper">
           <OutlierDetectionPanel
             :dataset-info="datasetInfo"
             :loading="contentLoading"
@@ -277,10 +277,14 @@ defineExpose({
     0 1px 2px 0 rgba(0, 0, 0, 0.06);
   border: 1px solid rgba(120, 113, 108, 0.2);
   overflow: hidden;
+  height: 100%; /* 占满父容器 */
+  display: flex;
+  flex-direction: column;
 }
 
 /* 选项卡头部 */
 .tabs-header {
+  flex-shrink: 0; /* 防止头部被压缩 */
   background: linear-gradient(
     to right,
     rgba(250, 250, 249, 1) 0%,
@@ -504,17 +508,27 @@ defineExpose({
 
 /* 选项卡内容 */
 .tabs-content {
-  min-height: 384px;
+  /* min-height: 384px; */
   background: linear-gradient(135deg, rgba(250, 250, 249, 0.3) 0%, rgba(236, 253, 245, 0.2) 100%);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .tab-panel {
   padding: 24px;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 }
 
 .tab-panel--placeholder {
   padding: 48px;
   text-align: center;
+  align-items: center;
+  justify-content: center;
 }
 
 .panel-wrapper {
@@ -524,6 +538,10 @@ defineExpose({
   border: 1px solid rgba(120, 113, 108, 0.15);
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
   padding: 4px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* 占位符样式 */
@@ -735,5 +753,28 @@ defineExpose({
   .placeholder-title {
     font-size: 18px;
   }
+}
+
+/* 全屏面板样式 */
+.full-height-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0 !important; /* 覆盖默认padding */
+  padding: 0 !important;
+}
+
+.full-height-wrapper {
+  flex: 1;
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 0;
 }
 </style>

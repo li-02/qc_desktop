@@ -1359,8 +1359,10 @@ onUnmounted(() => {
   flex: 1;
   padding: 24px;
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
-  overflow-y: auto;
+  overflow: hidden; /* 防止外层滚动，强制内部滚动 */
   position: relative;
+  display: flex; /* 使用 Flex 布局 */
+  flex-direction: column; /* 垂直排列 */
 }
 
 .content-empty {

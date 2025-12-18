@@ -1,27 +1,80 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { ElMessage, ElNotification } from "element-plus";
 import { 
-  Search, 
+  Plus,
+  Delete,
   Refresh, 
   Setting, 
-  InfoFilled, 
   TrendCharts, 
-  DocumentDelete,
   Check,
-  Warning,
-  CircleClose,
-  Download,
-  DataLine,
-  PieChart,
-  ArrowDown,
-  Monitor,
-  List
+  List,
+  Star,
+  VideoPlay,
+  Close
 } from "@element-plus/icons-vue";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import * as echarts from 'echarts';
 
-// Props
+// ==================== 类型定义 ====================
+type ImputationMethodId = 
+  | 'MEAN' | 'MEDIAN' | 'MODE' | 'FORWARD_FILL' | 'BACKWARD_FILL'
+  | 'LINEAR' | 'SPLINE' | 'POLYNOMIAL' | 'SEASONAL'
+  | 'ARIMA' | 'SARIMA' | 'ETS'
+  | 'KNN' | 'RANDOM_FOREST' | 'GRADIENT_BOOSTING' | 'MICE' | 'MISSFOREST'
+  | 'LSTM' | 'GRU' | 'TRANSFORMER' | 'VAE' | 'GAIN';
+
+type ImputationCategory = 'basic' | 'statistical' | 'timeseries' | 'ml' | 'dl';
+type ImputationResultStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'APPLIED' | 'REVERTED';
+
+interface ImputationMethod {
+  id: ImputationMethodId;
+  name: string;
+  category: ImputationCategory;
+  description: string;
+  requiresPython: boolean;
+  isAvailable: boolean;
+  estimatedTime?: 'fast' | 'medium' | 'slow';
+  accuracy?: 'low' | 'medium' | 'high';
+}
+
+interface ImputationResult {
+  id: number;
+  datasetId: number;
+  versionId: number;
+  methodId: ImputationMethodId;
+  imputationParams: string;
+  targetColumns: string | null;
+  totalRows: number;
+  imputedCount: number;
+  imputationRate: number;
+  status: ImputationResultStatus;
+  progress: number;
+  progressMessage?: string;
+  resultFilePath?: string;
+  executedAt: string;
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ImputationProgressEvent {
+  resultId: number;
+  progress: number;
+  stage: 'preparing' | 'training' | 'imputing' | 'validating' | 'saving';
+  message: string;
+  currentColumn?: string;
+  estimatedRemaining?: number;
+}
+
+interface ColumnInfo {
+  name: string;
+  missingCount: number;
+  missingRate: number;
+  type: string;
+}
+
+// ==================== Props & Emits ====================
 interface Props {
   datasetInfo?: DatasetInfo | null;
   loading?: boolean;
@@ -31,59 +84,87 @@ const props = withDefaults(defineProps<Props>(), {
   loading: false,
 });
 
-// Emits
 const emit = defineEmits<{
   startImputation: [options: any];
   refresh: [];
 }>();
 
-// Reactive state
-const imputationMethod = ref("linear");
-const isProcessing = ref<boolean>(false);
-const hasImputationResult = ref<boolean>(false);
-const timeSeriesChart = ref<HTMLDivElement | null>(null);
-const timeSeriesInstance = ref<echarts.ECharts | null>(null);
+// ==================== 视图模式 ====================
+type ViewMode = 'config' | 'result';
+const currentView = ref<ViewMode>('config');
 
-// 结果查看相关状态
-const selectedColumn = ref<string>("");
-const searchKeyword = ref<string>("");
-const isDropdownOpen = ref<boolean>(false);
+// ==================== 侧边栏状态 ====================
+const imputationResults = ref<ImputationResult[]>([]);
+const currentResultId = ref<number | null>(null);
 
-// 视图切换状态
-const viewMode = ref<'chart' | 'table'>('chart');
-
-// 插补方法选项
-const imputationMethods = [
-  { value: "linear", label: "线性插值", description: "基于时间序列的线性插值方法", icon: "📈" },
-  { value: "spline", label: "样条插值", description: "三次样条插值，适合平滑数据", icon: "〰️" },
-  { value: "arima", label: "ARIMA插补", description: "基于时间序列ARIMA模型的智能插补", icon: "🎯" },
-  { value: "mean", label: "均值插补", description: "使用列均值填充缺失值", icon: "📊" },
-  { value: "median", label: "中位数插补", description: "使用列中位数填充缺失值", icon: "📏" },
-  { value: "forward", label: "前向填充", description: "使用前一个有效值填充", icon: "⏩" },
-  { value: "backward", label: "后向填充", description: "使用后一个有效值填充", icon: "⏪" },
-  { value: "knn", label: "K近邻插补", description: "基于相似样本的智能插补", icon: "🤖" },
+// ==================== 方法选择状态 ====================
+const categories = [
+  { value: 'basic', label: '基础方法', icon: '📊' },
+  { value: 'statistical', label: '统计方法', icon: '📈' },
+  { value: 'timeseries', label: '时序模型', icon: '⏱️' },
+  { value: 'ml', label: '机器学习', icon: '🤖' },
+  { value: 'dl', label: '深度学习', icon: '🧠' },
 ];
 
-// 高级选项
-const advancedOptions = ref({
-  maxGapSize: 10,
-  windowSize: 24,
-  polynomialDegree: 3,
-  knnNeighbors: 5,
-  outlierThreshold: 3,
-  preservePattern: true,
-  // ARIMA特有参数
-  arimaP: 1,
-  arimaD: 1,
-  arimaQ: 1,
-  arimaAutoSelect: true,
+const activeCategory = ref<ImputationCategory>('basic');
+const selectedMethodId = ref<ImputationMethodId | null>(null);
+
+// 插补方法定义
+const imputationMethods: ImputationMethod[] = [
+  // 基础方法
+  { id: 'MEAN', name: '均值插补', category: 'basic', description: '使用列均值填充缺失值', requiresPython: false, isAvailable: true, estimatedTime: 'fast', accuracy: 'low' },
+  { id: 'MEDIAN', name: '中位数插补', category: 'basic', description: '使用列中位数填充缺失值', requiresPython: false, isAvailable: true, estimatedTime: 'fast', accuracy: 'low' },
+  { id: 'MODE', name: '众数插补', category: 'basic', description: '使用列众数填充缺失值', requiresPython: false, isAvailable: true, estimatedTime: 'fast', accuracy: 'low' },
+  { id: 'FORWARD_FILL', name: '前向填充', category: 'basic', description: '使用前一个有效值填充', requiresPython: false, isAvailable: true, estimatedTime: 'fast', accuracy: 'low' },
+  { id: 'BACKWARD_FILL', name: '后向填充', category: 'basic', description: '使用后一个有效值填充', requiresPython: false, isAvailable: true, estimatedTime: 'fast', accuracy: 'low' },
+  // 统计方法
+  { id: 'LINEAR', name: '线性插值', category: 'statistical', description: '基于时间序列的线性插值方法', requiresPython: false, isAvailable: true, estimatedTime: 'fast', accuracy: 'medium' },
+  { id: 'SPLINE', name: '样条插值', category: 'statistical', description: '三次样条插值，适合平滑数据', requiresPython: true, isAvailable: true, estimatedTime: 'fast', accuracy: 'medium' },
+  { id: 'POLYNOMIAL', name: '多项式插值', category: 'statistical', description: '多项式拟合插值', requiresPython: true, isAvailable: true, estimatedTime: 'fast', accuracy: 'medium' },
+  // 时间序列模型
+  { id: 'ARIMA', name: 'ARIMA', category: 'timeseries', description: '自回归积分滑动平均模型', requiresPython: true, isAvailable: true, estimatedTime: 'medium', accuracy: 'high' },
+  { id: 'SARIMA', name: 'SARIMA', category: 'timeseries', description: '季节性ARIMA模型', requiresPython: true, isAvailable: true, estimatedTime: 'medium', accuracy: 'high' },
+  { id: 'ETS', name: '指数平滑', category: 'timeseries', description: '指数平滑状态空间模型', requiresPython: true, isAvailable: true, estimatedTime: 'medium', accuracy: 'medium' },
+  // 机器学习
+  { id: 'KNN', name: 'K近邻', category: 'ml', description: '基于相似样本的智能插补', requiresPython: true, isAvailable: true, estimatedTime: 'medium', accuracy: 'medium' },
+  { id: 'RANDOM_FOREST', name: '随机森林', category: 'ml', description: '基于随机森林的插补', requiresPython: true, isAvailable: true, estimatedTime: 'slow', accuracy: 'high' },
+  { id: 'MICE', name: 'MICE', category: 'ml', description: '多重插补链式方程', requiresPython: true, isAvailable: true, estimatedTime: 'slow', accuracy: 'high' },
+  { id: 'MISSFOREST', name: 'MissForest', category: 'ml', description: '基于随机森林的迭代插补', requiresPython: true, isAvailable: true, estimatedTime: 'slow', accuracy: 'high' },
+  // 深度学习
+  { id: 'LSTM', name: 'LSTM', category: 'dl', description: '长短期记忆网络', requiresPython: true, isAvailable: false, estimatedTime: 'slow', accuracy: 'high' },
+  { id: 'GRU', name: 'GRU', category: 'dl', description: '门控循环单元', requiresPython: true, isAvailable: false, estimatedTime: 'slow', accuracy: 'high' },
+  { id: 'TRANSFORMER', name: 'Transformer', category: 'dl', description: '基于注意力机制的模型', requiresPython: true, isAvailable: false, estimatedTime: 'slow', accuracy: 'high' },
+];
+
+const recommendedMethodIds = ref<ImputationMethodId[]>(['LINEAR', 'ARIMA', 'KNN']);
+
+// ==================== 参数配置状态 ====================
+const columnSelectionMode = ref<'all' | 'manual'>('all');
+const selectedColumns = ref<string[]>([]);
+const paramValues = ref<Record<string, any>>({});
+
+// ==================== 执行状态 ====================
+const isExecuting = ref<boolean>(false);
+const progressInfo = ref<ImputationProgressEvent | null>(null);
+const executionLogs = ref<{ id: number; time: string; level: string; message: string }[]>([]);
+
+// ==================== 可视化状态 ====================
+const vizSelectedColumn = ref<string>('');
+const vizMode = ref<'timeseries' | 'distribution' | 'scatter' | 'table'>('timeseries');
+const timeSeriesChart = ref<HTMLDivElement | null>(null);
+const timeSeriesInstance = ref<echarts.ECharts | null>(null);
+const comparisonTableData = ref<any[]>([]);
+
+// ==================== Computed ====================
+const filteredMethods = computed(() => {
+  return imputationMethods.filter(m => m.category === activeCategory.value);
 });
 
-// 预览数据
-const previewTableData = ref<any[]>([]);
+const selectedMethod = computed(() => {
+  return imputationMethods.find(m => m.id === selectedMethodId.value) || null;
+});
 
-// Computed properties
-const availableColumns = computed(() => {
+const availableColumns = computed<ColumnInfo[]>(() => {
   if (!props.datasetInfo?.originalFile?.columns) return [];
   return props.datasetInfo.originalFile.columns
     .filter(col => col !== "TIMESTAMP")
@@ -95,27 +176,30 @@ const availableColumns = computed(() => {
     }));
 });
 
-// 过滤后的指标列表（仅搜索过滤）
-const filteredColumns = computed(() => {
-  if (!searchKeyword.value.trim()) {
-    return availableColumns.value;
-  }
-  
-  const keyword = searchKeyword.value.toLowerCase().trim();
-  return availableColumns.value.filter(col =>
-    col.name.toLowerCase().includes(keyword)
-  );
+const columnsWithMissing = computed(() => {
+  return availableColumns.value.filter(col => col.missingCount > 0);
 });
 
-const selectedColumnInfo = computed(() => {
-  return availableColumns.value.find(col => col.name === selectedColumn.value) || null;
+const canExecute = computed(() => {
+  if (!selectedMethodId.value) return false;
+  if (!props.datasetInfo) return false;
+  if (columnSelectionMode.value === 'manual' && selectedColumns.value.length === 0) return false;
+  return true;
 });
 
-const canStartImputation = computed(() => {
-  return !props.loading && !isProcessing.value;
-});
+const currentStage = computed(() => progressInfo.value?.stage || 'preparing');
+const progress = computed(() => progressInfo.value?.progress || 0);
+const progressMessage = computed(() => progressInfo.value?.message || '');
 
-// Methods
+const stages = [
+  { key: 'preparing', label: '准备', icon: '📋' },
+  { key: 'training', label: '训练', icon: '🎯' },
+  { key: 'imputing', label: '插补', icon: '✏️' },
+  { key: 'validating', label: '验证', icon: '✅' },
+  { key: 'saving', label: '保存', icon: '💾' },
+];
+
+// ==================== Methods ====================
 const getMissingCount = (columnName: string): number => {
   if (!props.datasetInfo?.originalFile?.dataQuality?.columnMissingStatus) return 0;
   return props.datasetInfo.originalFile.dataQuality.columnMissingStatus[columnName] || 0;
@@ -128,7 +212,6 @@ const getMissingRate = (columnName: string): number => {
 };
 
 const getColumnType = (columnName: string): string => {
-  // 基于列名推断类型
   if (columnName.includes("TIMESTAMP") || columnName.includes("TIME")) return "datetime";
   return "numeric";
 };
@@ -140,85 +223,225 @@ const getMissingRateClass = (rate: number): string => {
   return "missing-rate--high";
 };
 
-const selectColumn = (columnName: string) => {
-  selectedColumn.value = columnName;
-  closeDropdown();
-  updateCharts();
-  updatePreviewTable();
+const isRecommended = (methodId: ImputationMethodId): boolean => {
+  return recommendedMethodIds.value.includes(methodId);
 };
 
-// 搜索相关方法
-const clearSearch = () => {
-  searchKeyword.value = "";
-  isDropdownOpen.value = false;
+const getTimeLabel = (time?: 'fast' | 'medium' | 'slow'): string => {
+  const labels = { fast: '快速', medium: '中等', slow: '较慢' };
+  return labels[time || 'medium'];
 };
 
-const toggleDropdown = () => {
-  isDropdownOpen.value = !isDropdownOpen.value;
+const getMethodName = (methodId: ImputationMethodId): string => {
+  return imputationMethods.find(m => m.id === methodId)?.name || methodId;
 };
 
-const closeDropdown = () => {
-  isDropdownOpen.value = false;
+const getStatusType = (status: ImputationResultStatus): string => {
+  const types: Record<ImputationResultStatus, string> = {
+    PENDING: 'info',
+    RUNNING: 'warning',
+    COMPLETED: 'success',
+    FAILED: 'danger',
+    APPLIED: 'success',
+    REVERTED: 'info',
+  };
+  return types[status];
 };
 
-const startImputation = async () => {
-  if (!canStartImputation.value) return;
+const getStatusText = (status: ImputationResultStatus): string => {
+  const texts: Record<ImputationResultStatus, string> = {
+    PENDING: '待执行',
+    RUNNING: '执行中',
+    COMPLETED: '已完成',
+    FAILED: '失败',
+    APPLIED: '已应用',
+    REVERTED: '已撤销',
+  };
+  return texts[status];
+};
+
+const formatDateTime = (dateStr: string): string => {
+  const date = new Date(dateStr);
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+
+const isStageCompleted = (stageKey: string): boolean => {
+  const stageOrder = ['preparing', 'training', 'imputing', 'validating', 'saving'];
+  const currentIndex = stageOrder.indexOf(currentStage.value);
+  const targetIndex = stageOrder.indexOf(stageKey);
+  return targetIndex < currentIndex;
+};
+
+// ==================== 视图切换 ====================
+const switchToConfig = () => {
+  currentView.value = 'config';
+  currentResultId.value = null;
+};
+
+const viewResult = (result: ImputationResult) => {
+  currentResultId.value = result.id;
+  currentView.value = 'result';
+  // 加载结果详情
+  loadResultComparison(result.id);
+};
+
+// ==================== 方法选择 ====================
+const selectMethod = (method: ImputationMethod) => {
+  if (!method.isAvailable) return;
+  selectedMethodId.value = method.id;
+  // 初始化默认参数
+  initMethodParams(method);
+};
+
+const initMethodParams = (method: ImputationMethod) => {
+  // 根据方法类型初始化默认参数
+  paramValues.value = {};
+  if (method.id === 'ARIMA' || method.id === 'SARIMA') {
+    paramValues.value = { p: 1, d: 1, q: 1, autoSelect: true };
+  } else if (method.id === 'KNN') {
+    paramValues.value = { n_neighbors: 5 };
+  } else if (method.id === 'SPLINE') {
+    paramValues.value = { degree: 3 };
+  } else if (method.id === 'POLYNOMIAL') {
+    paramValues.value = { degree: 2 };
+  }
+};
+
+// ==================== 执行插补 ====================
+const executeImputation = async () => {
+  if (!canExecute.value || !selectedMethodId.value) return;
 
   try {
-    isProcessing.value = true;
-
-    const options = {
-      maxGapSize: advancedOptions.value.maxGapSize,
-      windowSize: advancedOptions.value.windowSize,
-      polynomialDegree: advancedOptions.value.polynomialDegree,
-      knnNeighbors: advancedOptions.value.knnNeighbors,
-      outlierThreshold: advancedOptions.value.outlierThreshold,
-      preservePattern: advancedOptions.value.preservePattern,
-      arimaP: advancedOptions.value.arimaP,
-      arimaD: advancedOptions.value.arimaD,
-      arimaQ: advancedOptions.value.arimaQ,
-      arimaAutoSelect: advancedOptions.value.arimaAutoSelect,
+    isExecuting.value = true;
+    progressInfo.value = {
+      resultId: 0,
+      progress: 0,
+      stage: 'preparing',
+      message: '准备数据...',
     };
+    executionLogs.value = [];
+
+    const targetCols = columnSelectionMode.value === 'all' 
+      ? null 
+      : selectedColumns.value;
 
     ElNotification({
-      title: "开始处理",
-      message: `正在插补...`,
+      title: "开始插补",
+      message: `正在使用 ${getMethodName(selectedMethodId.value)} 方法进行插补...`,
       type: "info",
       duration: 3000,
     });
 
-    // 调用后端API
-    const result = await window.electronAPI.invoke('datasets/perform-imputation', {
-      projectId: props.datasetInfo?.belongTo,
-      datasetId: props.datasetInfo?.id,
-      method: imputationMethod.value,
-      options: options
+    // 模拟执行过程
+    await simulateExecution();
+
+    ElNotification({
+      title: "插补完成",
+      message: "缺失值插补处理完成",
+      type: "success",
+      duration: 5000,
     });
 
-    if (result.success) {
-      hasImputationResult.value = true;
-      ElNotification({
-        title: "插补完成",
-        message: result.data.message || "整个数据集的缺失值插补处理完成",
-        type: "success",
-        duration: 5000,
-      });
+    // 添加到历史记录
+    const newResult: ImputationResult = {
+      id: Date.now(),
+      datasetId: parseInt(props.datasetInfo?.id || '0'),
+      versionId: 1,
+      methodId: selectedMethodId.value,
+      imputationParams: JSON.stringify(paramValues.value),
+      targetColumns: targetCols ? JSON.stringify(targetCols) : null,
+      totalRows: props.datasetInfo?.originalFile?.rows || 0,
+      imputedCount: Math.floor(Math.random() * 100) + 50,
+      imputationRate: Math.random() * 10 + 5,
+      status: 'COMPLETED',
+      progress: 100,
+      executedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    imputationResults.value.unshift(newResult);
 
-      // 发送刷新事件
-      emit("refresh");
-    } else {
-      throw new Error(result.error || "插补处理失败");
-    }
+    emit("refresh");
 
   } catch (error: any) {
     console.error("插补处理失败:", error);
     ElMessage.error(error.message || "插补处理失败，请重试");
   } finally {
-    isProcessing.value = false;
+    isExecuting.value = false;
   }
 };
 
-// 生成模拟时间序列数据
+const simulateExecution = async () => {
+  const stageList: Array<{ stage: ImputationProgressEvent['stage']; message: string; duration: number }> = [
+    { stage: 'preparing', message: '准备数据...', duration: 500 },
+    { stage: 'training', message: '训练模型...', duration: 1000 },
+    { stage: 'imputing', message: '执行插补...', duration: 1500 },
+    { stage: 'validating', message: '验证结果...', duration: 500 },
+    { stage: 'saving', message: '保存结果...', duration: 500 },
+  ];
+
+  let totalProgress = 0;
+  for (const s of stageList) {
+    progressInfo.value = {
+      resultId: 0,
+      progress: totalProgress,
+      stage: s.stage,
+      message: s.message,
+    };
+    addLog('info', s.message);
+    await new Promise(resolve => setTimeout(resolve, s.duration));
+    totalProgress += 20;
+  }
+  progressInfo.value = {
+    resultId: 0,
+    progress: 100,
+    stage: 'saving',
+    message: '完成',
+  };
+};
+
+const addLog = (level: string, message: string) => {
+  executionLogs.value.push({
+    id: Date.now(),
+    time: new Date().toLocaleTimeString(),
+    level,
+    message,
+  });
+};
+
+const cancelExecution = () => {
+  isExecuting.value = false;
+  progressInfo.value = null;
+  ElMessage.warning('已取消执行');
+};
+
+// ==================== 结果相关 ====================
+const deleteResult = async (resultId: number) => {
+  imputationResults.value = imputationResults.value.filter(r => r.id !== resultId);
+  if (currentResultId.value === resultId) {
+    currentResultId.value = null;
+    currentView.value = 'config';
+  }
+  ElMessage.success('已删除');
+};
+
+const loadResultComparison = async (_resultId: number) => {
+  // 模拟加载对比数据
+  await nextTick();
+  if (columnsWithMissing.value.length > 0) {
+    vizSelectedColumn.value = columnsWithMissing.value[0].name;
+    updateComparisonChart();
+  }
+};
+
+// ==================== 可视化 ====================
 const generateTimeSeriesData = () => {
   const data = [];
   const startDate = new Date('2024-01-01');
@@ -226,38 +449,33 @@ const generateTimeSeriesData = () => {
   for (let i = 0; i < 100; i++) {
     const date = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
     const value = Math.sin(i * 0.1) * 50 + Math.random() * 20 + 100;
-    const isMissing = Math.random() < 0.1; // 10%概率为缺失值
+    const isMissing = Math.random() < 0.1;
     
     data.push({
       timestamp: date.toISOString().split('T')[0],
       original: isMissing ? null : value,
-      imputed: value + (Math.random() - 0.5) * 5, // 模拟插补值
+      imputed: value + (Math.random() - 0.5) * 5,
+      confidence: 0.8 + Math.random() * 0.2,
     });
   }
   
   return data;
 };
 
-// 更新图表
-const updateCharts = async () => {
-  if (!selectedColumn.value) return;
+const updateComparisonChart = async () => {
+  if (!vizSelectedColumn.value) return;
   
   await nextTick();
   
   const data = generateTimeSeriesData();
+  comparisonTableData.value = data.slice(0, 20);
   
-  // 更新时间序列图
   if (timeSeriesChart.value && !timeSeriesInstance.value) {
     timeSeriesInstance.value = echarts.init(timeSeriesChart.value);
   }
   
   if (timeSeriesInstance.value) {
     const option = {
-      title: {
-        text: `${selectedColumn.value} 时间序列`,
-        left: 'center',
-        textStyle: { fontSize: 14, fontWeight: 600 }
-      },
       tooltip: {
         trigger: 'axis',
         formatter: (params: any) => {
@@ -270,8 +488,15 @@ const updateCharts = async () => {
         }
       },
       legend: {
-        data: ['原始数据', '缺失值', '插补数据'],
+        data: ['原始数据', '插补数据', '缺失点'],
         bottom: 10
+      },
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '15%',
+        top: '5%',
+        containLabel: true
       },
       xAxis: {
         type: 'time',
@@ -287,21 +512,25 @@ const updateCharts = async () => {
           type: 'line',
           data: data.map(d => [d.timestamp, d.original]).filter(d => d[1] !== null),
           itemStyle: { color: '#22c55e' },
-          lineStyle: { width: 2 }
-        },
-        {
-          name: '缺失值',
-          type: 'scatter',
-          data: data.map(d => [d.timestamp, d.original === null ? d.imputed : null]).filter(d => d[1] !== null),
-          itemStyle: { color: '#ef4444' },
-          symbolSize: 8
+          lineStyle: { width: 2 },
+          symbol: 'circle',
+          symbolSize: 4,
         },
         {
           name: '插补数据',
           type: 'line',
-          data: data.map(d => [d.timestamp, d.imputed]),
+          data: data.filter(d => d.original === null).map(d => [d.timestamp, d.imputed]),
           itemStyle: { color: '#3b82f6' },
-          lineStyle: { width: 1, type: 'dashed' }
+          lineStyle: { width: 2, type: 'dashed' },
+          symbol: 'diamond',
+          symbolSize: 8,
+        },
+        {
+          name: '缺失点',
+          type: 'scatter',
+          data: data.filter(d => d.original === null).map(d => [d.timestamp, d.imputed]),
+          itemStyle: { color: '#ef4444' },
+          symbolSize: 10,
         }
       ]
     };
@@ -310,418 +539,425 @@ const updateCharts = async () => {
   }
 };
 
-// 更新预览表格
-const updatePreviewTable = () => {
-  if (!selectedColumn.value) return;
-  
-  const data = generateTimeSeriesData();
-  previewTableData.value = data.slice(0, 15);
-};
-
-const handleRefresh = () => {
-  emit("refresh");
-};
-
-// 切换视图模式
-const switchViewMode = (mode: 'chart' | 'table') => {
-  viewMode.value = mode;
-};
-
-// Watch for dataset changes
+// ==================== 生命周期 ====================
 watch(
   () => props.datasetInfo,
   () => {
-    selectedColumn.value = "";
-    searchKeyword.value = "";
-    isDropdownOpen.value = false;
+    selectedColumns.value = [];
+    currentResultId.value = null;
+    currentView.value = 'config';
   }
 );
 
-// 组件挂载后初始化
+watch(vizSelectedColumn, () => {
+  updateComparisonChart();
+});
+
 onMounted(() => {
   window.addEventListener('resize', () => {
     timeSeriesInstance.value?.resize();
   });
+});
 
-  // 点击外部关闭下拉框
-  document.addEventListener('click', (event) => {
-    const target = event.target as Element;
-    if (!target.closest('.custom-select')) {
-      isDropdownOpen.value = false;
-    }
-  });
+onUnmounted(() => {
+  timeSeriesInstance.value?.dispose();
 });
 </script>
 
 <template>
   <div class="gap-filling-panel">
-    <!-- 数据集状态 -->
+    <!-- 空状态 -->
     <div v-if="!datasetInfo" class="empty-state">
       <div class="empty-icon">📊</div>
       <h3 class="empty-title">未选择数据集</h3>
       <p class="empty-description">请先选择一个数据集以开始缺失值处理</p>
     </div>
 
-    <!-- 主要内容 -->
-    <div v-else class="panel-content">
-      <!-- 主工作区 -->
-      <div class="main-workspace">
-        <!-- 左侧：模型选择和参数配置 -->
-        <div class="left-panel">
-          <!-- 模型选择 -->
-          <div class="model-selection-section">
-            <div class="section-header">
-              <h3 class="section-title">
-                <el-icon><Setting /></el-icon>
-                插补模型
-              </h3>
-            </div>
+    <!-- 主布局：侧边栏 + 主内容区 -->
+    <div v-else class="panel-layout">
+      <!-- 侧边栏 -->
+      <div class="panel-sidebar">
+        <!-- 新建按钮 -->
+        <div class="sidebar-header">
+          <button class="new-imputation-btn" @click="switchToConfig">
+            <el-icon><Plus /></el-icon>
+            <span>新建插补</span>
+          </button>
+        </div>
 
-            <div class="methods-list">
-              <div
-                v-for="method in imputationMethods"
-                :key="method.value"
-                @click="imputationMethod = method.value"
-                :class="[
-                  'method-item',
-                  { 'method-item--selected': imputationMethod === method.value }
-                ]">
-                
-                <div class="method-icon">{{ method.icon }}</div>
-                <div class="method-content">
-                  <div class="method-name">{{ method.label }}</div>
-                  <div class="method-description">{{ method.description }}</div>
-                </div>
-                
-                <div v-if="imputationMethod === method.value" class="method-indicator">
-                  <el-icon><Check /></el-icon>
-                </div>
+        <!-- 历史记录 -->
+        <div class="history-section">
+          <div class="sidebar-subtitle">插补历史</div>
+          <div class="history-list">
+            <div v-if="imputationResults.length === 0" class="history-empty">
+              <span>暂无历史记录</span>
+            </div>
+            <div 
+              v-for="result in imputationResults" 
+              :key="result.id" 
+              class="history-item"
+              :class="{ 'history-item--active': currentResultId === result.id }"
+              @click="viewResult(result)">
+              <div class="history-item-header">
+                <span class="history-time">{{ formatDateTime(result.executedAt) }}</span>
+                <button class="history-delete-btn" @click.stop="deleteResult(result.id)">
+                  <el-icon><Delete /></el-icon>
+                </button>
+              </div>
+              <div class="history-item-content">
+                <span class="history-method">{{ getMethodName(result.methodId) }}</span>
+                <el-tag size="small" :type="getStatusType(result.status)" effect="light" round>
+                  {{ getStatusText(result.status) }}
+                </el-tag>
+              </div>
+              <div class="history-item-stats">
+                <span class="stat-item">{{ result.imputedCount }} 个插补</span>
+                <span class="stat-item">{{ result.imputationRate.toFixed(1) }}%</span>
               </div>
             </div>
           </div>
+        </div>
+      </div>
 
-          <!-- 参数配置 -->
-          <div class="parameters-section">
-            <div class="section-header">
-              <h3 class="section-title">
-                <el-icon><Setting /></el-icon>
-                参数配置
-              </h3>
-            </div>
-
-            <div class="parameters-form">
-              <div class="parameter-group">
-                <label class="parameter-label">最大间隙大小</label>
-                <input 
-                  v-model.number="advancedOptions.maxGapSize" 
-                  type="number" 
-                  class="parameter-input"
-                  min="1"
-                  max="100">
-              </div>
-              
-              <div class="parameter-group">
-                <label class="parameter-label">窗口大小</label>
-                <input 
-                  v-model.number="advancedOptions.windowSize" 
-                  type="number" 
-                  class="parameter-input"
-                  min="1"
-                  max="168">
-              </div>
-              
-              <div class="parameter-group">
-                <label class="parameter-label">多项式度数</label>
-                <input 
-                  v-model.number="advancedOptions.polynomialDegree" 
-                  type="number" 
-                  class="parameter-input"
-                  min="1"
-                  max="5">
-              </div>
-              
-              <div class="parameter-group">
-                <label class="parameter-label">K近邻数量</label>
-                <input 
-                  v-model.number="advancedOptions.knnNeighbors" 
-                  type="number" 
-                  class="parameter-input"
-                  min="1"
-                  max="20">
+      <!-- 主内容区 -->
+      <div class="panel-main">
+        <!-- 配置视图 -->
+        <div v-if="currentView === 'config'" class="config-view">
+          <div class="config-layout">
+            <!-- 方法选择区 -->
+            <div class="method-selection-section">
+              <div class="section-header">
+                <h3 class="section-title">
+                  <el-icon><Setting /></el-icon>
+                  选择插补方法
+                </h3>
               </div>
 
-              <!-- ARIMA特有参数 -->
-              <div v-if="imputationMethod === 'arima'" class="arima-parameters">
-                <div class="parameter-group-title">ARIMA模型参数</div>
-                
-                <div class="parameter-switches">
-                  <label class="switch-item">
-                    <input 
-                      v-model="advancedOptions.arimaAutoSelect" 
-                      type="checkbox" 
-                      class="switch-input">
-                    <span class="switch-label">自动选择最优参数</span>
-                  </label>
-                </div>
+              <!-- 分类Tab -->
+              <div class="category-tabs">
+                <button 
+                  v-for="cat in categories" 
+                  :key="cat.value"
+                  :class="['category-tab', { 'category-tab--active': activeCategory === cat.value }]"
+                  @click="activeCategory = cat.value as ImputationCategory">
+                  <span class="category-icon">{{ cat.icon }}</span>
+                  <span class="category-name">{{ cat.label }}</span>
+                </button>
+              </div>
 
-                <div v-if="!advancedOptions.arimaAutoSelect" class="arima-order-params">
-                  <div class="parameter-row">
-                    <div class="parameter-group">
-                      <label class="parameter-label">AR阶数 (p)</label>
-                      <input 
-                        v-model.number="advancedOptions.arimaP" 
-                        type="number" 
-                        class="parameter-input"
-                        min="0"
-                        max="5">
+              <!-- 方法卡片 -->
+              <div class="methods-grid">
+                <div 
+                  v-for="method in filteredMethods" 
+                  :key="method.id"
+                  :class="[
+                    'method-card', 
+                    { 
+                      'method-card--selected': selectedMethodId === method.id,
+                      'method-card--unavailable': !method.isAvailable,
+                      'method-card--recommended': isRecommended(method.id)
+                    }
+                  ]"
+                  @click="selectMethod(method)">
+                  
+                  <!-- 推荐标签 -->
+                  <div v-if="isRecommended(method.id)" class="recommended-badge">
+                    <el-icon><Star /></el-icon>
+                    <span>推荐</span>
+                  </div>
+
+                  <div class="method-card-header">
+                    <span class="method-card-name">{{ method.name }}</span>
+                    <div class="method-card-tags">
+                      <span v-if="method.requiresPython" class="tag tag--python">Python</span>
+                      <span :class="['tag', `tag--time-${method.estimatedTime}`]">
+                        {{ getTimeLabel(method.estimatedTime) }}
+                      </span>
                     </div>
-                    
-                    <div class="parameter-group">
-                      <label class="parameter-label">差分次数 (d)</label>
-                      <input 
-                        v-model.number="advancedOptions.arimaD" 
-                        type="number" 
-                        class="parameter-input"
-                        min="0"
-                        max="2">
-                    </div>
-                    
-                    <div class="parameter-group">
-                      <label class="parameter-label">MA阶数 (q)</label>
-                      <input 
-                        v-model.number="advancedOptions.arimaQ" 
-                        type="number" 
-                        class="parameter-input"
-                        min="0"
-                        max="5">
+                  </div>
+                  
+                  <p class="method-card-description">{{ method.description }}</p>
+                  
+                  <div class="method-card-footer">
+                    <span class="accuracy-indicator">
+                      准确度: 
+                      <span :class="`accuracy--${method.accuracy}`">
+                        {{ method.accuracy === 'high' ? '高' : method.accuracy === 'medium' ? '中' : '低' }}
+                      </span>
+                    </span>
+                    <div v-if="selectedMethodId === method.id" class="selected-indicator">
+                      <el-icon><Check /></el-icon>
                     </div>
                   </div>
                 </div>
               </div>
+            </div>
 
-              <div class="parameter-switches">
-                <label class="switch-item">
-                  <input 
-                    v-model="advancedOptions.preservePattern" 
-                    type="checkbox" 
-                    class="switch-input">
-                  <span class="switch-label">保持数据模式</span>
-                </label>
+            <!-- 参数配置区 -->
+            <div class="params-config-section">
+              <div class="section-header">
+                <h3 class="section-title">
+                  <el-icon><Setting /></el-icon>
+                  参数配置
+                </h3>
               </div>
 
-              <button 
-                @click="startImputation"
-                :disabled="!canStartImputation"
-                class="process-button">
-                <el-icon v-if="!isProcessing" class="button-icon"><Check /></el-icon>
-                <div v-else class="loading-spinner"></div>
-                {{ isProcessing ? '处理中...' : '开始整个数据集插补' }}
+              <!-- 列选择 -->
+              <div class="column-selection">
+                <div class="selection-header">
+                  <h4 class="selection-title">目标列选择</h4>
+                  <div class="selection-mode">
+                    <label class="radio-item">
+                      <input type="radio" v-model="columnSelectionMode" value="all">
+                      <span>全部列</span>
+                    </label>
+                    <label class="radio-item">
+                      <input type="radio" v-model="columnSelectionMode" value="manual">
+                      <span>手动选择</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div v-if="columnSelectionMode === 'manual'" class="column-list">
+                  <div 
+                    v-for="column in columnsWithMissing" 
+                    :key="column.name"
+                    class="column-item">
+                    <label class="checkbox-item">
+                      <input 
+                        type="checkbox" 
+                        :value="column.name"
+                        v-model="selectedColumns"
+                        :disabled="column.missingCount === 0">
+                      <div class="column-info">
+                        <span class="column-name">{{ column.name }}</span>
+                        <span class="column-missing">{{ column.missingCount }} 缺失</span>
+                        <span :class="['column-rate', getMissingRateClass(column.missingRate)]">
+                          {{ column.missingRate.toFixed(1) }}%
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+                  <div v-if="columnsWithMissing.length === 0" class="no-columns">
+                    <span>没有包含缺失值的列</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 方法参数 -->
+              <div v-if="selectedMethod" class="method-params">
+                <h4 class="params-title">{{ selectedMethod.name }} 参数</h4>
+                
+                <!-- ARIMA 参数 -->
+                <div v-if="selectedMethodId === 'ARIMA' || selectedMethodId === 'SARIMA'" class="params-form">
+                  <div class="param-item">
+                    <label class="param-label">
+                      <input type="checkbox" v-model="paramValues.autoSelect">
+                      <span>自动选择最优参数</span>
+                    </label>
+                  </div>
+                  <div v-if="!paramValues.autoSelect" class="param-row">
+                    <div class="param-item">
+                      <label class="param-label">AR阶数 (p)</label>
+                      <input type="number" v-model.number="paramValues.p" min="0" max="5" class="param-input">
+                    </div>
+                    <div class="param-item">
+                      <label class="param-label">差分次数 (d)</label>
+                      <input type="number" v-model.number="paramValues.d" min="0" max="2" class="param-input">
+                    </div>
+                    <div class="param-item">
+                      <label class="param-label">MA阶数 (q)</label>
+                      <input type="number" v-model.number="paramValues.q" min="0" max="5" class="param-input">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- KNN 参数 -->
+                <div v-else-if="selectedMethodId === 'KNN'" class="params-form">
+                  <div class="param-item">
+                    <label class="param-label">K近邻数量</label>
+                    <input type="number" v-model.number="paramValues.n_neighbors" min="1" max="20" class="param-input">
+                  </div>
+                </div>
+
+                <!-- 样条/多项式 参数 -->
+                <div v-else-if="selectedMethodId === 'SPLINE' || selectedMethodId === 'POLYNOMIAL'" class="params-form">
+                  <div class="param-item">
+                    <label class="param-label">多项式度数</label>
+                    <input type="number" v-model.number="paramValues.degree" min="1" max="5" class="param-input">
+                  </div>
+                </div>
+
+                <!-- 其他方法无需额外参数 -->
+                <div v-else class="params-form">
+                  <p class="no-params">此方法无需额外参数配置</p>
+                </div>
+              </div>
+
+              <!-- 执行按钮 -->
+              <div class="action-buttons">
+                <button 
+                  class="execute-btn"
+                  :class="{ 'execute-btn--loading': isExecuting }"
+                  :disabled="!canExecute || isExecuting"
+                  @click="executeImputation">
+                  <el-icon v-if="!isExecuting"><VideoPlay /></el-icon>
+                  <div v-else class="loading-spinner"></div>
+                  <span>{{ isExecuting ? '执行中...' : '开始插补' }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 进度展示区 -->
+          <div v-if="isExecuting || progressInfo" class="progress-section">
+            <div class="progress-header">
+              <h4 class="progress-title">执行进度</h4>
+              <button v-if="isExecuting" class="cancel-btn" @click="cancelExecution">
+                <el-icon><Close /></el-icon>
+                <span>取消</span>
               </button>
+            </div>
+
+            <div class="progress-content">
+              <!-- 阶段指示器 -->
+              <div class="stage-indicators">
+                <div 
+                  v-for="stage in stages" 
+                  :key="stage.key"
+                  :class="[
+                    'stage-item', 
+                    { 
+                      'stage-item--active': currentStage === stage.key,
+                      'stage-item--completed': isStageCompleted(stage.key)
+                    }
+                  ]">
+                  <div class="stage-icon">{{ stage.icon }}</div>
+                  <div class="stage-name">{{ stage.label }}</div>
+                </div>
+              </div>
+
+              <!-- 进度条 -->
+              <div class="progress-bar-container">
+                <div class="progress-bar">
+                  <div class="progress-bar-fill" :style="{ width: progress + '%' }"></div>
+                </div>
+                <span class="progress-text">{{ progress }}%</span>
+              </div>
+
+              <!-- 进度信息 -->
+              <div class="progress-info">
+                <p class="progress-message">{{ progressMessage }}</p>
+              </div>
+
+              <!-- 执行日志 -->
+              <div v-if="executionLogs.length > 0" class="execution-logs">
+                <div class="logs-header">执行日志</div>
+                <div class="logs-content">
+                  <div v-for="log in executionLogs" :key="log.id" class="log-item">
+                    <span class="log-time">{{ log.time }}</span>
+                    <span :class="['log-level', `log-level--${log.level}`]">{{ log.level }}</span>
+                    <span class="log-message">{{ log.message }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- 右侧：插补结果查看 -->
-        <div class="right-panel">
-          <!-- 插补状态显示 -->
-          <div v-if="!hasImputationResult" class="imputation-status-section">
-            <div class="status-content">
-              <div v-if="!isProcessing" class="waiting-state">
-                <div class="waiting-icon">🎯</div>
-                <h3 class="waiting-title">准备开始插补</h3>
-                <p class="waiting-description">
-                  配置插补参数后，点击"开始整个数据集插补"按钮
-                </p>
-              </div>
-              <div v-else class="processing-state">
-                <div class="processing-icon">
-                  <div class="loading-spinner-large"></div>
-                </div>
-                <h3 class="processing-title">正在处理数据集...</h3>
-                <p class="processing-description">
-                  正在使用{{ imputationMethods.find(m => m.value === imputationMethod)?.label }}方法处理整个数据集的缺失值
-                </p>
-              </div>
+        <!-- 结果视图 -->
+        <div v-else-if="currentView === 'result'" class="result-view">
+          <div class="result-header">
+            <h3 class="result-title">插补结果对比</h3>
+            <button class="back-btn" @click="switchToConfig">
+              <el-icon><Refresh /></el-icon>
+              <span>返回配置</span>
+            </button>
+          </div>
+
+          <!-- 列选择器 -->
+          <div class="viz-controls">
+            <div class="viz-column-select">
+              <label>选择列：</label>
+              <select v-model="vizSelectedColumn" class="viz-select">
+                <option v-for="col in columnsWithMissing" :key="col.name" :value="col.name">
+                  {{ col.name }} ({{ col.missingCount }} 缺失)
+                </option>
+              </select>
+            </div>
+
+            <div class="viz-mode-switch">
+              <button 
+                :class="['viz-mode-btn', { 'viz-mode-btn--active': vizMode === 'timeseries' }]"
+                @click="vizMode = 'timeseries'">
+                <el-icon><TrendCharts /></el-icon>
+                <span>时序图</span>
+              </button>
+              <button 
+                :class="['viz-mode-btn', { 'viz-mode-btn--active': vizMode === 'table' }]"
+                @click="vizMode = 'table'">
+                <el-icon><List /></el-icon>
+                <span>表格</span>
+              </button>
             </div>
           </div>
 
-          <!-- 结果查看：指标选择 -->
-          <div v-else class="indicator-selection-section">
-            <div class="section-header">
-              <h3 class="section-title">
-                <el-icon><Search /></el-icon>
-                选择指标查看插补结果
-              </h3>
-              <div class="section-actions">
-                <button @click="hasImputationResult = false; selectedColumn = ''" class="action-button">
-                  <el-icon><Refresh /></el-icon>
-                  重新插补
-                </button>
-              </div>
-            </div>
-
-            <!-- 选择框 -->
-            <div class="select-container">
-              <div class="custom-select" @click="toggleDropdown">
-                <div class="select-display">
-                  <span v-if="selectedColumn" class="selected-text">{{ selectedColumn }}</span>
-                  <span v-else class="placeholder-text">请选择指标</span>
-                  <el-icon class="select-arrow" :class="{ 'select-arrow--open': isDropdownOpen }">
-                    <ArrowDown />
-                  </el-icon>
-                </div>
-                
-                <div v-show="isDropdownOpen" class="select-dropdown">
-                  <!-- 搜索框 -->
-                  <div class="dropdown-search">
-                    <el-icon class="search-icon"><Search /></el-icon>
-                    <input 
-                      v-model="searchKeyword"
-                      type="text"
-                      placeholder="搜索指标..."
-                      class="search-input"
-                      @click.stop>
-                    <button 
-                      v-if="searchKeyword"
-                      @click.stop="clearSearch"
-                      class="clear-btn">
-                      <el-icon><CircleClose /></el-icon>
-                    </button>
-                  </div>
-                  
-                  <!-- 选项列表 -->
-                  <div class="options-list">
-                    <div
-                      v-for="column in filteredColumns"
-                      :key="column.name"
-                      @click.stop="selectColumn(column.name)"
-                      :class="[
-                        'option-item',
-                        {
-                          'option-item--selected': selectedColumn === column.name,
-                          'option-item--no-missing': column.missingCount === 0,
-                        }
-                      ]">
-                      <div class="option-content">
-                        <span class="option-name">{{ column.name }}</span>
-                        <div class="option-stats">
-                          <span class="missing-count">{{ column.missingCount }} 缺失</span>
-                          <span :class="['missing-rate', getMissingRateClass(column.missingRate)]">
-                            {{ column.missingRate.toFixed(1) }}%
-                          </span>
-                        </div>
-                      </div>
-                      <el-icon v-if="selectedColumn === column.name" class="check-icon">
-                        <Check />
-                      </el-icon>
-                    </div>
-                    
-                    <div v-if="filteredColumns.length === 0" class="no-options">
-                      <span>未找到匹配的指标</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 选中指标信息 -->
-            <div v-if="selectedColumnInfo" class="selected-info">
-              <div class="info-item">
-                <span class="info-label">缺失数量:</span>
-                <span class="info-value">{{ selectedColumnInfo.missingCount }}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">缺失率:</span>
-                <span :class="['info-value', getMissingRateClass(selectedColumnInfo.missingRate)]">
-                  {{ selectedColumnInfo.missingRate.toFixed(1) }}%
-                </span>
-              </div>
-            </div>
+          <!-- 图表区域 -->
+          <div v-show="vizMode === 'timeseries'" class="chart-container">
+            <div ref="timeSeriesChart" class="chart-area"></div>
           </div>
 
-          <!-- 可视化区域 -->
-          <div v-if="hasImputationResult" class="visualization-section">
-            <div v-if="!selectedColumn" class="no-selection-state">
-              <div class="no-selection-icon">📊</div>
-              <p class="no-selection-text">请选择一个指标查看插补结果</p>
-            </div>
-
-            <div v-else class="visualization-content">
-              <!-- 视图切换器 -->
-              <div class="view-switcher">
-                <div class="switch-buttons">
-                  <button 
-                    @click="switchViewMode('chart')"
-                    :class="['switch-btn', { 'switch-btn--active': viewMode === 'chart' }]">
-                    <el-icon><Monitor /></el-icon>
-                    <span>图表视图</span>
-                  </button>
-                  <button 
-                    @click="switchViewMode('table')"
-                    :class="['switch-btn', { 'switch-btn--active': viewMode === 'table' }]">
-                    <el-icon><List /></el-icon>
-                    <span>表格视图</span>
-                  </button>
-                </div>
-              </div>
-
-              <!-- 图表视图 -->
-              <div v-show="viewMode === 'chart'" class="chart-view">
-                <div class="chart-container">
-                  <div class="chart-header">
-                    <h4 class="chart-title">
-                      <el-icon><DataLine /></el-icon>
-                      {{ selectedColumn }} 时间序列分析
-                    </h4>
-                  </div>
-                  <div ref="timeSeriesChart" class="chart-area"></div>
-                </div>
-              </div>
-
-              <!-- 表格视图 -->
-              <div v-show="viewMode === 'table'" class="table-view">
-                <div class="table-container">
-                  <div class="table-header">
-                    <h4 class="table-title">
-                      <el-icon><DocumentDelete /></el-icon>
-                      {{ selectedColumn }} 数据预览
-                    </h4>
-                    <div class="table-info">
-                      <span class="data-count">显示前 {{ previewTableData.length }} 条数据</span>
+          <!-- 表格视图 -->
+          <div v-show="vizMode === 'table'" class="table-container">
+            <table class="comparison-table">
+              <thead>
+                <tr>
+                  <th>序号</th>
+                  <th>时间</th>
+                  <th>原始值</th>
+                  <th>插补值</th>
+                  <th>置信度</th>
+                  <th>状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, index) in comparisonTableData" :key="index">
+                  <td class="cell-index">{{ index + 1 }}</td>
+                  <td class="cell-time">{{ row.timestamp }}</td>
+                  <td class="cell-original">
+                    <span v-if="row.original === null" class="value-missing">缺失</span>
+                    <span v-else class="value-normal">{{ row.original.toFixed(2) }}</span>
+                  </td>
+                  <td class="cell-imputed">
+                    <span class="value-imputed">{{ row.imputed.toFixed(2) }}</span>
+                  </td>
+                  <td class="cell-confidence">
+                    <div class="confidence-bar">
+                      <div class="confidence-fill" :style="{ width: (row.confidence * 100) + '%' }"></div>
                     </div>
-                  </div>
-                  <div class="table-wrapper">
-                    <table class="preview-table">
-                      <thead>
-                        <tr>
-                          <th>序号</th>
-                          <th>时间</th>
-                          <th>原始值</th>
-                          <th>插补值</th>
-                          <th>状态</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr v-for="(row, index) in previewTableData" :key="index">
-                          <td class="row-index">{{ index + 1 }}</td>
-                          <td class="timestamp">{{ row.timestamp }}</td>
-                          <td class="original-cell">
-                            <span v-if="row.original === null" class="missing-value">--</span>
-                            <span v-else class="original-value">{{ row.original.toFixed(2) }}</span>
-                          </td>
-                          <td class="imputed-cell">
-                            <span class="imputed-value">{{ row.imputed.toFixed(2) }}</span>
-                          </td>
-                          <td class="status-cell">
-                            <span v-if="row.original === null" class="status-missing">缺失</span>
-                            <span v-else class="status-normal">正常</span>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
+                  </td>
+                  <td class="cell-status">
+                    <span v-if="row.original === null" class="status-tag status-tag--imputed">已插补</span>
+                    <span v-else class="status-tag status-tag--original">原始</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 图例 -->
+          <div class="chart-legend">
+            <div class="legend-item">
+              <span class="legend-color legend-color--original"></span>
+              <span class="legend-text">原始数据</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-color legend-color--imputed"></span>
+              <span class="legend-text">插补数据</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-color legend-color--missing"></span>
+              <span class="legend-text">缺失点</span>
             </div>
           </div>
         </div>
@@ -731,7 +967,7 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* 主容器 */
+/* ==================== 主容器 ==================== */
 .gap-filling-panel {
   background: linear-gradient(135deg, rgba(250, 250, 249, 0.8) 0%, rgba(236, 253, 245, 0.3) 100%);
   border-radius: 16px;
@@ -741,8 +977,13 @@ onMounted(() => {
   flex-direction: column;
 }
 
-/* 空状态 */
+/* ==================== 空状态 ==================== */
 .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
   text-align: center;
   padding: 64px 24px;
 }
@@ -756,906 +997,194 @@ onMounted(() => {
 .empty-title {
   font-size: 20px;
   font-weight: 600;
-  color: rgba(68, 64, 60, 1);
+  color: #1f2937;
   margin: 0 0 8px 0;
 }
 
 .empty-description {
-  color: rgba(120, 113, 108, 1);
+  color: #6b7280;
   margin: 0;
 }
 
-/* 面板内容 */
-.panel-content {
-  padding: 24px;
+/* ==================== 主布局 ==================== */
+.panel-layout {
   display: flex;
-  flex-direction: column;
-  flex: 1;
+  height: 100%;
   overflow: hidden;
 }
 
-/* 主工作区 */
-.main-workspace {
-  display: flex;
-  gap: 24px;
-  flex: 1;
-  min-height: 0;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 18px;
-  font-weight: 600;
-  color: rgba(6, 78, 59, 1);
-  margin: 0;
-}
-
-.section-actions {
-  display: flex;
-  gap: 8px;
-}
-
-/* 左面板 */
-.left-panel {
-  width: 360px;
+/* ==================== 侧边栏 ==================== */
+.panel-sidebar {
+  width: 260px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.95) 0%, rgba(249, 250, 251, 0.9) 50%, rgba(236, 253, 245, 0.9) 100%);
+  border-right: 1px solid rgba(229, 231, 235, 0.6);
   display: flex;
   flex-direction: column;
-  gap: 16px;
   flex-shrink: 0;
 }
 
-/* 右面板 */
-.right-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-}
-
-/* 模型选择区域 */
-.model-selection-section {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(8px);
-  border-radius: 12px;
-  border: 1px solid rgba(167, 243, 208, 0.2);
+.sidebar-header {
   padding: 16px;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid rgba(229, 231, 235, 0.4);
 }
 
-.methods-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.method-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(229, 231, 235, 1);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.method-item:hover {
-  border-color: rgba(167, 243, 208, 0.6);
-  box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.1);
-}
-
-.method-item--selected {
-  border-color: rgba(34, 197, 94, 1);
-  background: linear-gradient(135deg, rgba(236, 253, 245, 0.8) 0%, rgba(220, 252, 231, 0.6) 100%);
-}
-
-.method-icon {
-  font-size: 20px;
-  opacity: 0.8;
-  flex-shrink: 0;
-}
-
-.method-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.method-name {
-  font-weight: 600;
-  color: rgba(31, 41, 55, 1);
-  font-size: 13px;
-  margin-bottom: 2px;
-}
-
-.method-description {
-  font-size: 11px;
-  color: rgba(107, 114, 128, 1);
-  line-height: 1.3;
-}
-
-.method-indicator {
-  color: rgba(34, 197, 94, 1);
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-/* 参数配置区域 */
-.parameters-section {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(8px);
-  border-radius: 12px;
-  border: 1px solid rgba(167, 243, 208, 0.2);
-  padding: 16px;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  flex: 1;
-}
-
-.parameters-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.parameter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.parameter-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: rgba(55, 65, 81, 1);
-}
-
-.parameter-input {
-  padding: 6px 10px;
-  border: 1px solid rgba(209, 213, 219, 1);
-  border-radius: 6px;
-  font-size: 12px;
-  transition: border-color 0.2s ease;
-}
-
-.parameter-input:focus {
-  outline: none;
-  border-color: rgba(34, 197, 94, 1);
-  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.1);
-}
-
-.parameter-switches {
-  margin-top: 8px;
-}
-
-.switch-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-
-.switch-input {
-  width: 14px;
-  height: 14px;
-}
-
-.switch-label {
-  font-size: 12px;
-  color: rgba(55, 65, 81, 1);
-}
-
-/* ARIMA参数样式 */
-.arima-parameters {
-  margin-top: 16px;
-  padding: 12px;
-  background: rgba(248, 250, 252, 0.8);
-  border: 1px solid rgba(226, 232, 240, 1);
-  border-radius: 8px;
-}
-
-.parameter-group-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: rgba(51, 65, 85, 1);
-  margin-bottom: 12px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid rgba(226, 232, 240, 1);
-}
-
-.parameter-row {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.parameter-row .parameter-group {
-  flex: 1;
-  margin-bottom: 0;
-}
-
-.process-button {
-  margin-top: 12px;
+.new-imputation-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 10px 16px;
-  font-size: 13px;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 14px;
   font-weight: 600;
-  background: linear-gradient(135deg, rgba(34, 197, 94, 1) 0%, rgba(16, 185, 129, 1) 100%);
   color: white;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 4px -1px rgba(34, 197, 94, 0.25);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
 }
 
-.process-button:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 1) 0%, rgba(5, 150, 105, 1) 100%);
-  box-shadow: 0 4px 8px -2px rgba(34, 197, 94, 0.3);
+.new-imputation-btn:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
   transform: translateY(-1px);
 }
 
-.process-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.loading-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top: 2px solid white;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-/* 插补状态区域 */
-.imputation-status-section {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(8px);
-  border-radius: 12px;
-  border: 1px solid rgba(167, 243, 208, 0.2);
-  padding: 24px;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+.history-section {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.status-content {
-  text-align: center;
-  max-width: 400px;
-}
-
-.waiting-state, .processing-state {
-  display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 16px;
-}
-
-.waiting-icon {
-  font-size: 64px;
-  opacity: 0.7;
-}
-
-.waiting-title, .processing-title {
-  font-size: 20px;
-  font-weight: 600;
-  color: rgba(31, 41, 55, 1);
-  margin: 0;
-}
-
-.waiting-description, .processing-description {
-  font-size: 14px;
-  color: rgba(107, 114, 128, 1);
-  line-height: 1.5;
-  margin: 0;
-}
-
-.processing-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.loading-spinner-large {
-  width: 48px;
-  height: 48px;
-  border: 4px solid rgba(34, 197, 94, 0.2);
-  border-top: 4px solid rgba(34, 197, 94, 1);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-/* 指标选择区域 */
-.indicator-selection-section {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(8px);
-  border-radius: 12px;
-  border: 1px solid rgba(167, 243, 208, 0.2);
-  padding: 16px;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  position: relative;
-  z-index: 2;
-}
-
-/* 选择容器 */
-.select-container {
-  position: relative;
-  z-index: 1001;
-}
-
-.custom-select {
-  position: relative;
-  cursor: pointer;
-}
-
-.select-display {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(209, 213, 219, 1);
-  border-radius: 8px;
-  transition: all 0.2s ease;
-}
-
-.select-display:hover {
-  border-color: rgba(167, 243, 208, 0.6);
-  box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.1);
-}
-
-.selected-text {
-  font-weight: 600;
-  color: rgba(31, 41, 55, 1);
-  font-size: 13px;
-}
-
-.placeholder-text {
-  color: rgba(107, 114, 128, 1);
-  font-size: 13px;
-}
-
-.select-arrow {
-  color: rgba(107, 114, 128, 1);
-  transition: transform 0.2s ease;
-}
-
-.select-arrow--open {
-  transform: rotate(180deg);
-}
-
-/* 下拉框 */
-.select-dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  z-index: 1000;
-  margin-top: 4px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(209, 213, 219, 1);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.15);
   overflow: hidden;
-}
-
-/* 下拉框搜索 */
-.dropdown-search {
-  position: relative;
-  padding: 8px;
-  border-bottom: 1px solid rgba(229, 231, 235, 0.5);
-}
-
-.dropdown-search .search-icon {
-  position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: rgba(107, 114, 128, 1);
-  font-size: 12px;
-}
-
-.dropdown-search .search-input {
-  width: 100%;
-  padding: 6px 28px 6px 28px;
-  border: 1px solid rgba(209, 213, 219, 1);
-  border-radius: 6px;
-  font-size: 12px;
-  background: rgba(255, 255, 255, 0.9);
-  transition: border-color 0.2s ease;
-}
-
-.dropdown-search .search-input:focus {
-  outline: none;
-  border-color: rgba(34, 197, 94, 1);
-  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.1);
-}
-
-.dropdown-search .clear-btn {
-  position: absolute;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: rgba(107, 114, 128, 1);
-  padding: 2px;
-  border-radius: 4px;
-  transition: background 0.2s ease;
-}
-
-.dropdown-search .clear-btn:hover {
-  background: rgba(229, 231, 235, 1);
-}
-
-/* 选项列表 */
-.options-list {
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.option-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  cursor: pointer;
-  transition: background 0.2s ease;
-  border-bottom: 1px solid rgba(229, 231, 235, 0.3);
-}
-
-.option-item:hover {
-  background: rgba(249, 250, 251, 0.8);
-}
-
-.option-item--selected {
-  background: linear-gradient(135deg, rgba(236, 253, 245, 0.8) 0%, rgba(220, 252, 231, 0.6) 100%);
-}
-
-.option-item--no-missing {
-  opacity: 0.6;
-}
-
-.option-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.option-name {
-  font-weight: 600;
-  color: rgba(31, 41, 55, 1);
-  font-size: 12px;
-  margin-bottom: 2px;
-  display: block;
-}
-
-.option-stats {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 10px;
-}
-
-.missing-count {
-  color: rgba(107, 114, 128, 1);
-}
-
-.missing-rate {
-  font-weight: 600;
-  padding: 1px 4px;
-  border-radius: 3px;
-  font-size: 9px;
-}
-
-.missing-rate--none {
-  background: rgba(209, 250, 229, 1);
-  color: rgba(4, 120, 87, 1);
-}
-
-.missing-rate--low {
-  background: rgba(254, 243, 199, 1);
-  color: rgba(146, 64, 14, 1);
-}
-
-.missing-rate--medium {
-  background: rgba(254, 232, 132, 1);
-  color: rgba(133, 77, 14, 1);
-}
-
-.missing-rate--high {
-  background: rgba(254, 202, 202, 1);
-  color: rgba(153, 27, 27, 1);
-}
-
-.check-icon {
-  color: rgba(34, 197, 94, 1);
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.no-options {
-  padding: 20px;
-  text-align: center;
-  color: rgba(107, 114, 128, 1);
-  font-size: 12px;
-  font-style: italic;
-}
-
-/* 选中指标信息 */
-.selected-info {
-  display: flex;
-  gap: 16px;
-  padding: 8px 12px;
-  background: rgba(249, 250, 251, 0.8);
-  border: 1px solid rgba(229, 231, 235, 1);
-  border-radius: 6px;
-}
-
-.info-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.info-label {
-  font-size: 11px;
-  color: rgba(107, 114, 128, 1);
-  font-weight: 500;
-}
-
-.info-value {
-  font-size: 11px;
-  font-weight: 600;
-  color: rgba(31, 41, 55, 1);
-}
-
-.info-value.missing-rate--none {
-  background: rgba(209, 250, 229, 1);
-  color: rgba(4, 120, 87, 1);
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-
-.info-value.missing-rate--low {
-  background: rgba(254, 243, 199, 1);
-  color: rgba(146, 64, 14, 1);
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-
-.info-value.missing-rate--medium {
-  background: rgba(254, 232, 132, 1);
-  color: rgba(133, 77, 14, 1);
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-
-.info-value.missing-rate--high {
-  background: rgba(254, 202, 202, 1);
-  color: rgba(153, 27, 27, 1);
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-
-/* 可视化区域 */
-.visualization-section {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(8px);
-  border-radius: 12px;
-  border: 1px solid rgba(167, 243, 208, 0.2);
   padding: 16px;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  flex: 1;
-  overflow: hidden;
 }
 
-.no-selection-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: rgba(107, 114, 128, 1);
-}
-
-.no-selection-icon {
-  font-size: 48px;
-  opacity: 0.5;
+.sidebar-subtitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   margin-bottom: 12px;
 }
 
-.no-selection-text {
-  font-size: 14px;
-  margin: 0;
-}
-
-.visualization-content {
+.history-list {
+  flex: 1;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  height: 100%;
+  gap: 8px;
 }
 
-/* 视图切换器 */
-.view-switcher {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 8px;
-}
-
-.switch-buttons {
-  display: flex;
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(209, 213, 219, 1);
-  border-radius: 8px;
-  padding: 2px;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-}
-
-.switch-btn {
+.history-empty {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  font-size: 12px;
-  font-weight: 500;
-  background: transparent;
-  color: rgba(107, 114, 128, 1);
-  border: none;
-  border-radius: 6px;
+  justify-content: center;
+  height: 100px;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.history-item {
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(229, 231, 235, 0.6);
+  border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s ease;
-  white-space: nowrap;
 }
 
-.switch-btn:hover {
-  background: rgba(249, 250, 251, 0.8);
-  color: rgba(55, 65, 81, 1);
+.history-item:hover {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(16, 185, 129, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-.switch-btn--active {
-  background: linear-gradient(135deg, rgba(34, 197, 94, 1) 0%, rgba(16, 185, 129, 1) 100%);
-  color: white;
-  box-shadow: 0 2px 4px -1px rgba(34, 197, 94, 0.25);
+.history-item--active {
+  background: linear-gradient(135deg, rgba(236, 253, 245, 0.9) 0%, rgba(220, 252, 231, 0.8) 100%);
+  border-color: #10b981;
 }
 
-.switch-btn--active:hover {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 1) 0%, rgba(5, 150, 105, 1) 100%);
-}
-
-/* 图表视图 */
-.chart-view {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-/* 表格视图 */
-.table-view {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.chart-container {
-  background: rgba(255, 255, 255, 0.9);
-  border-radius: 8px;
-  border: 1px solid rgba(229, 231, 235, 1);
-  overflow: hidden;
-  flex: 1;
-  min-height: 200px;
-}
-
-.chart-header {
-  padding: 12px 16px;
-  background: rgba(249, 250, 251, 1);
-  border-bottom: 1px solid rgba(229, 231, 235, 1);
-}
-
-.chart-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  color: rgba(31, 41, 55, 1);
-  margin: 0;
-}
-
-.chart-area {
-  height: calc(100% - 49px);
-  min-height: 150px;
-}
-
-.table-container {
-  background: rgba(255, 255, 255, 0.9);
-  border-radius: 8px;
-  border: 1px solid rgba(229, 231, 235, 1);
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.table-header {
+.history-item-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
-  background: rgba(249, 250, 251, 1);
-  border-bottom: 1px solid rgba(229, 231, 235, 1);
+  margin-bottom: 6px;
 }
 
-.table-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.data-count {
+.history-time {
   font-size: 11px;
-  color: rgba(107, 114, 128, 1);
-  background: rgba(255, 255, 255, 0.8);
-  padding: 2px 8px;
-  border-radius: 4px;
-  border: 1px solid rgba(229, 231, 235, 1);
+  color: #9ca3af;
 }
 
-.table-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  color: rgba(31, 41, 55, 1);
-  margin: 0;
-}
-
-.table-wrapper {
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-/* 表格样式 */
-.preview-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.preview-table th,
-.preview-table td {
-  padding: 8px 12px;
-  text-align: left;
-  border-bottom: 1px solid rgba(229, 231, 235, 1);
-}
-
-.preview-table th {
-  background: rgba(249, 250, 251, 1);
-  font-weight: 600;
-  color: rgba(55, 65, 81, 1);
-  font-size: 11px;
-}
-
-.preview-table td {
-  color: rgba(75, 85, 99, 1);
-}
-
-.row-index {
-  font-weight: 600;
-  color: rgba(107, 114, 128, 1);
-  text-align: center;
-  background: rgba(249, 250, 251, 0.5);
-}
-
-.timestamp {
-  font-family: monospace;
-  font-size: 11px;
-  color: rgba(55, 65, 81, 1);
-}
-
-.original-cell,
-.imputed-cell,
-.status-cell {
-  text-align: center;
-}
-
-.missing-value {
-  color: rgba(239, 68, 68, 1);
-  font-style: italic;
-  font-weight: 600;
-}
-
-.original-value {
-  color: rgba(34, 197, 94, 1);
-  font-weight: 600;
-  font-family: monospace;
-}
-
-.imputed-value {
-  color: rgba(59, 130, 246, 1);
-  font-weight: 600;
-  font-family: monospace;
-}
-
-.status-missing {
-  display: inline-block;
-  padding: 2px 6px;
-  font-size: 10px;
-  font-weight: 500;
-  background: rgba(254, 242, 242, 1);
-  color: rgba(153, 27, 27, 1);
-  border-radius: 4px;
-}
-
-.status-normal {
-  display: inline-block;
-  padding: 2px 6px;
-  font-size: 10px;
-  font-weight: 500;
-  background: rgba(209, 250, 229, 1);
-  color: rgba(4, 120, 87, 1);
-  border-radius: 4px;
-}
-
-/* 通用样式 */
-.action-button {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  font-size: 14px;
-  font-weight: 500;
-  background: rgba(255, 255, 255, 0.8);
-  color: rgba(55, 65, 81, 1);
-  border: 1px solid rgba(209, 213, 219, 1);
-  border-radius: 8px;
+.history-delete-btn {
+  padding: 4px;
+  background: transparent;
+  border: none;
+  color: #9ca3af;
   cursor: pointer;
+  border-radius: 4px;
   transition: all 0.2s ease;
 }
 
-.action-button:hover:not(:disabled) {
-  background: rgba(249, 250, 251, 1);
-  border-color: rgba(156, 163, 175, 1);
+.history-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
 }
 
-.action-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.history-item-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.history-method {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.history-item-stats {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+/* ==================== 主内容区 ==================== */
+.panel-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  min-width: 0;
+}
+
+/* ==================== 配置视图 ==================== */
+.config-view {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.config-layout {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 20px;
+}
+
+/* ==================== 方法选择区 ==================== */
+.method-selection-section {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  border-radius: 12px;
+  border: 1px solid rgba(229, 231, 235, 0.4);
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   margin-bottom: 16px;
 }
 
@@ -1665,151 +1194,917 @@ onMounted(() => {
   gap: 8px;
   font-size: 16px;
   font-weight: 600;
-  color: rgba(6, 78, 59, 1);
+  color: #064e3b;
   margin: 0;
 }
 
-/* 滚动条样式 */
-.methods-list::-webkit-scrollbar,
-.options-list::-webkit-scrollbar,
-.table-wrapper::-webkit-scrollbar {
+.category-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.category-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b7280;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(229, 231, 235, 0.6);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.category-tab:hover {
+  background: rgba(255, 255, 255, 1);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #374151;
+}
+
+.category-tab--active {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border-color: transparent;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.category-icon {
+  font-size: 14px;
+}
+
+.methods-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.method-card {
+  position: relative;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(229, 231, 235, 0.6);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.method-card:hover {
+  background: rgba(255, 255, 255, 1);
+  border-color: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+}
+
+.method-card--selected {
+  background: linear-gradient(135deg, rgba(236, 253, 245, 0.95) 0%, rgba(220, 252, 231, 0.9) 100%);
+  border-color: #10b981;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.2);
+}
+
+.method-card--unavailable {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.method-card--unavailable:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.recommended-badge {
+  position: absolute;
+  top: -8px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #f59e0b;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.2);
+}
+
+.method-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.method-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.method-card-tags {
+  display: flex;
+  gap: 4px;
+}
+
+.tag {
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: 4px;
+}
+
+.tag--python {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+
+.tag--time-fast {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.tag--time-medium {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+}
+
+.tag--time-slow {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.method-card-description {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.4;
+  margin: 0 0 10px 0;
+}
+
+.method-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.accuracy-indicator {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.accuracy--high {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.accuracy--medium {
+  color: #f59e0b;
+  font-weight: 600;
+}
+
+.accuracy--low {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.selected-indicator {
+  color: #10b981;
+}
+
+/* ==================== 参数配置区 ==================== */
+.params-config-section {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  border-radius: 12px;
+  border: 1px solid rgba(229, 231, 235, 0.4);
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.column-selection {
+  background: rgba(249, 250, 251, 0.8);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.selection-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.selection-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin: 0;
+}
+
+.selection-mode {
+  display: flex;
+  gap: 12px;
+}
+
+.radio-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.radio-item input {
+  accent-color: #10b981;
+}
+
+.column-list {
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.column-item {
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(229, 231, 235, 0.6);
+  border-radius: 6px;
+}
+
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.checkbox-item input {
+  accent-color: #10b981;
+}
+
+.column-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.column-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.column-missing {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.column-rate {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.no-columns {
+  padding: 20px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.method-params {
+  background: rgba(249, 250, 251, 0.8);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.params-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 12px 0;
+}
+
+.params-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.param-row {
+  display: flex;
+  gap: 10px;
+}
+
+.param-item {
+  flex: 1;
+}
+
+.param-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+
+.param-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12px;
+  border: 1px solid rgba(209, 213, 219, 1);
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.param-input:focus {
+  outline: none;
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.no-params {
+  font-size: 12px;
+  color: #9ca3af;
+  margin: 0;
+}
+
+.action-buttons {
+  margin-top: auto;
+}
+
+.execute-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 20px;
+  font-size: 15px;
+  font-weight: 600;
+  color: white;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+}
+
+.execute-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.35);
+  transform: translateY(-1px);
+}
+
+.execute-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ==================== 进度区 ==================== */
+.progress-section {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  border-radius: 12px;
+  border: 1px solid rgba(229, 231, 235, 0.4);
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.progress-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  margin: 0;
+}
+
+.cancel-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #ef4444;
+  background: rgba(254, 242, 242, 0.8);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cancel-btn:hover {
+  background: rgba(254, 226, 226, 1);
+  border-color: #ef4444;
+}
+
+.progress-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stage-indicators {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.stage-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px;
+  background: rgba(249, 250, 251, 0.8);
+  border-radius: 8px;
+  opacity: 0.5;
+  transition: all 0.3s ease;
+}
+
+.stage-item--active {
+  opacity: 1;
+  background: linear-gradient(135deg, rgba(236, 253, 245, 0.9) 0%, rgba(220, 252, 231, 0.8) 100%);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
+}
+
+.stage-item--completed {
+  opacity: 1;
+  background: rgba(220, 252, 231, 0.6);
+}
+
+.stage-icon {
+  font-size: 20px;
+}
+
+.stage-name {
+  font-size: 11px;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.progress-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 10px;
+  background: rgba(229, 231, 235, 0.6);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  border-radius: 5px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #10b981;
+  min-width: 45px;
+  text-align: right;
+}
+
+.progress-info {
+  text-align: center;
+}
+
+.progress-message {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.execution-logs {
+  background: rgba(249, 250, 251, 0.8);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.logs-header {
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  background: rgba(243, 244, 246, 0.8);
+  border-bottom: 1px solid rgba(229, 231, 235, 0.6);
+}
+
+.logs-content {
+  max-height: 120px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.log-item {
+  display: flex;
+  gap: 10px;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-family: monospace;
+}
+
+.log-time {
+  color: #9ca3af;
+}
+
+.log-level {
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.log-level--info {
+  color: #3b82f6;
+}
+
+.log-level--warning {
+  color: #f59e0b;
+}
+
+.log-level--error {
+  color: #ef4444;
+}
+
+.log-message {
+  color: #374151;
+}
+
+/* ==================== 结果视图 ==================== */
+.result-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.result-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #064e3b;
+  margin: 0;
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #6b7280;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(229, 231, 235, 0.6);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.back-btn:hover {
+  background: rgba(255, 255, 255, 1);
+  border-color: #10b981;
+  color: #10b981;
+}
+
+.viz-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  border-radius: 10px;
+  border: 1px solid rgba(229, 231, 235, 0.4);
+}
+
+.viz-column-select {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-column-select label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.viz-select {
+  padding: 8px 12px;
+  font-size: 13px;
+  border: 1px solid rgba(209, 213, 219, 1);
+  border-radius: 6px;
+  background: white;
+  min-width: 200px;
+}
+
+.viz-select:focus {
+  outline: none;
+  border-color: #10b981;
+}
+
+.viz-mode-switch {
+  display: flex;
+  gap: 6px;
+}
+
+.viz-mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(229, 231, 235, 0.6);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.viz-mode-btn:hover {
+  background: rgba(255, 255, 255, 1);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.viz-mode-btn--active {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border-color: transparent;
+}
+
+.chart-container {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 10px;
+  border: 1px solid rgba(229, 231, 235, 0.4);
+  padding: 16px;
+  min-height: 350px;
+}
+
+.chart-area {
+  width: 100%;
+  height: 320px;
+}
+
+.table-container {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 10px;
+  border: 1px solid rgba(229, 231, 235, 0.4);
+  overflow: hidden;
+}
+
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.comparison-table th,
+.comparison-table td {
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid rgba(229, 231, 235, 0.6);
+}
+
+.comparison-table th {
+  background: rgba(249, 250, 251, 0.9);
+  font-weight: 600;
+  color: #374151;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.cell-index {
+  color: #9ca3af;
+  font-weight: 500;
+  text-align: center;
+  width: 60px;
+}
+
+.cell-time {
+  font-family: monospace;
+  color: #6b7280;
+}
+
+.value-missing {
+  color: #ef4444;
+  font-style: italic;
+}
+
+.value-normal {
+  color: #22c55e;
+  font-weight: 500;
+  font-family: monospace;
+}
+
+.value-imputed {
+  color: #3b82f6;
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.confidence-bar {
+  width: 60px;
+  height: 6px;
+  background: rgba(229, 231, 235, 0.6);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.confidence-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  border-radius: 3px;
+}
+
+.status-tag {
+  display: inline-block;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 10px;
+}
+
+.status-tag--imputed {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+
+.status-tag--original {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+}
+
+.chart-legend {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 8px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.legend-color--original {
+  background: #22c55e;
+}
+
+.legend-color--imputed {
+  background: #3b82f6;
+}
+
+.legend-color--missing {
+  background: #ef4444;
+}
+
+.legend-text {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* ==================== 缺失率样式 ==================== */
+.missing-rate--none {
+  background: rgba(209, 250, 229, 1);
+  color: #047857;
+}
+
+.missing-rate--low {
+  background: rgba(254, 243, 199, 1);
+  color: #92400e;
+}
+
+.missing-rate--medium {
+  background: rgba(254, 215, 170, 1);
+  color: #9a3412;
+}
+
+.missing-rate--high {
+  background: rgba(254, 202, 202, 1);
+  color: #991b1b;
+}
+
+/* ==================== 滚动条样式 ==================== */
+.history-list::-webkit-scrollbar,
+.column-list::-webkit-scrollbar,
+.logs-content::-webkit-scrollbar {
   width: 4px;
 }
 
-.methods-list::-webkit-scrollbar-track,
-.options-list::-webkit-scrollbar-track,
-.table-wrapper::-webkit-scrollbar-track {
-  background: rgba(120, 113, 108, 0.1);
+.history-list::-webkit-scrollbar-track,
+.column-list::-webkit-scrollbar-track,
+.logs-content::-webkit-scrollbar-track {
+  background: rgba(229, 231, 235, 0.3);
   border-radius: 2px;
 }
 
-.methods-list::-webkit-scrollbar-thumb,
-.options-list::-webkit-scrollbar-thumb,
-.table-wrapper::-webkit-scrollbar-thumb {
-  background: rgba(34, 197, 94, 0.3);
+.history-list::-webkit-scrollbar-thumb,
+.column-list::-webkit-scrollbar-thumb,
+.logs-content::-webkit-scrollbar-thumb {
+  background: rgba(16, 185, 129, 0.3);
   border-radius: 2px;
-  transition: background 0.2s ease;
 }
 
-.methods-list::-webkit-scrollbar-thumb:hover,
-.options-list::-webkit-scrollbar-thumb:hover,
-.table-wrapper::-webkit-scrollbar-thumb:hover {
-  background: rgba(34, 197, 94, 0.5);
+.history-list::-webkit-scrollbar-thumb:hover,
+.column-list::-webkit-scrollbar-thumb:hover,
+.logs-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.5);
 }
 
-/* 动画 */
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-5px);
-  }
-}
-
-/* 响应式设计 */
+/* ==================== 响应式设计 ==================== */
 @media (max-width: 1200px) {
-  .left-panel {
-    width: 320px;
+  .config-layout {
+    grid-template-columns: 1fr;
+  }
+  
+  .panel-sidebar {
+    width: 220px;
   }
 }
 
 @media (max-width: 768px) {
-  .main-workspace {
+  .panel-layout {
     flex-direction: column;
-    gap: 16px;
   }
-
-  .left-panel {
+  
+  .panel-sidebar {
     width: 100%;
+    max-height: 200px;
   }
-
-  .quick-filters {
-    justify-content: flex-start;
+  
+  .methods-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   }
-
-  .quick-filter-btn {
-    font-size: 10px;
-    padding: 4px 8px;
+  
+  .category-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
   }
-
-  .filter-row {
+  
+  .viz-controls {
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
     align-items: stretch;
   }
-
-  .filter-group {
-    flex: none;
-  }
-
-  .visualization-content {
-    gap: 12px;
-  }
-
-  .chart-container {
-    min-height: 150px;
-  }
-
-  .indicators-table th,
-  .indicators-table td {
-    padding: 6px 8px;
-    font-size: 10px;
-  }
-
-  .pagination {
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-
-  .pagination-numbers {
-    order: -1;
-    width: 100%;
+  
+  .viz-mode-switch {
     justify-content: center;
-  }
-}
-
-@media (max-width: 480px) {
-  .results-summary {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-  }
-
-  .quick-filter-btn {
-    font-size: 9px;
-    padding: 3px 6px;
-  }
-
-  .search-input {
-    font-size: 11px;
-  }
-
-  .indicators-table {
-    font-size: 10px;
-  }
-
-  .col-name {
-    width: 50%;
-  }
-
-  .col-missing,
-  .col-rate {
-    width: 20%;
-  }
-
-  .col-action {
-    width: 10%;
-  }
-
-  .indicator-type {
-    display: none;
-  }
-
-  .pagination-btn,
-  .pagination-number {
-    padding: 4px 8px;
-    font-size: 10px;
   }
 }
 </style>

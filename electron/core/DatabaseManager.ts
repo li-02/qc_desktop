@@ -44,6 +44,7 @@ export class DatabaseManager {
     this.initSystemSettingsTables();
     this.initOutlierDetectionTables();
     this.initCorrelationAnalysisTables();
+    this.initImputationTables();
     this.migrateSchema();
   }
 
@@ -76,6 +77,7 @@ export class DatabaseManager {
         site_id INTEGER NOT NULL,              -- 所属站点ID
         dataset_name TEXT NOT NULL,            -- 数据集名称 (通常为文件名)
         source_file_path TEXT,                 -- 原始文件路径
+        missing_value_types TEXT,              -- 缺失值表示 (JSON数组字符串)
         time_column TEXT,                      -- 时间列名称 (解析时自动识别)
         import_time DATETIME DEFAULT CURRENT_TIMESTAMP,  -- 导入时间
         description TEXT,                      -- 数据集描述
@@ -181,6 +183,7 @@ export class DatabaseManager {
         id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 结果唯一标识
         dataset_id INTEGER,                    -- 数据集ID
         version_id INTEGER NOT NULL,           -- 数据版本ID
+        generated_version_id INTEGER,          -- 生成的新版本ID (仅状态为APPLIED时有效)
         detection_config_id INTEGER,           -- 检测配置ID (可为NULL表示临时检测)
         column_name TEXT,                      -- 检测的列名
         detection_method TEXT NOT NULL,        -- 使用的检测方法
@@ -314,6 +317,204 @@ export class DatabaseManager {
   }
 
   /**
+   * 初始化缺失值插补相关表结构
+   */
+  private initImputationTables(): void {
+    if (!this.db) return;
+
+    // 插补方法配置表 (conf_imputation_method)
+    // 存储可用的插补方法及其默认参数
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS conf_imputation_method (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 方法唯一标识
+        method_id TEXT NOT NULL UNIQUE,        -- 方法标识符 (如 MEAN/LINEAR/ARIMA)
+        method_name TEXT NOT NULL,             -- 方法显示名称
+        category TEXT NOT NULL CHECK(category IN ('basic', 'statistical', 'timeseries', 'ml', 'dl')),  -- 方法分类
+        description TEXT,                      -- 方法描述
+        default_params TEXT,                   -- 默认参数 (JSON格式)
+        requires_python BOOLEAN DEFAULT 0,     -- 是否需要Python环境
+        is_available BOOLEAN DEFAULT 1,        -- 是否可用
+        estimated_time TEXT CHECK(estimated_time IN ('fast', 'medium', 'slow')),  -- 预估耗时
+        accuracy TEXT CHECK(accuracy IN ('low', 'medium', 'high')),  -- 准确度等级
+        priority INTEGER DEFAULT 0,            -- 显示优先级
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        is_del BOOLEAN DEFAULT 0
+      );
+    `);
+
+    // 插补结果表 (biz_imputation_result)
+    // 存储每次插补操作的结果信息
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS biz_imputation_result (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 结果唯一标识
+        dataset_id INTEGER NOT NULL,           -- 数据集ID
+        version_id INTEGER NOT NULL,           -- 原始数据版本ID
+        new_version_id INTEGER,                -- 插补后生成的新版本ID
+        method_id TEXT NOT NULL,               -- 使用的插补方法
+        target_columns TEXT NOT NULL,          -- 目标列 (JSON数组)
+        method_params TEXT,                    -- 实际使用的方法参数 (JSON)
+        total_missing INTEGER DEFAULT 0,       -- 缺失值总数
+        imputed_count INTEGER DEFAULT 0,       -- 成功插补数量
+        imputation_rate REAL DEFAULT 0,        -- 插补率 (0~1)
+        execution_time_ms INTEGER,             -- 执行耗时(毫秒)
+        status TEXT DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'APPLIED', 'REVERTED')),
+        error_message TEXT,                    -- 错误信息
+        executed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        deleted_at DATETIME,
+        is_del BOOLEAN DEFAULT 0
+      );
+    `);
+
+    // 插补详情表 (biz_imputation_detail)
+    // 存储每个被插补的数据点详情
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS biz_imputation_detail (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 详情唯一标识
+        result_id INTEGER NOT NULL,            -- 所属插补结果ID
+        column_name TEXT NOT NULL,             -- 列名
+        row_index INTEGER NOT NULL,            -- 行索引 (从0开始)
+        time_point DATETIME,                   -- 时间点
+        original_value REAL,                   -- 原始值 (通常为NULL表示缺失)
+        imputed_value REAL NOT NULL,           -- 插补值
+        confidence REAL,                       -- 置信度 (0~1)
+        imputation_method TEXT,                -- 具体使用的插补方式
+        neighbor_values TEXT,                  -- 参考的相邻值 (JSON数组)
+        is_applied BOOLEAN DEFAULT 0,          -- 是否已应用到数据
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        is_del BOOLEAN DEFAULT 0
+      );
+    `);
+
+    // 插补列统计表 (biz_imputation_column_stat)
+    // 存储每列的插补统计信息
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS biz_imputation_column_stat (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 统计唯一标识
+        result_id INTEGER NOT NULL,            -- 所属插补结果ID
+        column_name TEXT NOT NULL,             -- 列名
+        missing_count INTEGER DEFAULT 0,       -- 缺失值数量
+        imputed_count INTEGER DEFAULT 0,       -- 插补数量
+        imputation_rate REAL DEFAULT 0,        -- 插补率
+        mean_before REAL,                      -- 插补前均值
+        mean_after REAL,                       -- 插补后均值
+        std_before REAL,                       -- 插补前标准差
+        std_after REAL,                        -- 插补后标准差
+        min_imputed REAL,                      -- 插补值最小值
+        max_imputed REAL,                      -- 插补值最大值
+        avg_confidence REAL,                   -- 平均置信度
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        is_del BOOLEAN DEFAULT 0
+      );
+    `);
+
+    // 插补模型表 (biz_imputation_model)
+    // 存储训练好的模型信息 (用于ML/DL方法)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS biz_imputation_model (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 模型唯一标识
+        dataset_id INTEGER NOT NULL,           -- 数据集ID
+        method_id TEXT NOT NULL,               -- 插补方法
+        model_name TEXT,                       -- 模型名称
+        model_path TEXT,                       -- 模型文件路径
+        model_params TEXT,                     -- 模型参数 (JSON)
+        training_columns TEXT,                 -- 训练使用的列 (JSON数组)
+        training_samples INTEGER,              -- 训练样本数
+        validation_score REAL,                 -- 验证分数
+        is_active BOOLEAN DEFAULT 1,           -- 是否激活
+        trained_at DATETIME,                   -- 训练时间
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        deleted_at DATETIME,
+        is_del BOOLEAN DEFAULT 0
+      );
+    `);
+
+    // 创建索引以提升查询性能
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_imputation_result_dataset 
+        ON biz_imputation_result(dataset_id, version_id);
+      
+      CREATE INDEX IF NOT EXISTS idx_imputation_result_status 
+        ON biz_imputation_result(status);
+      
+      CREATE INDEX IF NOT EXISTS idx_imputation_detail_result 
+        ON biz_imputation_detail(result_id, column_name);
+      
+      CREATE INDEX IF NOT EXISTS idx_imputation_detail_row 
+        ON biz_imputation_detail(result_id, row_index);
+        
+      CREATE INDEX IF NOT EXISTS idx_imputation_column_stat_result 
+        ON biz_imputation_column_stat(result_id);
+        
+      CREATE INDEX IF NOT EXISTS idx_imputation_model_dataset 
+        ON biz_imputation_model(dataset_id, method_id);
+    `);
+
+    // 插入默认的插补方法配置
+    this.insertDefaultImputationMethods();
+  }
+
+  /**
+   * 插入默认的插补方法配置
+   */
+  private insertDefaultImputationMethods(): void {
+    if (!this.db) return;
+
+    const defaultMethods = [
+      // 基础方法
+      { method_id: 'MEAN', method_name: '均值填充', category: 'basic', description: '使用列均值填充缺失值', requires_python: 0, estimated_time: 'fast', accuracy: 'low', priority: 100 },
+      { method_id: 'MEDIAN', method_name: '中位数填充', category: 'basic', description: '使用列中位数填充缺失值', requires_python: 0, estimated_time: 'fast', accuracy: 'low', priority: 99 },
+      { method_id: 'MODE', method_name: '众数填充', category: 'basic', description: '使用列众数填充缺失值', requires_python: 0, estimated_time: 'fast', accuracy: 'low', priority: 98 },
+      { method_id: 'FORWARD_FILL', method_name: '向前填充', category: 'basic', description: '使用前一个有效值填充', requires_python: 0, estimated_time: 'fast', accuracy: 'low', priority: 97 },
+      { method_id: 'BACKWARD_FILL', method_name: '向后填充', category: 'basic', description: '使用后一个有效值填充', requires_python: 0, estimated_time: 'fast', accuracy: 'low', priority: 96 },
+      // 统计方法
+      { method_id: 'LINEAR', method_name: '线性插值', category: 'statistical', description: '基于线性关系进行插值', requires_python: 0, estimated_time: 'fast', accuracy: 'medium', priority: 90 },
+      { method_id: 'SPLINE', method_name: '样条插值', category: 'statistical', description: '使用样条曲线进行插值', requires_python: 0, estimated_time: 'fast', accuracy: 'medium', priority: 89 },
+      { method_id: 'POLYNOMIAL', method_name: '多项式插值', category: 'statistical', description: '使用多项式曲线进行插值', requires_python: 0, estimated_time: 'fast', accuracy: 'medium', priority: 88 },
+      { method_id: 'SEASONAL', method_name: '季节性插值', category: 'statistical', description: '考虑季节性模式的插值', requires_python: 1, estimated_time: 'medium', accuracy: 'high', priority: 87 },
+      // 时序方法
+      { method_id: 'ARIMA', method_name: 'ARIMA模型', category: 'timeseries', description: '基于ARIMA时序模型的插补', requires_python: 1, estimated_time: 'medium', accuracy: 'high', priority: 80 },
+      { method_id: 'SARIMA', method_name: 'SARIMA模型', category: 'timeseries', description: '考虑季节性的ARIMA模型', requires_python: 1, estimated_time: 'medium', accuracy: 'high', priority: 79 },
+      { method_id: 'ETS', method_name: 'ETS模型', category: 'timeseries', description: '指数平滑状态空间模型', requires_python: 1, estimated_time: 'medium', accuracy: 'high', priority: 78 },
+      // 机器学习方法
+      { method_id: 'KNN', method_name: 'KNN插补', category: 'ml', description: '基于K近邻算法的插补', requires_python: 1, estimated_time: 'medium', accuracy: 'high', priority: 70 },
+      { method_id: 'RANDOM_FOREST', method_name: '随机森林', category: 'ml', description: '基于随机森林的插补', requires_python: 1, estimated_time: 'slow', accuracy: 'high', priority: 69 },
+      { method_id: 'MICE', method_name: 'MICE多重插补', category: 'ml', description: '链式方程多重插补', requires_python: 1, estimated_time: 'slow', accuracy: 'high', priority: 68 },
+      { method_id: 'MISSFOREST', method_name: 'MissForest', category: 'ml', description: '基于随机森林的迭代插补', requires_python: 1, estimated_time: 'slow', accuracy: 'high', priority: 67 },
+      // 深度学习方法
+      { method_id: 'LSTM', method_name: 'LSTM网络', category: 'dl', description: '基于LSTM的时序插补', requires_python: 1, estimated_time: 'slow', accuracy: 'high', priority: 60 },
+      { method_id: 'GRU', method_name: 'GRU网络', category: 'dl', description: '基于GRU的时序插补', requires_python: 1, estimated_time: 'slow', accuracy: 'high', priority: 59 },
+      { method_id: 'TRANSFORMER', method_name: 'Transformer', category: 'dl', description: '基于Transformer的插补', requires_python: 1, estimated_time: 'slow', accuracy: 'high', priority: 58 },
+      { method_id: 'VAE', method_name: 'VAE变分自编码器', category: 'dl', description: '基于变分自编码器的插补', requires_python: 1, estimated_time: 'slow', accuracy: 'high', priority: 57 },
+      { method_id: 'GAIN', method_name: 'GAIN生成对抗网络', category: 'dl', description: '基于GAN的缺失值插补', requires_python: 1, estimated_time: 'slow', accuracy: 'high', priority: 56 },
+    ];
+
+    const insertStmt = this.db.prepare(`
+      INSERT OR IGNORE INTO conf_imputation_method 
+        (method_id, method_name, category, description, requires_python, estimated_time, accuracy, priority)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const method of defaultMethods) {
+      insertStmt.run(
+        method.method_id,
+        method.method_name,
+        method.category,
+        method.description,
+        method.requires_python,
+        method.estimated_time,
+        method.accuracy,
+        method.priority
+      );
+    }
+  }
+
+  /**
    * 数据库迁移 - 为现有表添加新字段
    */
   private migrateSchema(): void {
@@ -327,7 +528,8 @@ export class DatabaseManager {
     const datasetColumns = new Set(datasetInfo.map(c => c.name));
 
     const datasetNewColumns = [
-      { name: 'time_column', type: 'TEXT' }
+      { name: 'time_column', type: 'TEXT' },
+      { name: 'missing_value_types', type: 'TEXT' }
     ];
 
     for (const col of datasetNewColumns) {
@@ -427,6 +629,7 @@ export class DatabaseManager {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         dataset_id INTEGER,
         version_id INTEGER NOT NULL,
+        generated_version_id INTEGER,
         detection_config_id INTEGER,
         column_name TEXT,
         detection_method TEXT NOT NULL,
@@ -445,11 +648,11 @@ export class DatabaseManager {
 
       -- 3. 复制数据
       INSERT INTO biz_outlier_result 
-        (id, dataset_id, version_id, detection_config_id, column_name, detection_method, 
+        (id, dataset_id, version_id, generated_version_id, detection_config_id, column_name, detection_method, 
          outlier_indices, outlier_count, total_rows, outlier_rate, detection_params, 
          executed_at, status, created_at, updated_at, deleted_at, is_del)
       SELECT 
-        id, dataset_id, version_id, detection_config_id, column_name, detection_method,
+        id, dataset_id, version_id, NULL, detection_config_id, column_name, detection_method,
         outlier_indices, outlier_count, total_rows, outlier_rate, detection_params,
         executed_at, 
         CASE WHEN status IN ('PENDING', 'APPLIED', 'REVERTED') THEN status ELSE 'PENDING' END,

@@ -7,6 +7,7 @@ import { FileController } from "../controller/FileController";
 import { OutlierDetectionController } from "../controller/OutlierDetectionController";
 import { CorrelationAnalysisController } from "../controller/CorrelationAnalysisController";
 import { SettingsController } from "../controller/SettingsController";
+import { ImputationController } from "../controller/ImputationController";
 
 // 引入新的分层架构
 import { ProjectDBRepository } from "../repository/ProjectDBRepository";
@@ -42,6 +43,7 @@ export class ControllerRegistry {
   private outlierController!: OutlierDetectionController;
   private correlationController!: CorrelationAnalysisController;
   private settingsController!: SettingsController;
+  private imputationController!: ImputationController;
 
   constructor(projectsDir: string) {
     this.initializeDependencies(projectsDir);
@@ -100,6 +102,9 @@ export class ControllerRegistry {
       this.settingsController = new SettingsController(this.settingsService);
       console.log("✓ SettingsController 初始化完成");
 
+      this.imputationController = new ImputationController();
+      console.log("✓ ImputationController 初始化完成");
+
       console.log("所有依赖关系初始化完成");
     } catch (error: any) {
       console.error("依赖初始化失败:", error);
@@ -118,6 +123,7 @@ export class ControllerRegistry {
       this.registerOutlierDetectionRoutes();
       this.registerCorrelationRoutes();
       this.registerSettingsRoutes();
+      this.registerImputationRoutes();
 
       console.log("所有控制器路由已注册");
       console.log("已注册路由:", IPCManager.getRegisteredRoutes());
@@ -206,6 +212,11 @@ export class ControllerRegistry {
         path: "datasets/get-version-stats",
         handler: this.datasetController.getDatasetVersionStats.bind(this.datasetController),
         description: "获取版本统计信息",
+      },
+      {
+        path: "datasets/export",
+        handler: this.datasetController.exportDatasetVersion.bind(this.datasetController),
+        description: "导出数据集版本",
       },
       {
         path: "datasets/delete",
@@ -358,6 +369,17 @@ export class ControllerRegistry {
         handler: this.outlierController.deleteDetectionResult.bind(this.outlierController),
         description: "删除检测结果",
       },
+      // 结果应用与回退
+      {
+        path: "outlier/apply-filtering",
+        handler: this.outlierController.applyOutlierFiltering.bind(this.outlierController),
+        description: "应用异常值过滤",
+      },
+      {
+        path: "outlier/revert-filtering",
+        handler: this.outlierController.revertOutlierFiltering.bind(this.outlierController),
+        description: "撤销异常值过滤",
+      },
     ];
 
     routes.forEach(route => {
@@ -446,6 +468,22 @@ export class ControllerRegistry {
     });
 
     console.log(`系统设置路由注册完成，共 ${routes.length} 个路由`);
+  }
+
+  /**
+   * 注册缺失值插补相关路由
+   */
+  private registerImputationRoutes() {
+    const routes = this.imputationController.getRoutes();
+    let count = 0;
+
+    for (const [path, handler] of Object.entries(routes)) {
+      IPCManager.registerRoute(path, handler);
+      console.log(`✓ 注册路由: ${path}`);
+      count++;
+    }
+
+    console.log(`缺失值插补路由注册完成，共 ${count} 个路由`);
   }
 
   /**

@@ -11,8 +11,8 @@ export class DatasetDBRepository {
   createDataset(dataset: Omit<Dataset, 'id' | 'import_time' | 'created_at' | 'updated_at' | 'is_del' | 'deleted_at'>): ServiceResponse<number> {
     try {
       const stmt = this.db.prepare(`
-        INSERT INTO sys_dataset (site_id, dataset_name, source_file_path, time_column, description)
-        VALUES (@site_id, @dataset_name, @source_file_path, @time_column, @description)
+        INSERT INTO sys_dataset (site_id, dataset_name, source_file_path, missing_value_types, time_column, description)
+        VALUES (@site_id, @dataset_name, @source_file_path, @missing_value_types, @time_column, @description)
       `);
       const info = stmt.run(dataset);
       return { success: true, data: Number(info.lastInsertRowid) };
@@ -88,6 +88,19 @@ export class DatasetDBRepository {
       const stmt = this.db.prepare('SELECT * FROM biz_dataset_version WHERE dataset_id = ? ORDER BY created_at DESC');
       const versions = stmt.all(datasetId) as DatasetVersion[];
       return { success: true, data: versions };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  getDatasetVersionById(id: number): ServiceResponse<DatasetVersion> {
+    try {
+      const stmt = this.db.prepare('SELECT * FROM biz_dataset_version WHERE id = ?');
+      const version = stmt.get(id) as DatasetVersion;
+      if (!version) {
+        return { success: false, error: 'Version not found' };
+      }
+      return { success: true, data: version };
     } catch (error: any) {
       return { success: false, error: error.message };
     }

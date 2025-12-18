@@ -56,25 +56,7 @@ export const useDatasetStore = defineStore("dataset", () => {
     }
   };
 
-  const setCurrentDataset = async (datasetId: string) => {
-    if (projectStore.currentProject && datasetId) {
-      currentDataset.value = await getCurrentDatasetInfo(projectStore.currentProject.id, datasetId);
-      if (currentDataset.value) {
-        await loadVersions(datasetId);
-        if (versions.value.length > 0) {
-          // Default to latest version
-          await setCurrentVersion(versions.value[0].id);
-        }
-      }
-    } else {
-      currentDataset.value = null;
-      versions.value = [];
-      currentVersion.value = null;
-      currentVersionStats.value = null;
-    }
-  };
-
-  const loadVersions = async (datasetId: string) => {
+  const loadDatasetVersions = async (datasetId: string) => {
     try {
       const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.GET_VERSIONS, { datasetId });
       if (result.success) {
@@ -85,6 +67,24 @@ export const useDatasetStore = defineStore("dataset", () => {
       }
     } catch (error) {
       console.error("Failed to load versions:", error);
+    }
+  };
+
+  const setCurrentDataset = async (datasetId: string) => {
+    if (projectStore.currentProject && datasetId) {
+      currentDataset.value = await getCurrentDatasetInfo(projectStore.currentProject.id, datasetId);
+      if (currentDataset.value) {
+        await loadDatasetVersions(datasetId);
+        if (versions.value.length > 0) {
+          // Default to latest version
+          await setCurrentVersion(versions.value[0].id);
+        }
+      }
+    } else {
+      currentDataset.value = null;
+      versions.value = [];
+      currentVersion.value = null;
+      currentVersionStats.value = null;
     }
   };
 
@@ -190,6 +190,32 @@ export const useDatasetStore = defineStore("dataset", () => {
     }
   };
 
+  const exportVersion = async (versionId: number, fileName?: string) => {
+    try {
+      loading.value = true;
+      const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.EXPORT, {
+        versionId: String(versionId),
+        defaultName: fileName
+      });
+      
+      if (result.success) {
+        ElMessage.success("导出成功");
+        return true;
+      } else if (result.canceled) {
+        // User cancelled, do nothing
+        return false;
+      } else {
+        throw new Error(result.error || "导出失败");
+      }
+    } catch (error: any) {
+      console.error("Export error:", error);
+      ElMessage.error(error.message || "导出失败");
+      return false;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   // 监听当前项目变化，自动加载数据集
   watch(
     () => projectStore.currentProject,
@@ -225,7 +251,9 @@ export const useDatasetStore = defineStore("dataset", () => {
     loadDatasets,
     setCurrentDataset,
     setCurrentVersion,
+    loadVersions: loadDatasetVersions,
     importData,
     deleteDataset,
+    exportVersion,
   };
 });

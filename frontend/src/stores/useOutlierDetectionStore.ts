@@ -499,6 +499,56 @@ export const useOutlierDetectionStore = defineStore("outlierDetection", () => {
   };
 
   /**
+   * 应用异常值过滤
+   */
+  const applyOutlierFiltering = async (resultId: string) => {
+    try {
+      saving.value = true;
+      const result = await window.electronAPI.invoke(
+        API_ROUTES.OUTLIER.APPLY_FILTERING,
+        { resultId }
+      );
+      if (result.success) {
+        ElMessage.success("已生成过滤后的新版本数据");
+        return result.data;
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error: any) {
+      console.error("应用过滤失败:", error);
+      ElMessage.error(error.message || "应用过滤失败");
+      return null;
+    } finally {
+      saving.value = false;
+    }
+  };
+
+  /**
+   * 撤销异常值过滤
+   */
+  const revertOutlierFiltering = async (resultId: string) => {
+    try {
+      saving.value = true;
+      const result = await window.electronAPI.invoke(
+        API_ROUTES.OUTLIER.REVERT_FILTERING,
+        { resultId }
+      );
+      if (result.success) {
+        ElMessage.success("已撤销过滤操作");
+        return true;
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error: any) {
+      console.error("撤销过滤失败:", error);
+      ElMessage.error(error.message || "撤销过滤失败");
+      return false;
+    } finally {
+      saving.value = false;
+    }
+  };
+
+  /**
    * 重置状态
    */
   const reset = () => {
@@ -540,6 +590,8 @@ export const useOutlierDetectionStore = defineStore("outlierDetection", () => {
     getDetectionResultDetails,
     getOutlierResultStats,
     deleteDetectionResult,
+    applyOutlierFiltering,
+    revertOutlierFiltering,
 
     reset
   };

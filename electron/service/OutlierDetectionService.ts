@@ -610,7 +610,9 @@ export class OutlierDetectionService {
         columns: targetColumns.map(c => c.column_name),
         columnResults: columnResults.map(r => ({
           columnName: r.columnName,
-          outlierCount: r.outlierCount
+          outlierCount: r.outlierCount,
+          minThreshold: r.minThreshold,
+          maxThreshold: r.maxThreshold
         }))
       };
 
@@ -707,6 +709,205 @@ export class OutlierDetectionService {
       return { success: true };
     } catch (error: any) {
       return { success: false, error: `删除检测结果失败: ${error.message}` };
+    }
+  }
+
+  /**
+   * 应用异常值过滤
+   * 生成新的数据版本，将异常值置空
+   */
+  applyOutlierFiltering(resultId: number): ServiceResponse<{ versionId: number }> {
+    try {
+      // 1. 获取检测结果
+      const result = this.outlierRepo.getOutlierResultById(resultId);
+      if (!result) {
+        return { success: false, error: '检测结果不存在' };
+      }
+
+      if (result.status !== 'COMPLETED') {
+        return { success: false, error: '只能对已完成的检测结果应用过滤' };
+      }
+
+      // 2. 获取原始数据版本信息
+      const versionResult = this.datasetRepo.getDatasetVersionById(result.version_id);
+      if (!versionResult.success || !versionResult.data) {
+        return { success: false, error: '原始数据版本不存在' };
+      }
+      const sourceVersion = versionResult.data;
+
+      // 2.1 获取数据集缺失值表示配置
+      const datasetResult = this.datasetRepo.getDatasetById(result.dataset_id);
+      const missingValueTypes: string[] = (() => {
+        if (!datasetResult.success || !datasetResult.data) return [];
+        try {
+          const raw = (datasetResult.data as any).missing_value_types;
+          return raw ? JSON.parse(raw) : [];
+        } catch {
+          return [];
+        }
+      })();
+
+      const isMissingValue = (value: string) => {
+        if (!missingValueTypes || missingValueTypes.length === 0) return false;
+
+        const trimmed = (value ?? '').trim();
+
+        // 兼容导入时可能用 "" 代表空值
+        if (trimmed === '') {
+          return missingValueTypes.includes('') || missingValueTypes.includes('null');
+        }
+
+        return missingValueTypes.some(t => {
+          const tt = (t ?? '').trim();
+          if (tt === '') return false;
+          return trimmed.toLowerCase() === tt.toLowerCase();
+        });
+      };
+
+      // 3. 读取原始文件
+      const fs = require('fs');
+      const path = require('path');
+      
+      if (!fs.existsSync(sourceVersion.file_path)) {
+        return { success: false, error: '原始数据文件不存在' };
+      }
+
+      const csvContent = fs.readFileSync(sourceVersion.file_path, 'utf-8');
+      const lines = csvContent.split('\n'); // 注意：这里简单分割，未处理换行符在引号内的情况
+      
+      if (lines.length < 2) {
+        return { success: false, error: '数据文件为空或格式错误' };
+      }
+
+      const headers = lines[0].split(',').map((h: string) => h.trim().replace(/"/g, ''));
+      
+      // 4. 获取所有异常值详情
+      const outliers = this.outlierRepo.getAllOutlierDetails(resultId);
+      
+      // 5. 构建异常值映射: rowIndex -> columnName -> true
+      const outlierMap = new Map<number, Set<string>>();
+      for (const outlier of outliers) {
+        if (outlier.column_name) {
+          if (!outlierMap.has(outlier.row_index)) {
+            outlierMap.set(outlier.row_index, new Set());
+          }
+          outlierMap.get(outlier.row_index)!.add(outlier.column_name);
+        }
+      }
+
+      // 6. 处理每一行数据
+      const newLines = [lines[0]]; // 保留表头
+      let processedCount = 0;
+
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line.trim()) continue; // 跳过空行
+
+        // 统一处理（即使该行无异常，也要清理缺失值表示）
+        const values = line.split(','); // 同样假设简单CSV
+        const rowOutliers = outlierMap.get(i);
+
+        const newValues = values.map((val: string, index: number) => {
+          // 先清理缺失值表示
+          if (isMissingValue(val)) {
+            return '';
+          }
+
+          // 再清理异常值
+          if (rowOutliers && index < headers.length) {
+            const colName = headers[index];
+            if (rowOutliers.has(colName)) {
+              return ''; // 置空异常值
+            }
+          }
+
+          return val;
+        });
+
+        newLines.push(newValues.join(','));
+        if (rowOutliers) processedCount++;
+      }
+
+      // 7. 保存新文件
+      const parsedPath = path.parse(sourceVersion.file_path);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const newFileName = `${parsedPath.name}_filtered_${timestamp}${parsedPath.ext}`;
+      const newFilePath = path.join(parsedPath.dir, newFileName);
+
+      fs.writeFileSync(newFilePath, newLines.join('\n'));
+
+      // 8. 创建新版本记录
+      const newVersionIdResult = this.datasetRepo.createDatasetVersion({
+        dataset_id: result.dataset_id,
+        parent_version_id: result.version_id,
+        stage_type: 'FILTERED',
+        file_path: newFilePath,
+        remark: `Applied outlier filtering (Result #${resultId})`
+      });
+
+      if (!newVersionIdResult.success) {
+        return { success: false, error: newVersionIdResult.error };
+      }
+      const newVersionId = newVersionIdResult.data!;
+
+      // 9. 创建基本的统计信息 (可选，这里简单做一下，或者调用 DatasetService 的分析)
+      // 为保持一致性，最好能调用 fileParser worker，但这里我们无法直接访问 worker
+      // 暂时只记录行数
+      this.datasetRepo.createStatVersionDetail({
+        version_id: newVersionId,
+        total_rows: newLines.length - 1,
+        total_cols: headers.length,
+        total_missing_count: 0, // 需要重新计算，暂时置0
+        total_outlier_count: 0,
+        column_stats_json: '{}'
+      });
+
+      // 10. 更新检测结果状态
+      this.outlierRepo.updateDetectionResult(resultId, {
+        status: 'APPLIED',
+        generated_version_id: newVersionId
+      });
+
+      return { success: true, data: { versionId: newVersionId } };
+
+    } catch (error: any) {
+      return { success: false, error: `应用过滤失败: ${error.message}` };
+    }
+  }
+
+  /**
+   * 撤销异常值过滤
+   * 恢复检测结果状态，保留生成的版本文件作为历史
+   */
+  revertOutlierFiltering(resultId: number): ServiceResponse<void> {
+    try {
+      const result = this.outlierRepo.getOutlierResultById(resultId);
+      if (!result) {
+        return { success: false, error: '检测结果不存在' };
+      }
+
+      if (result.status !== 'APPLIED') {
+        return { success: false, error: '该结果未应用过滤或状态不正确' };
+      }
+
+      // 更新状态回 COMPLETED
+      // 注意：这里我们不删除生成的版本，因为需求说"已生成的版本文件将保留"
+      const success = this.outlierRepo.updateDetectionResult(resultId, {
+        status: 'COMPLETED'
+        // generated_version_id 不清空，留作记录？或者清空断开关联？
+        // 根据 "撤销过滤...状态" 通常意味着 UI 上可以再次点击 "过滤"
+        // 如果保留 generated_version_id，可能需要 UI 适配。
+        // 为了简单起见，且允许重新生成，我们这里仅仅修改状态。
+        // 如果要完全"撤销"，可能需要把 generated_version_id 设为 null (需要 repository 支持 nullable update)
+      });
+
+      if (!success) {
+        return { success: false, error: '更新状态失败' };
+      }
+
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: `撤销过滤失败: ${error.message}` };
     }
   }
 

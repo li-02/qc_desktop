@@ -279,6 +279,7 @@ export class OutlierDetectionRepository {
     outlier_count?: number;
     outlier_rate?: number;
     detection_params?: string;
+    generated_version_id?: number;
   }): boolean {
     const fields: string[] = [];
     const values: (string | number | null)[] = [];
@@ -302,6 +303,10 @@ export class OutlierDetectionRepository {
     if (updates.detection_params !== undefined) {
       fields.push('detection_params = ?');
       values.push(updates.detection_params);
+    }
+    if (updates.generated_version_id !== undefined) {
+      fields.push('generated_version_id = ?');
+      values.push(updates.generated_version_id);
     }
 
     if (fields.length === 0) return false;
@@ -490,6 +495,15 @@ export class OutlierDetectionRepository {
     params.push(limit, offset);
 
     return this.db.prepare(sql).all(...params) as OutlierDetail[];
+  }
+
+  /**
+   * 获取检测结果的所有详情 (不分页)
+   */
+  getAllOutlierDetails(resultId: number): OutlierDetail[] {
+    return this.db
+      .prepare('SELECT * FROM biz_outlier_detail WHERE result_id = ? AND is_del = 0 ORDER BY row_index ASC')
+      .all(resultId) as OutlierDetail[];
   }
 
   /**

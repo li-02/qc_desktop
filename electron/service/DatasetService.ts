@@ -66,6 +66,7 @@ export class DatasetService {
         site_id: projectId,
         dataset_name: request.datasetName,
         source_file_path: savedFilePath,
+        missing_value_types: JSON.stringify(request.missingValueTypes || []),
         time_column: timeColumn || undefined,
         description: ""
       });
@@ -223,7 +224,13 @@ export class DatasetService {
         updatedAt: new Date(dataset.import_time).getTime(),
         belongTo: dataset.site_id.toString(),
         dirPath: path.dirname(dataset.source_file_path || ""),
-        missingValueTypes: [], // Store in db?
+        missingValueTypes: (() => {
+          try {
+            return dataset.missing_value_types ? JSON.parse(dataset.missing_value_types) : [];
+          } catch {
+            return [];
+          }
+        })(),
         timeColumn: dataset.time_column || undefined,
         originalFile: {
           name: path.basename(dataset.source_file_path || ""),
@@ -309,6 +316,34 @@ export class DatasetService {
     }
   }
 
+  async exportDatasetVersion(
+    versionId: string,
+    targetPath: string
+  ): Promise<ServiceResponse<void>> {
+    try {
+      const vId = parseInt(versionId);
+      if (isNaN(vId)) return { success: false, error: "无效的版本ID" };
+
+      // Get version info to find the file path
+      const versionResult = this.datasetRepository.getDatasetVersionById(vId);
+      if (!versionResult.success || !versionResult.data) {
+        return { success: false, error: "未找到版本信息" };
+      }
+      
+      const version = versionResult.data;
+      if (!version.file_path || !fs.existsSync(version.file_path)) {
+        return { success: false, error: "版本文件不存在" };
+      }
+
+      // Copy file to target path
+      fs.copyFileSync(version.file_path, targetPath);
+      
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: `导出失败: ${error.message}` };
+    }
+  }
+
   async deleteDataset(projectId: string, datasetId: string): Promise<ServiceResponse<void>> {
     try {
       const dId = parseInt(datasetId);
@@ -340,6 +375,10 @@ export class DatasetService {
 
       const updateData: any = {};
       if (updates.name) updateData.dataset_name = updates.name;
+
+      if (updates.missingValueTypes) {
+        updateData.missing_value_types = JSON.stringify(updates.missingValueTypes);
+      }
 
       const result = this.datasetRepository.updateDataset(dId, updateData);
       if (!result.success) return { success: false, error: result.error };
@@ -418,7 +457,13 @@ export class DatasetService {
       updatedAt: new Date(d.import_time).getTime(),
       belongTo: d.site_id.toString(),
       dirPath: path.dirname(d.source_file_path || ""),
-      missingValueTypes: [],
+      missingValueTypes: (() => {
+        try {
+          return d.missing_value_types ? JSON.parse(d.missing_value_types) : [];
+        } catch {
+          return [];
+        }
+      })(),
       timeColumn: d.time_column || undefined,
       originalFile: {
         name: path.basename(d.source_file_path || ""),

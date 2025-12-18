@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Loading, Refresh, Search, Setting, Check, Close, VideoPlay, Delete, Plus, ArrowLeft } from "@element-plus/icons-vue";
+import { Loading, Refresh, Search, Setting, Check, Close, VideoPlay, Delete, Plus, ArrowLeft, MagicStick, RefreshLeft, Download } from "@element-plus/icons-vue";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import type { DatasetInfo } from "@shared/types/projectInterface";
@@ -29,6 +29,7 @@ const activeView = ref<'config' | 'result'>('config');
 
 // 检测结果状态
 const detectionResults = ref<OutlierResult[]>([]);
+const currentResult = ref<OutlierResult | null>(null);
 const lastDetectionSummary = ref<{
   totalRows: number;
   columnsChecked: number;
@@ -50,6 +51,7 @@ const detailPage = ref(1);
 const detailPageSize = ref(100);
 
 const executing = ref(false);
+const applying = ref(false); // 应用过滤中
 const currentSelectedColumn = ref("");
 
 // 本地状态
@@ -115,6 +117,7 @@ const loadDetectionResults = async () => {
 const switchToConfig = () => {
   activeView.value = 'config';
   currentResultId.value = null;
+  currentResult.value = null;
   lastDetectionSummary.value = null;
 };
 
@@ -176,6 +179,7 @@ const loadResultDetails = async () => {
 
 const viewResult = async (result: OutlierResult) => {
   currentResultId.value = result.id;
+  currentResult.value = result;
   activeView.value = 'result';
   currentSelectedColumn.value = "";
   
@@ -248,7 +252,7 @@ const deleteResult = async (resultId: number, event?: Event) => {
     await ElMessageBox.confirm(
       '确定要删除这条检测结果吗？',
       '删除确认',
-      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning', customClass: 'qc-message-box' }
     );
     
     const success = await outlierStore.deleteDetectionResult(String(resultId));
@@ -261,6 +265,75 @@ const deleteResult = async (resultId: number, event?: Event) => {
   } catch {
     // 用户取消
   }
+};
+
+const applyFiltering = async () => {
+  if (!currentResultId.value) return;
+  
+  try {
+    await ElMessageBox.confirm(
+      '此操作将创建一个新版本的数据文件，并将检测到的所有异常值置为空（删除）。确定要继续吗？',
+      '过滤异常值',
+      { confirmButtonText: '确定过滤', cancelButtonText: '取消', type: 'warning', customClass: 'qc-message-box qc-message-box--outlier-filter' }
+    );
+    
+    applying.value = true;
+    const result = await outlierStore.applyOutlierFiltering(String(currentResultId.value));
+    
+    if (result) {
+      // 重新加载结果列表以更新状态
+      await loadDetectionResults();
+      // 更新当前结果的状态显示
+      if (currentResult.value) {
+        currentResult.value.status = 'APPLIED';
+        currentResult.value.generated_version_id = result.versionId;
+      }
+      
+      // 可以选择是否通知 DatasetStore 刷新版本列表
+      if (datasetInfo.value?.id) {
+        datasetStore.loadVersions(datasetInfo.value.id);
+      }
+    }
+  } catch (e) {
+    // Cancelled
+  } finally {
+    applying.value = false;
+  }
+};
+
+const revertFiltering = async () => {
+  if (!currentResultId.value) return;
+  
+  try {
+    await ElMessageBox.confirm(
+      '确定要撤销过滤操作吗？这将恢复检测结果的状态，但已生成的版本文件将保留（作为历史记录）。',
+      '撤销过滤',
+      { confirmButtonText: '确定撤销', cancelButtonText: '取消', type: 'info', customClass: 'qc-message-box' }
+    );
+    
+    applying.value = true;
+    const success = await outlierStore.revertOutlierFiltering(String(currentResultId.value));
+    
+    if (success) {
+      await loadDetectionResults();
+      if (currentResult.value) {
+        currentResult.value.status = 'COMPLETED';
+      }
+    }
+  } catch (e) {
+    // Cancelled
+  } finally {
+    applying.value = false;
+  }
+};
+
+const exportCleanedData = async () => {
+  if (!currentResult.value?.generated_version_id) return;
+  
+  const versionId = currentResult.value.generated_version_id;
+  const fileName = `cleaned_data_v${versionId}.csv`;
+  
+  await datasetStore.exportVersion(Number(versionId), fileName);
 };
 
 const formatDateTime = (dateStr: string) => {
@@ -279,6 +352,8 @@ const getStatusType = (status: string) => {
     case 'COMPLETED': return 'success';
     case 'RUNNING': return 'warning';
     case 'FAILED': return 'danger';
+    case 'APPLIED': return 'success'; // 已应用也用绿色，或者深绿色
+    case 'REVERTED': return 'info';
     default: return 'info';
   }
 };
@@ -289,7 +364,7 @@ const getStatusText = (status: string) => {
     case 'RUNNING': return '运行中';
     case 'FAILED': return '失败';
     case 'PENDING': return '待执行';
-    case 'APPLIED': return '已应用';
+    case 'APPLIED': return '已过滤';
     case 'REVERTED': return '已撤销';
     default: return status;
   }
@@ -340,7 +415,7 @@ const applyTemplate = async (templateName: string) => {
     await ElMessageBox.confirm(
       `确定要应用"${templateName === 'standard' ? '标准' : '严格'}"模板吗？这将覆盖匹配列的现有阈值配置。`,
       '应用模板',
-      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning', customClass: 'qc-message-box' }
     );
     
     await outlierStore.applyThresholdTemplate(datasetInfo.value.id, templateName);
@@ -359,7 +434,7 @@ const batchClearThresholds = async () => {
     await ElMessageBox.confirm(
       `确定要清除选中的 ${selectedColumns.value.length} 列的阈值配置吗？`,
       '清除阈值',
-      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning', customClass: 'qc-message-box' }
     );
     
     const updates = selectedColumns.value.map(id => ({
@@ -774,12 +849,48 @@ onMounted(() => {
                   <el-icon><ArrowLeft /></el-icon>
                 </el-button>
                 <h2>检测结果详情</h2>
+                <el-tag 
+                  v-if="currentResult" 
+                  :type="getStatusType(currentResult.status)" 
+                  effect="plain" 
+                  round>
+                  {{ getStatusText(currentResult.status) }}
+                </el-tag>
               </div>
               <div class="header-actions">
+                <!-- 过滤按钮 (仅在COMPLETED状态且有异常值时显示) -->
+                <el-button 
+                  v-if="currentResult?.status === 'COMPLETED' && (lastDetectionSummary?.outlierCount || 0) > 0"
+                  type="primary" 
+                  class="primary-gradient-btn"
+                  :loading="applying"
+                  @click="applyFiltering">
+                  <el-icon><MagicStick /></el-icon> 过滤异常值
+                </el-button>
+
+                <!-- 撤销按钮 (仅在APPLIED状态显示) -->
+                <el-button 
+                  v-if="currentResult?.status === 'APPLIED'"
+                  type="warning" 
+                  plain
+                  :loading="applying"
+                  @click="revertFiltering">
+                  <el-icon><RefreshLeft /></el-icon> 撤销过滤
+                </el-button>
+
+                <!-- 导出按钮 (仅在APPLIED状态且有生成版本ID时显示) -->
+                <el-button 
+                  v-if="currentResult?.status === 'APPLIED' && currentResult?.generated_version_id"
+                  type="success" 
+                  plain
+                  @click="exportCleanedData">
+                  <el-icon><Download /></el-icon> 导出数据
+                </el-button>
+
                 <el-button 
                   type="danger" 
                   plain 
-                  round
+                  text
                   @click="deleteResult(currentResultId!)">
                   <el-icon><Delete /></el-icon> 删除结果
                 </el-button>
@@ -891,8 +1002,8 @@ onMounted(() => {
   width: 100%;
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
   overflow: hidden;
-  padding: 16px;
-  gap: 16px;
+  padding: 8px;
+  gap: 8px;
   box-sizing: border-box;
 }
 
@@ -925,7 +1036,7 @@ onMounted(() => {
 }
 
 .sidebar-header {
-  padding: 20px;
+  padding: 16px;
   border-bottom: 1px solid rgba(229, 231, 235, 0.4);
 }
 
@@ -1058,12 +1169,45 @@ onMounted(() => {
 }
 
 .view-header {
-  padding: 20px 24px;
+  padding: 16px 24px;
   border-bottom: 1px solid rgba(229, 231, 235, 0.4);
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
+}
+
+.header-title {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.result-view .header-title {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.back-btn {
+  margin-right: 4px;
+  padding: 4px;
+  height: auto;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.back-btn:hover {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 4px;
+}
+
+.back-btn :deep(.el-icon) {
+  font-size: 20px;
 }
 
 .header-title h2 {
@@ -1395,12 +1539,12 @@ onMounted(() => {
 .summary-cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .summary-card {
-  padding: 20px;
+  padding: 12px 14px;
   transition: transform 0.3s;
 }
 .summary-card:hover {
@@ -1410,9 +1554,9 @@ onMounted(() => {
 .summary-card.highlight {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   border: none;
-  box-shadow: 0 10px 20px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 6px 14px rgba(16, 185, 129, 0.3);
   color: #fff;
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
 .summary-card.highlight .card-label,
@@ -1421,14 +1565,14 @@ onMounted(() => {
 }
 
 .card-label {
-  font-size: 13px;
+  font-size: 12px;
   color: #6b7280;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   font-weight: 500;
 }
 
 .card-value {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
   color: #111827;
   letter-spacing: -0.02em;
@@ -1600,43 +1744,43 @@ onMounted(() => {
 
 /* Column Statistics Row */
 .column-stats-row {
-  padding: 16px 20px;
-  margin-bottom: 20px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
 }
 
 .stats-row-header {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   display: flex;
   align-items: baseline;
   gap: 8px;
 }
 
 .stats-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: #374151;
 }
 
 .stats-subtitle {
-  font-size: 12px;
+  font-size: 11px;
   color: #9ca3af;
 }
 
 .column-stats-list {
   display: flex;
-  gap: 12px;
-  padding-bottom: 4px; /* Space for scrollbar if needed */
+  gap: 10px;
+  padding: 4px 4px 8px; /* 增加顶部和底部内边距，为 hover 动效留出空间 */
 }
 
 .stat-item {
-  flex: 0 0 140px;
+  flex: 0 0 110px;
   background: rgba(255, 255, 255, 0.6);
   border: 1px solid rgba(229, 231, 235, 0.6);
-  border-radius: 10px;
-  padding: 10px 12px;
+  border-radius: 8px;
+  padding: 8px 10px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
@@ -1660,13 +1804,13 @@ onMounted(() => {
 }
 
 .stat-item-header {
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   display: flex;
   align-items: center;
 }
 
 .col-name {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: #4b5563;
   white-space: nowrap;
@@ -1683,25 +1827,25 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
-  padding: 0 4px;
+  margin-bottom: 6px;
+  padding: 0 2px;
 }
 
 .stat-metric {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
 }
 
 .stat-divider {
   width: 1px;
-  height: 20px;
+  height: 16px;
   background: rgba(229, 231, 235, 0.8);
 }
 
 .count {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
   color: #1f2937;
   line-height: 1;
@@ -1712,13 +1856,13 @@ onMounted(() => {
 }
 
 .label {
-  font-size: 10px;
+  font-size: 9px;
   color: #9ca3af;
   transform: scale(0.9);
 }
 
 .stat-bar-bg {
-  height: 4px;
+  height: 3px;
   background: #f3f4f6;
   border-radius: 2px;
   overflow: hidden;

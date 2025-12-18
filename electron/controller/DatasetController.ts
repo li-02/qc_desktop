@@ -360,6 +360,52 @@ export class DatasetController extends BaseController {
     });
   }
 
+  /**
+   * 导出数据集版本
+   */
+  async exportDatasetVersion(
+    args: {
+      versionId: string;
+      defaultName?: string;
+    },
+    event: IpcMainInvokeEvent
+  ) {
+    return this.handleAsync(async () => {
+      const { dialog, BrowserWindow } = require("electron");
+      
+      if (!args.versionId || typeof args.versionId !== "string") {
+        throw new Error("版本ID不能为空");
+      }
+
+      // Show save dialog
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const result = await dialog.showSaveDialog(win, {
+        title: "导出数据集",
+        defaultPath: args.defaultName || "dataset_export.csv",
+        filters: [
+          { name: "CSV Files", extensions: ["csv"] },
+          { name: "All Files", extensions: ["*"] }
+        ]
+      });
+
+      if (result.canceled || !result.filePath) {
+        return { canceled: true };
+      }
+
+      // Execute export
+      const exportResult = await this.datasetService.exportDatasetVersion(
+        args.versionId.trim(),
+        result.filePath
+      );
+
+      if (!exportResult.success) {
+        throw new Error(exportResult.error || "导出数据集失败");
+      }
+
+      return { success: true, filePath: result.filePath };
+    });
+  }
+
   // #region 私有辅助方法
 
   /**

@@ -533,4 +533,57 @@ export class OutlierDetectionController extends BaseController {
       return { success: true };
     });
   }
+
+  /**
+   * 应用异常值过滤
+   */
+  async applyOutlierFiltering(
+    args: { resultId: string },
+    _event: IpcMainInvokeEvent
+  ) {
+    return this.handleAsync(async () => {
+      if (!args.resultId) {
+        throw new Error('结果ID不能为空');
+      }
+
+      const resultId = parseInt(args.resultId);
+      if (isNaN(resultId)) {
+        throw new Error('无效的结果ID');
+      }
+
+      const result = this.outlierService.applyOutlierFiltering(resultId);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      return result.data;
+    });
+  }
+
+  /**
+   * 撤销异常值过滤
+   */
+  async revertOutlierFiltering(
+    args: { resultId: string },
+    _event: IpcMainInvokeEvent
+  ) {
+    return this.handleAsync(async () => {
+      if (!args.resultId) {
+        throw new Error('结果ID不能为空');
+      }
+
+      const resultId = parseInt(args.resultId);
+      if (isNaN(resultId)) {
+        throw new Error('无效的结果ID');
+      }
+
+      const result = this.outlierService.revertOutlierFiltering(resultId);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      return { success: true };
+    });
+  }
+
 }

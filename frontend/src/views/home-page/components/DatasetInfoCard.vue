@@ -2,6 +2,7 @@
 import { ElMessage, ElMessageBox } from "element-plus";
 import { computed } from "vue";
 import { useRouter } from "vue-router";
+import { Refresh, Plus, Delete, Odometer, Cloudy, Flag, Histogram, Document } from "@element-plus/icons-vue";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import emitter from "@/utils/eventBus";
@@ -51,14 +52,14 @@ const handleDelete = async (dataset: any) => {
 };
 
 const getIconName = (type: string) => {
-  const iconMap: Record<string, string> = {
-    flux: "Odometer",
-    micrometeorology: "Cloudy",
-    aqi: "Flag",
-    sapflow: "Histogram",
-    emerald: "IconEmerald",
+  const iconMap: Record<string, any> = {
+    flux: Odometer,
+    micrometeorology: Cloudy,
+    aqi: Flag,
+    sapflow: Histogram,
+    emerald: Histogram,
   };
-  return iconMap[type] || "IconDefault";
+  return iconMap[type] || Document;
 };
 
 const getTypeTagClass = (type: string) => {
@@ -101,8 +102,12 @@ const formatRelativeTime = (timestamp: number): string => {
     <div class="section-header">
       <div class="section-title">数据集列表</div>
       <div class="section-actions">
-        <button class="action-btn" title="刷新" @click="handleRefresh">🔄</button>
-        <button class="action-btn" title="添加数据集" @click="handleImportData">➕</button>
+        <button class="action-btn" title="刷新" @click="handleRefresh">
+          <el-icon><Refresh /></el-icon>
+        </button>
+        <button class="action-btn" title="添加数据集" @click="handleImportData">
+          <el-icon><Plus /></el-icon>
+        </button>
       </div>
     </div>
 
@@ -134,7 +139,9 @@ const formatRelativeTime = (timestamp: number): string => {
               </div>
             </div>
 
-            <button class="dataset-delete-btn" title="删除数据集" @click.stop="handleDelete(dataset)">🗑️</button>
+            <button class="dataset-delete-btn" title="删除数据集" @click.stop="handleDelete(dataset)">
+              <el-icon><Delete /></el-icon>
+            </button>
           </div>
 
           <div class="dataset-meta">
@@ -202,18 +209,18 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .action-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: rgba(107, 114, 128, 0.1);
-  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(229, 231, 235, 0.5);
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
-  color: #6b7280;
-  font-size: 12px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #64748b;
+  font-size: 14px;
 }
 
 .action-btn:hover {
@@ -327,27 +334,29 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .dataset-icon-wrapper {
-  width: 32px;
-  height: 32px;
-  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
-  border: 1px solid rgba(229, 231, 235, 0.3);
-  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  background: rgba(16, 185, 129, 0.05);
+  border: 1px solid rgba(16, 185, 129, 0.1);
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   flex-shrink: 0;
 }
 
 .dataset-item:hover .dataset-icon-wrapper {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  border-color: rgba(16, 185, 129, 0.3);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  transform: scale(1.05);
 }
 
 .dataset-icon {
-  color: #6b7280;
-  transition: color 0.2s ease;
+  color: #10b981;
+  font-size: 20px;
+  transition: all 0.3s ease;
 }
 
 .dataset-item:hover .dataset-icon {
@@ -362,23 +371,24 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .dataset-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: #374151;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
+  letter-spacing: -0.01em;
 }
 
 .dataset-type-badge {
-  font-size: 10px;
-  padding: 3px 8px;
+  font-size: 11px;
+  padding: 2px 8px;
   border-radius: 6px;
-  font-weight: 500;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
   flex-shrink: 0;
+  transition: all 0.2s ease;
 }
 
 .tag-emerald {
@@ -412,24 +422,24 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .tag-default {
-  background: rgba(107, 114, 128, 0.1);
-  color: #374151;
-  border: 1px solid rgba(107, 114, 128, 0.2);
+  background: rgba(16, 185, 129, 0.1);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.2);
 }
 
 .dataset-delete-btn {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border: none;
-  background: rgba(239, 68, 68, 0.1);
-  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.08);
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #dc2626;
-  font-size: 10px;
+  color: #ef4444;
+  font-size: 14px;
   opacity: 0;
   flex-shrink: 0;
 }

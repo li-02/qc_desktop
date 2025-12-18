@@ -20,6 +20,7 @@ export interface Dataset extends BaseEntity {
   dataset_name: string;
   source_file_path?: string;
   time_column?: string;  // 时间列名称 (解析时自动识别)
+  missing_value_types?: string; // 缺失值表示 (JSON数组字符串)
   import_time: string;
   description?: string;
 }
@@ -140,7 +141,9 @@ export interface OutlierDetectionConfig extends BaseEntity {
  */
 export interface OutlierResult extends BaseEntity {
   id: number;
+  dataset_id: number;
   version_id: number;
+  generated_version_id?: number;
   detection_config_id?: number;
   column_name: string;
   detection_method: DetectionMethodId;

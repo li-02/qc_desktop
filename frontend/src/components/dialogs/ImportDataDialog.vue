@@ -3,7 +3,7 @@ import { computed, ref } from "vue";
 // 第三步 上传文件
 import type { UploadInstance } from "element-plus";
 import { ElMessage } from "element-plus";
-import { UploadFilled, TrendCharts, Odometer, Sunny, Pouring, Lightning, Document, Plus, Location } from "@element-plus/icons-vue";
+import { UploadFilled, TrendCharts, Odometer, Sunny, Pouring, Lightning, Document, Plus, Setting } from "@element-plus/icons-vue";
 // import type {ElectronWindow} from "@shared/types/window";
 import type { TableColumns } from "@pureadmin/table";
 import PureTable from "@pureadmin/table";
@@ -133,21 +133,6 @@ const optimizedColumns = computed(() => {
   });
 });
 
-const projectInfoDisplay = computed(() => {
-  if (!projectStore.currentProject) return null;
-  const { name, siteInfo } = projectStore.currentProject;
-  const lat = parseFloat(siteInfo.latitude);
-  const lon = parseFloat(siteInfo.longitude);
-  const alt = siteInfo.altitude;
-
-  const latStr = !isNaN(lat) ? `${Math.abs(lat).toFixed(1)}°${lat >= 0 ? "N" : "S"}` : "-";
-  const lonStr = !isNaN(lon) ? `${Math.abs(lon).toFixed(1)}°${lon >= 0 ? "E" : "W"}` : "-";
-
-  return {
-    name,
-    coords: `${lonStr} • ${latStr} • ${alt}m`,
-  };
-});
 
 /**
  * 点击增加缺失值类型
@@ -164,6 +149,7 @@ const onConfirm = () => {
       label: optionName.value,
       value: optionName.value,
     });
+    missingValueTypes.value.push(optionName.value);
     clearInputOption();
   }
 };
@@ -346,7 +332,7 @@ const close = () => {
   datasetName.value = "";
   selectedDataType.value = "flux";
   selectedFile.value = undefined;
-  missingValueTypes.value = [];
+  missingValueTypes.value = missingTypesList.value.map(t => t.value);
   fileList.value = [];
   columns.value = [];
   tableData.value = [];
@@ -450,16 +436,6 @@ defineExpose({
       <div v-if="currentStep === 2" class="fade-in">
         <div class="step-content flex-column">
           <div class="info-card overview-card">
-            <!-- 项目信息头部 -->
-            <div class="project-header" v-if="projectInfoDisplay">
-              <div class="project-icon">
-                <el-icon><TrendCharts /></el-icon>
-              </div>
-              <div class="project-details">
-                <div class="project-name">{{ projectInfoDisplay.name }}</div>
-                <div class="project-coords">{{ projectInfoDisplay.coords }}</div>
-              </div>
-            </div>
 
             <!-- 表格预览部分 -->
             <div class="preview-container">
@@ -493,6 +469,7 @@ defineExpose({
           <!-- 参数配置区域 -->
           <div class="info-card">
             <div class="section-header">
+              <el-icon class="header-icon"><Setting /></el-icon>
               <span class="header-title">配置参数</span>
             </div>
             <div class="config-body">
@@ -951,41 +928,6 @@ defineExpose({
   gap: 16px;
 }
 
-.project-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.project-icon {
-  width: 48px;
-  height: 48px;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 24px;
-  box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.3);
-}
-
-.project-details {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.project-name {
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: #1f2937;
-}
-
-.project-coords {
-  font-size: 0.875rem;
-  color: #6b7280;
-}
 
 /* Original Styles to Keep or Override */
 .preview-container {
@@ -1079,6 +1021,29 @@ defineExpose({
 
 .config-body {
   padding: 20px;
+}
+
+.section-header {
+  padding: 14px 20px;
+  background: linear-gradient(to right, #f0fdf4, #ffffff);
+  border-bottom: 1px solid rgba(16, 185, 129, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-icon {
+  color: #10b981;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+}
+
+.header-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #065f46;
+  letter-spacing: 0.5px;
 }
 
 /* Scrollbar Customization */

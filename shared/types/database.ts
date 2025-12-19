@@ -223,6 +223,7 @@ export interface OutlierColumnStat extends BaseEntity {
   result_id: number;
   column_name: string;
   outlier_count: number;
+  missing_count: number;
   min_threshold?: number;
   max_threshold?: number;
 }

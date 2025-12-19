@@ -144,6 +144,42 @@ export const useSettingsStore = defineStore('settings', () => {
     return option ? option.label : tz;
   };
 
+  /**
+   * 获取自定义缺失值类型
+   */
+  const getCustomMissingTypes = async (): Promise<string[]> => {
+    if (!window.electronAPI) return [];
+    try {
+      const result = await window.electronAPI.invoke(API_ROUTES.SETTINGS.GET, { key: 'custom_missing_value_types' });
+      if (result.success && result.data) {
+        return JSON.parse(result.data);
+      }
+      return [];
+    } catch (error) {
+      console.error('获取自定义缺失值类型失败:', error);
+      return [];
+    }
+  };
+
+  /**
+   * 添加自定义缺失值类型
+   */
+  const addCustomMissingType = async (newType: string): Promise<boolean> => {
+    if (!window.electronAPI) return false;
+    try {
+      const currentTypes = await getCustomMissingTypes();
+      if (!currentTypes.includes(newType)) {
+        const newTypes = [...currentTypes, newType];
+        await updateSetting('custom_missing_value_types', JSON.stringify(newTypes));
+        return true;
+      }
+      return true;
+    } catch (error) {
+      console.error('添加自定义缺失值类型失败:', error);
+      return false;
+    }
+  };
+
   return {
     // 状态
     timezone,
@@ -157,5 +193,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setTimezone,
     updateSetting,
     getTimezoneLabel,
+    getCustomMissingTypes,
+    addCustomMissingType,
   };
 });

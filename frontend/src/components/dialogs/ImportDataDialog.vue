@@ -9,6 +9,7 @@ import type { TableColumns } from "@pureadmin/table";
 import PureTable from "@pureadmin/table";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
 
 // 对话框状态
@@ -28,6 +29,7 @@ const stepForm = ref([
 ]);
 const projectStore = useProjectStore();
 const datasetStore = useDatasetStore();
+const settingsStore = useSettingsStore();
 // 第四步 确定缺失值类型
 const missingTypesList = ref([
   {
@@ -143,13 +145,25 @@ const onAddOption = () => {
 /**
  * 确认添加缺失值类型
  */
-const onConfirm = () => {
+const onConfirm = async () => {
   if (optionName.value) {
-    missingTypesList.value.push({
-      label: optionName.value,
-      value: optionName.value,
-    });
-    missingValueTypes.value.push(optionName.value);
+    // Check if it already exists
+    const exists = missingTypesList.value.some(item => item.value === optionName.value);
+    
+    if (!exists) {
+      missingTypesList.value.push({
+        label: optionName.value,
+        value: optionName.value,
+      });
+      // Save to settings
+      await settingsStore.addCustomMissingType(optionName.value);
+    }
+    
+    // Select it if not already selected
+    if (!missingValueTypes.value.includes(optionName.value)) {
+      missingValueTypes.value.push(optionName.value);
+    }
+    
     clearInputOption();
   }
 };
@@ -312,17 +326,37 @@ const handleExceed = () => {
   ElMessage.warning("只能上传一个文件");
 };
 
+// 打开对话框
+const open = async () => {
+  dialogVisible.value = true;
+  
+  // Load custom missing types
+  const customTypes = await settingsStore.getCustomMissingTypes();
+  if (customTypes && customTypes.length > 0) {
+    // Add only new ones
+    customTypes.forEach(type => {
+      // Add to list if not exists
+      if (!missingTypesList.value.some(item => item.value === type)) {
+        missingTypesList.value.push({
+          label: type,
+          value: type
+        });
+      }
+      
+      // Select it if not already selected (ensure it's default selected)
+      if (!missingValueTypes.value.includes(type)) {
+        missingValueTypes.value.push(type);
+      }
+    });
+  }
+};
+
 // 移除文件处理
 const handleRemove = () => {
   selectedFile.value = undefined;
   fileList.value = [];
   columns.value = [];
   tableData.value = [];
-};
-
-// 打开对话框
-const open = () => {
-  dialogVisible.value = true;
 };
 
 // 关闭对话框

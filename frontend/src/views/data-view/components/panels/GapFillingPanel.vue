@@ -11,9 +11,12 @@ import {
   List,
   Star,
   VideoPlay,
-  Close
+  Close,
+  InfoFilled
 } from "@element-plus/icons-vue";
 import type { DatasetInfo } from "@shared/types/projectInterface";
+import { useDatasetStore } from "@/stores/useDatasetStore";
+import { API_ROUTES } from "@shared/constants/apiRoutes";
 import * as echarts from 'echarts';
 
 // ==================== 类型定义 ====================
@@ -94,6 +97,11 @@ type ViewMode = 'config' | 'result';
 const currentView = ref<ViewMode>('config');
 
 // ==================== 侧边栏状态 ====================
+const datasetStore = useDatasetStore();
+const currentVersion = computed(() => datasetStore.currentVersion);
+const versions = computed(() => datasetStore.versions);
+const currentVersionStats = computed(() => datasetStore.currentVersionStats);
+
 const imputationResults = ref<ImputationResult[]>([]);
 const currentResultId = ref<number | null>(null);
 
@@ -166,12 +174,29 @@ const selectedMethod = computed(() => {
 
 const availableColumns = computed<ColumnInfo[]>(() => {
   if (!props.datasetInfo?.originalFile?.columns) return [];
+  
+  // 优先使用当前版本的统计信息
+  const stats = currentVersionStats.value;
+  let missingStatus: Record<string, number> = {};
+  
+  if (stats?.columnStats) {
+    if (stats.columnStats.columnMissingStatus) {
+       missingStatus = stats.columnStats.columnMissingStatus;
+    } else {
+       // 兼容旧格式
+       missingStatus = stats.columnStats;
+    }
+  } else {
+    // 回退到原始文件统计
+    missingStatus = props.datasetInfo.originalFile.dataQuality?.columnMissingStatus || {};
+  }
+
   return props.datasetInfo.originalFile.columns
     .filter(col => col !== "TIMESTAMP")
     .map(col => ({
       name: col,
-      missingCount: getMissingCount(col),
-      missingRate: getMissingRate(col),
+      missingCount: missingStatus[col] || 0,
+      missingRate: getMissingRate(col, missingStatus[col] || 0),
       type: getColumnType(col),
     }));
 });
@@ -183,6 +208,7 @@ const columnsWithMissing = computed(() => {
 const canExecute = computed(() => {
   if (!selectedMethodId.value) return false;
   if (!props.datasetInfo) return false;
+  if (!currentVersion.value) return false; // 必须有选中的版本
   if (columnSelectionMode.value === 'manual' && selectedColumns.value.length === 0) return false;
   return true;
 });
@@ -200,15 +226,25 @@ const stages = [
 ];
 
 // ==================== Methods ====================
-const getMissingCount = (columnName: string): number => {
-  if (!props.datasetInfo?.originalFile?.dataQuality?.columnMissingStatus) return 0;
-  return props.datasetInfo.originalFile.dataQuality.columnMissingStatus[columnName] || 0;
+// 获取缺失率 (传入缺失数以避免重复计算)
+const getMissingRate = (columnName: string, count?: number): number => {
+  const missingCount = count !== undefined ? count : getMissingCount(columnName);
+  
+  // 优先使用当前版本的总行数
+  const totalRows = currentVersionStats.value?.totalRows || props.datasetInfo?.originalFile?.rows || 1;
+  return (missingCount / totalRows) * 100;
 };
 
-const getMissingRate = (columnName: string): number => {
-  const missingCount = getMissingCount(columnName);
-  const totalRows = props.datasetInfo?.originalFile?.rows || 1;
-  return (missingCount / totalRows) * 100;
+// 获取缺失数 (仅用于非批量获取场景)
+const getMissingCount = (columnName: string): number => {
+  const stats = currentVersionStats.value;
+  if (stats?.columnStats) {
+     if (stats.columnStats.columnMissingStatus) {
+        return stats.columnStats.columnMissingStatus[columnName] || 0;
+     }
+     return stats.columnStats[columnName] || 0;
+  }
+  return props.datasetInfo?.originalFile?.dataQuality?.columnMissingStatus?.[columnName] || 0;
 };
 
 const getColumnType = (columnName: string): string => {
@@ -260,8 +296,26 @@ const getStatusText = (status: ImputationResultStatus): string => {
   return texts[status];
 };
 
-const formatDateTime = (dateStr: string): string => {
-  const date = new Date(dateStr);
+const getVersionLabel = (stage?: string) => {
+  switch (stage) {
+    case 'RAW': return '原始版本';
+    case 'FILTERED': return '经过过滤';
+    case 'QC': return '插补后';
+    default: return stage || '未知版本';
+  }
+};
+
+const getVersionTagType = (stage?: string) => {
+  switch (stage) {
+    case 'RAW': return 'info';
+    case 'FILTERED': return 'warning';
+    case 'QC': return 'success';
+    default: return 'info';
+  }
+};
+
+const formatDateTime = (dateInput: string | number): string => {
+  const date = new Date(dateInput);
   return date.toLocaleString('zh-CN', {
     month: '2-digit',
     day: '2-digit',
@@ -276,6 +330,21 @@ const isStageCompleted = (stageKey: string): boolean => {
   const currentIndex = stageOrder.indexOf(currentStage.value);
   const targetIndex = stageOrder.indexOf(stageKey);
   return targetIndex < currentIndex;
+};
+
+const handleVersionChange = async (versionId: number) => {
+  if (versionId === currentVersion.value?.id) return;
+  await datasetStore.setCurrentVersion(versionId);
+  ElMessage.success('已切换数据版本');
+};
+
+const formatVersionLabel = (version: any) => {
+  const stageMap: Record<string, string> = {
+    'RAW': '原始版本',
+    'FILTERED': '经过过滤',
+    'QC': '插补后'
+  };
+  return `${stageMap[version.stageType] || version.stageType} #${version.id}`;
 };
 
 // ==================== 视图切换 ====================
@@ -315,7 +384,7 @@ const initMethodParams = (method: ImputationMethod) => {
 
 // ==================== 执行插补 ====================
 const executeImputation = async () => {
-  if (!canExecute.value || !selectedMethodId.value) return;
+  if (!canExecute.value || !selectedMethodId.value || !currentVersion.value) return;
 
   try {
     isExecuting.value = true;
@@ -328,7 +397,7 @@ const executeImputation = async () => {
     executionLogs.value = [];
 
     const targetCols = columnSelectionMode.value === 'all' 
-      ? null 
+      ? availableColumns.value.map(c => c.name) // 明确传递所有列名
       : selectedColumns.value;
 
     ElNotification({
@@ -338,73 +407,56 @@ const executeImputation = async () => {
       duration: 3000,
     });
 
-    // 模拟执行过程
-    await simulateExecution();
-
-    ElNotification({
-      title: "插补完成",
-      message: "缺失值插补处理完成",
-      type: "success",
-      duration: 5000,
+    // 调用后端 API
+    const result = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.EXECUTE, {
+      datasetId: parseInt(props.datasetInfo?.id || '0'),
+      versionId: currentVersion.value.id,
+      methodId: selectedMethodId.value,
+      targetColumns: targetCols,
+      params: paramValues.value
     });
 
-    // 添加到历史记录
-    const newResult: ImputationResult = {
-      id: Date.now(),
-      datasetId: parseInt(props.datasetInfo?.id || '0'),
-      versionId: 1,
-      methodId: selectedMethodId.value,
-      imputationParams: JSON.stringify(paramValues.value),
-      targetColumns: targetCols ? JSON.stringify(targetCols) : null,
-      totalRows: props.datasetInfo?.originalFile?.rows || 0,
-      imputedCount: Math.floor(Math.random() * 100) + 50,
-      imputationRate: Math.random() * 10 + 5,
-      status: 'COMPLETED',
-      progress: 100,
-      executedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    imputationResults.value.unshift(newResult);
-
-    emit("refresh");
+    if (result.success) {
+      ElNotification({
+        title: "插补完成",
+        message: result.message || "缺失值插补处理完成",
+        type: "success",
+        duration: 5000,
+      });
+      
+      // 刷新历史记录
+      await loadHistory();
+      emit("refresh");
+    } else {
+      throw new Error(result.error || '执行失败');
+    }
 
   } catch (error: any) {
     console.error("插补处理失败:", error);
     ElMessage.error(error.message || "插补处理失败，请重试");
+    addLog('error', error.message || "插补处理失败");
   } finally {
     isExecuting.value = false;
   }
 };
 
-const simulateExecution = async () => {
-  const stageList: Array<{ stage: ImputationProgressEvent['stage']; message: string; duration: number }> = [
-    { stage: 'preparing', message: '准备数据...', duration: 500 },
-    { stage: 'training', message: '训练模型...', duration: 1000 },
-    { stage: 'imputing', message: '执行插补...', duration: 1500 },
-    { stage: 'validating', message: '验证结果...', duration: 500 },
-    { stage: 'saving', message: '保存结果...', duration: 500 },
-  ];
+// 监听进度事件
+const setupProgressListeners = () => {
+  window.electronAPI.on('imputation:progress', (event: any) => {
+    // 确保是当前任务的进度
+    // 由于 executeImputation 是异步等待，我们这里直接更新 UI
+    progressInfo.value = event;
+    
+    // 添加日志
+    if (event.message && (!executionLogs.value.length || executionLogs.value[executionLogs.value.length - 1].message !== event.message)) {
+      addLog('info', event.message);
+    }
+  });
+};
 
-  let totalProgress = 0;
-  for (const s of stageList) {
-    progressInfo.value = {
-      resultId: 0,
-      progress: totalProgress,
-      stage: s.stage,
-      message: s.message,
-    };
-    addLog('info', s.message);
-    await new Promise(resolve => setTimeout(resolve, s.duration));
-    totalProgress += 20;
-  }
-  progressInfo.value = {
-    resultId: 0,
-    progress: 100,
-    stage: 'saving',
-    message: '完成',
-  };
+const removeProgressListeners = () => {
+  // 需要在 global.d.ts 和 preload.ts 中支持 removeListener，或者简单忽略
+  // window.electronAPI.removeListener('imputation:progress', ...);
 };
 
 const addLog = (level: string, message: string) => {
@@ -423,13 +475,41 @@ const cancelExecution = () => {
 };
 
 // ==================== 结果相关 ====================
-const deleteResult = async (resultId: number) => {
-  imputationResults.value = imputationResults.value.filter(r => r.id !== resultId);
-  if (currentResultId.value === resultId) {
-    currentResultId.value = null;
-    currentView.value = 'config';
+const loadHistory = async () => {
+  if (!props.datasetInfo) return;
+  const datasetId = parseInt(props.datasetInfo.id);
+  
+  try {
+    const result = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.GET_RESULTS_BY_DATASET, {
+      datasetId,
+      limit: 50,
+      offset: 0
+    });
+    
+    if (result.success) {
+      imputationResults.value = result.data;
+    }
+  } catch (error) {
+    console.error("加载历史记录失败:", error);
   }
-  ElMessage.success('已删除');
+};
+
+const deleteResult = async (resultId: number) => {
+  try {
+    const result = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.DELETE_RESULT, resultId);
+    if (result.success) {
+      imputationResults.value = imputationResults.value.filter(r => r.id !== resultId);
+      if (currentResultId.value === resultId) {
+        currentResultId.value = null;
+        currentView.value = 'config';
+      }
+      ElMessage.success('已删除');
+    } else {
+      ElMessage.error(result.error || '删除失败');
+    }
+  } catch (error: any) {
+     ElMessage.error(error.message || '删除失败');
+  }
 };
 
 const loadResultComparison = async (_resultId: number) => {
@@ -546,17 +626,16 @@ watch(
     selectedColumns.value = [];
     currentResultId.value = null;
     currentView.value = 'config';
-  }
+    loadHistory();
+  },
+  { immediate: true }
 );
-
-watch(vizSelectedColumn, () => {
-  updateComparisonChart();
-});
 
 onMounted(() => {
   window.addEventListener('resize', () => {
     timeSeriesInstance.value?.resize();
   });
+  setupProgressListeners();
 });
 
 onUnmounted(() => {
@@ -623,6 +702,51 @@ onUnmounted(() => {
       <div class="panel-main">
         <!-- 配置视图 -->
         <div v-if="currentView === 'config'" class="config-view">
+          
+          <!-- 版本信息横幅 -->
+          <div class="version-info-banner" v-if="currentVersion">
+            <div class="version-info-item">
+              <el-icon class="version-icon"><InfoFilled /></el-icon>
+              <span class="version-label">当前数据版本：</span>
+              <div class="version-value">
+                <el-select 
+                  :model-value="currentVersion.id" 
+                  @update:model-value="handleVersionChange"
+                  class="version-selector"
+                  size="small"
+                  style="width: 240px"
+                >
+                  <el-option
+                    v-for="ver in versions"
+                    :key="ver.id"
+                    :label="formatVersionLabel(ver)"
+                    :value="ver.id"
+                  >
+                    <div class="version-option-item">
+                      <div class="version-option-left">
+                        <el-tag :type="getVersionTagType(ver.stageType)" size="small" effect="light" class="version-tag">
+                          {{ getVersionLabel(ver.stageType) }}
+                        </el-tag>
+                        <span class="version-option-id">#{{ ver.id }}</span>
+                      </div>
+                      <span class="version-option-time">{{ formatDateTime(ver.createdAt) }}</span>
+                    </div>
+                  </el-option>
+                </el-select>
+              </div>
+            </div>
+            
+            <div class="version-info-item">
+              <span class="version-label">创建时间：</span>
+              <span class="version-value">{{ formatDateTime(currentVersion.createdAt) }}</span>
+            </div>
+            
+            <div class="version-info-item" v-if="currentVersion.remark">
+              <span class="version-label">备注：</span>
+              <span class="version-value">{{ currentVersion.remark }}</span>
+            </div>
+          </div>
+
           <div class="config-layout">
             <!-- 方法选择区 -->
             <div class="method-selection-section">
@@ -1166,6 +1290,77 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.version-info-banner {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  border-radius: 12px;
+  border: 1px solid rgba(229, 231, 235, 0.4);
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.version-info-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.version-icon {
+  color: #10b981;
+  font-size: 16px;
+}
+
+.version-label {
+  color: #6b7280;
+}
+
+.version-value {
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.version-selector :deep(.el-input__wrapper) {
+  background-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 0 1px rgba(209, 213, 219, 1) inset;
+}
+
+.version-option-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.version-option-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.version-option-id {
+  font-size: 11px;
+  color: #9ca3af;
+  font-family: monospace;
+}
+
+.version-option-time {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.version-id {
+  font-family: monospace;
+  color: #9ca3af;
+  font-size: 12px;
 }
 
 .config-layout {

@@ -676,14 +676,15 @@ export class OutlierDetectionRepository {
       result_id: number;
       column_name: string;
       outlier_count: number;
+      missing_count: number;
       min_threshold?: number;
       max_threshold?: number;
     }>
   ): number {
     const stmt = this.db.prepare(`
       INSERT INTO biz_outlier_column_stat 
-        (result_id, column_name, outlier_count, min_threshold, max_threshold)
-      VALUES (?, ?, ?, ?, ?)
+        (result_id, column_name, outlier_count, missing_count, min_threshold, max_threshold)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
 
     let count = 0;
@@ -693,6 +694,7 @@ export class OutlierDetectionRepository {
           stat.result_id,
           stat.column_name,
           stat.outlier_count,
+          stat.missing_count,
           stat.min_threshold ?? null,
           stat.max_threshold ?? null
         );
@@ -726,19 +728,21 @@ export class OutlierDetectionRepository {
   getOutlierColumnStats(resultId: number): Array<{
     columnName: string;
     outlierCount: number;
+    missingCount: number;
     minThreshold: number | null;
     maxThreshold: number | null;
   }> {
     // 1. 尝试从 biz_outlier_column_stat 获取
     const stats = this.db
       .prepare(`
-        SELECT column_name, outlier_count, min_threshold, max_threshold
+        SELECT column_name, outlier_count, missing_count, min_threshold, max_threshold
         FROM biz_outlier_column_stat
         WHERE result_id = ? AND is_del = 0
       `)
       .all(resultId) as Array<{
         column_name: string;
         outlier_count: number;
+        missing_count: number;
         min_threshold: number | null;
         max_threshold: number | null;
       }>;
@@ -747,6 +751,7 @@ export class OutlierDetectionRepository {
       return stats.map(s => ({
         columnName: s.column_name,
         outlierCount: s.outlier_count,
+        missingCount: s.missing_count || 0,
         minThreshold: s.min_threshold,
         maxThreshold: s.max_threshold
       }));
@@ -765,6 +770,7 @@ export class OutlierDetectionRepository {
     return results.map(r => ({
       columnName: r.columnName,
       outlierCount: r.outlierCount,
+      missingCount: 0,
       minThreshold: null,
       maxThreshold: null
     }));

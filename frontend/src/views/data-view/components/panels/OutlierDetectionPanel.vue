@@ -38,6 +38,7 @@ const lastDetectionSummary = ref<{
   columnResults: Array<{
     columnName: string;
     outlierCount: number;
+    missingCount?: number;
     minThreshold: number | null;
     maxThreshold: number | null;
   }>;
@@ -124,14 +125,30 @@ const switchToConfig = () => {
 const executeDetection = async () => {
   if (!datasetInfo.value?.id) return;
   
-  // 检查是否有配置阈值的列
-  const configuredColumns = outlierStore.columnThresholds.filter(
-    c => c.min_threshold !== null || c.max_threshold !== null
-  );
+  // 确定要检测的列
+  let targetColumnNames: string[] | undefined = undefined;
   
-  if (configuredColumns.length === 0) {
-    ElMessage.warning("请先为至少一个列配置阈值");
-    return;
+  if (selectedColumns.value.length > 0) {
+    // 如果用户选择了列，只检测选中的列
+    const selectedCols = outlierStore.columnThresholds.filter(c => selectedColumns.value.includes(c.id));
+    targetColumnNames = selectedCols.map(c => c.column_name);
+    
+    // 检查选中的列是否有配置阈值
+    const hasConfigured = selectedCols.some(c => c.min_threshold !== null || c.max_threshold !== null);
+    if (!hasConfigured) {
+      ElMessage.warning("选中的列未配置阈值");
+      return;
+    }
+  } else {
+    // 如果未选择列，检测所有配置了阈值的列
+    const configuredColumns = outlierStore.columnThresholds.filter(
+      c => c.min_threshold !== null || c.max_threshold !== null
+    );
+    
+    if (configuredColumns.length === 0) {
+      ElMessage.warning("请先为至少一个列配置阈值");
+      return;
+    }
   }
   
   try {
@@ -141,7 +158,8 @@ const executeDetection = async () => {
     
     const result = await outlierStore.executeThresholdDetection(
       String(datasetInfo.value.id),
-      String(versionId)
+      String(versionId),
+      targetColumnNames
     );
     
     if (result) {
@@ -220,7 +238,8 @@ const viewResult = async (result: OutlierResult) => {
                   if (params.columns) {
                       columnResults = params.columns.map((c: string) => ({
                           columnName: c,
-                          outlierCount: 0 
+                          outlierCount: 0,
+                          missingCount: 0
                       }));
                   }
               } catch (e) {}
@@ -664,7 +683,7 @@ onMounted(() => {
                         <th class="col-missing">缺失值</th>
                         <th class="col-threshold">最小阈值</th>
                         <th class="col-threshold">最大阈值</th>
-                        <th class="col-physical">物理范围</th>
+
                         <th class="col-unit">单位</th>
                         <th class="col-actions">操作</th>
                       </tr>
@@ -701,11 +720,6 @@ onMounted(() => {
                         
                         <!-- 编辑模式 -->
                         <template v-if="editingColumn === column.id">
-                          <td class="col-missing">
-                            <span class="missing-count" :class="{ 'has-missing': (getMissingCount(column.column_name) || 0) > 0 }">
-                              {{ getMissingCount(column.column_name) ?? '-' }}
-                            </span>
-                          </td>
                           <td class="col-threshold">
                             <el-input-number 
                               v-model="editForm.min_threshold" 
@@ -722,23 +736,7 @@ onMounted(() => {
                               placeholder="最大值"
                               class="edit-input" />
                           </td>
-                          <td class="col-physical">
-                            <div class="physical-inputs">
-                              <el-input-number 
-                                v-model="editForm.physical_min" 
-                                size="small" 
-                                :controls="false"
-                                placeholder="物理最小"
-                                class="edit-input" />
-                              <span class="range-separator">~</span>
-                              <el-input-number 
-                                v-model="editForm.physical_max" 
-                                size="small" 
-                                :controls="false"
-                                placeholder="物理最大"
-                                class="edit-input" />
-                            </div>
-                          </td>
+
                           <td class="col-unit">
                             <el-input 
                               v-model="editForm.unit" 
@@ -778,11 +776,7 @@ onMounted(() => {
                               {{ formatNumber(column.max_threshold) }}
                             </span>
                           </td>
-                          <td class="col-physical">
-                            <span class="physical-range">
-                              {{ formatNumber(column.physical_min) }} ~ {{ formatNumber(column.physical_max) }}
-                            </span>
-                          </td>
+
                           <td class="col-unit">
                             <span class="unit-text">{{ column.unit || '-' }}</span>
                           </td>
@@ -945,7 +939,7 @@ onMounted(() => {
                         </div>
                         <div class="stat-divider"></div>
                         <div class="stat-metric">
-                          <span class="count missing">{{ getMissingCount(col.columnName) ?? '-' }}</span>
+                          <span class="count missing">{{ col.missingCount ?? getMissingCount(col.columnName) ?? '-' }}</span>
                           <span class="label">缺失</span>
                         </div>
                       </div>
@@ -1301,13 +1295,14 @@ onMounted(() => {
 }
 
 .threshold-table-container :deep(.el-scrollbar__wrap) {
-  overflow-x: hidden;
+  overflow-x: auto;
 }
 
 .threshold-table-container :deep(.el-scrollbar__view) {
   display: flex;
   flex-direction: column;
   min-height: 100%;
+  min-width: fit-content;
 }
 
 .threshold-table {
@@ -1329,6 +1324,7 @@ onMounted(() => {
   top: 0;
   z-index: 10;
   backdrop-filter: blur(4px);
+  white-space: nowrap;
 }
 
 .threshold-table td {
@@ -1336,6 +1332,7 @@ onMounted(() => {
   border-bottom: 1px solid rgba(229, 231, 235, 0.6);
   background: rgba(255, 255, 255, 0.4);
   transition: background 0.2s;
+  white-space: nowrap;
 }
 
 .threshold-table tr:hover td {
@@ -1351,14 +1348,15 @@ onMounted(() => {
 }
 
 /* 表格列宽与样式 */
-.col-checkbox { width: 40px; text-align: center; }
-.col-name { min-width: 180px; }
-.col-status { width: 140px; }
-.col-missing { width: 100px; text-align: center; }
-.col-threshold { width: 120px; }
-.col-physical { width: 200px; }
-.col-unit { width: 100px; }
-.col-actions { width: 120px; text-align: center; }
+.col-checkbox { width: 40px; min-width: 40px; text-align: center; }
+.col-name { width: auto; min-width: 120px; max-width: 300px; }
+.col-status { width: 90px; min-width: 90px; }
+.col-missing { width: 80px; min-width: 80px; text-align: center; }
+.col-threshold { width: 90px; min-width: 90px; }
+
+.col-unit { width: 160px; min-width: 160px; }
+.col-unit .edit-input { width: 100%; }
+.col-actions { width: 100px; min-width: 100px; text-align: center; }
 
 .column-name-cell { display: flex; flex-direction: column; gap: 4px; }
 .column-name { font-weight: 600; color: #1f2937; }
@@ -1386,11 +1384,10 @@ onMounted(() => {
 .missing-count.has-missing { color: #ef4444; font-weight: 600; }
 
 .value-set { color: #111827; font-weight: 600; font-family: monospace; }
-.physical-range { color: #6b7280; font-size: 12px; font-family: monospace; }
+
 .unit-text { color: #9ca3af; font-style: italic; }
 
-.physical-inputs { display: flex; align-items: center; gap: 6px; }
-.range-separator { color: #9ca3af; }
+
 .action-buttons { display: flex; gap: 6px; justify-content: center; }
 
 .edit-btn {

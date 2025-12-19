@@ -596,6 +596,23 @@ export class DatabaseManager {
       }
     }
 
+    // 检查并添加 biz_outlier_column_stat 表的新字段
+    const outlierColumnStatInfo = this.db
+      .prepare("PRAGMA table_info(biz_outlier_column_stat)")
+      .all() as { name: string }[];
+
+    const outlierColumnStatColumns = new Set(outlierColumnStatInfo.map(c => c.name));
+
+    const outlierColumnStatNewColumns = [
+      { name: 'missing_count', type: 'INTEGER DEFAULT 0' }
+    ];
+
+    for (const col of outlierColumnStatNewColumns) {
+      if (!outlierColumnStatColumns.has(col.name)) {
+        this.db.exec(`ALTER TABLE biz_outlier_column_stat ADD COLUMN ${col.name} ${col.type};`);
+      }
+    }
+
     // 迁移 biz_outlier_result 表以修复 CHECK 约束
     this.migrateOutlierResultTable();
   }

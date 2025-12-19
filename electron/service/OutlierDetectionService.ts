@@ -448,6 +448,7 @@ export class OutlierDetectionService {
       columnResults: Array<{
         columnName: string;
         outlierCount: number;
+        missingCount: number;
         minThreshold: number | null;
         maxThreshold: number | null;
       }>;
@@ -456,9 +457,17 @@ export class OutlierDetectionService {
     try {
       // 1. 获取列阈值配置
       const columns = this.outlierRepo.getColumnThresholds(datasetId);
+      console.log('[OutlierDetection] All columns from DB:', columns.map(c => ({
+        name: c.column_name,
+        min: c.min_threshold,
+        max: c.max_threshold
+      })));
+      
       const targetColumns = columnNames
         ? columns.filter(c => columnNames.includes(c.column_name))
         : columns.filter(c => c.min_threshold !== null || c.max_threshold !== null);
+      
+      console.log('[OutlierDetection] Target columns for detection:', targetColumns.map(c => c.column_name));
 
       if (targetColumns.length === 0) {
         return { success: false, error: '没有配置阈值的列，请先配置阈值' };
@@ -505,6 +514,7 @@ export class OutlierDetectionService {
       }
 
       const headers = lines[0].split(',').map((h: string) => h.trim().replace(/"/g, ''));
+      const headersLower = headers.map((h: string) => h.toLowerCase());
       const totalRows = lines.length - 1;
 
       // 尝试识别时间列
@@ -518,6 +528,7 @@ export class OutlierDetectionService {
       const columnResults: Array<{
         columnName: string;
         outlierCount: number;
+        missingCount: number;
         minThreshold: number | null;
         maxThreshold: number | null;
       }> = [];
@@ -533,11 +544,43 @@ export class OutlierDetectionService {
         time_point?: string;
       }> = [];
 
+      // 获取缺失值表示配置
+      const missingValueTypes: string[] = (() => {
+        try {
+          return datasetResult.data.missing_value_types ? JSON.parse(datasetResult.data.missing_value_types) : [];
+        } catch {
+          return [];
+        }
+      })();
+
+      const isMissingValue = (val: string) => {
+        if (!missingValueTypes || missingValueTypes.length === 0) return false;
+        const trimmed = (val ?? '').trim();
+        if (trimmed === '') {
+            return missingValueTypes.includes('') || missingValueTypes.includes('null');
+        }
+        return missingValueTypes.some(t => {
+            const tt = (t ?? '').trim();
+            if (tt === '') return false;
+            return trimmed.toLowerCase() === tt.toLowerCase();
+        });
+      };
+
       for (const col of targetColumns) {
-        const colIndex = headers.indexOf(col.column_name);
-        if (colIndex === -1) continue;
+        // 使用不区分大小写的列名匹配
+        const colNameLower = col.column_name.toLowerCase();
+        let colIndex = headers.indexOf(col.column_name);
+        if (colIndex === -1) {
+          // 尝试不区分大小写的匹配
+          colIndex = headersLower.indexOf(colNameLower);
+        }
+        if (colIndex === -1) {
+          console.warn(`[OutlierDetection] Column "${col.column_name}" not found in CSV headers:`, headers);
+          continue;
+        }
 
         let outlierCount = 0;
+        let missingCount = 0;
         const minThreshold = col.min_threshold ?? null;
         const maxThreshold = col.max_threshold ?? null;
 
@@ -546,9 +589,29 @@ export class OutlierDetectionService {
           if (colIndex >= values.length) continue;
 
           const rawValue = values[colIndex].trim().replace(/"/g, '');
+          
+          // Check for missing value
+          if (isMissingValue(rawValue)) {
+            missingCount++;
+            continue;
+          }
+
           const value = parseFloat(rawValue);
 
-          if (isNaN(value)) continue;
+          if (isNaN(value)) {
+            // If it's not a number and not explicitly defined as missing value, treat as missing/invalid
+            // But if it's not in missingValueTypes, maybe we should treat it as outlier?
+            // For now, let's treat non-numeric as missing if it can't be parsed
+            // Or maybe strictly follow missingValueTypes.
+            // Let's assume non-numeric that isn't in missingValueTypes is potentially an issue,
+            // but usually read_csv would treat them as NaN.
+            // If we strictly follow user definition, we only count explicit missing values.
+            // But empty string is common.
+            if (rawValue === '') {
+                 missingCount++;
+            }
+            continue;
+          }
 
           // 检测是否超出阈值
           let isOutlier = false;
@@ -569,22 +632,26 @@ export class OutlierDetectionService {
             outlierCount++;
             totalOutliers++;
 
-            // 只记录前1000个异常值详情（避免数据量过大）
-            if (outlierDetails.length < 1000) {
-              let timePoint: string | undefined;
-              if (timeColIndex !== -1 && timeColIndex < values.length) {
-                timePoint = values[timeColIndex].trim().replace(/"/g, '');
-              }
+            // 记录异常值详情
+            let timePoint: string | undefined;
+            if (timeColIndex !== -1 && timeColIndex < values.length) {
+              timePoint = values[timeColIndex].trim().replace(/"/g, '');
+            }
 
-              outlierDetails.push({
-                result_id: resultId,
-                column_name: col.column_name,
-                row_index: i,
-                original_value: value,
-                outlier_type: outlierType,
-                threshold_value: thresholdValue,
-                time_point: timePoint
-              });
+            outlierDetails.push({
+              result_id: resultId,
+              column_name: col.column_name,
+              row_index: i,
+              original_value: value,
+              outlier_type: outlierType,
+              threshold_value: thresholdValue,
+              time_point: timePoint
+            });
+
+            // 分批保存，避免内存占用过高
+            if (outlierDetails.length >= 2000) {
+              this.outlierRepo.batchCreateOutlierDetails(outlierDetails);
+              outlierDetails.length = 0; // 清空数组
             }
           }
         }
@@ -592,15 +659,31 @@ export class OutlierDetectionService {
         columnResults.push({
           columnName: col.column_name,
           outlierCount,
+          missingCount,
           minThreshold,
           maxThreshold
         });
       }
 
-      // 6. 批量保存异常值详情
+      // 保存剩余的异常值详情
       if (outlierDetails.length > 0) {
         this.outlierRepo.batchCreateOutlierDetails(outlierDetails);
       }
+
+      // 6.5 保存列统计信息到 biz_outlier_column_stat 表
+      if (columnResults.length > 0) {
+        const statsToSave = columnResults.map(r => ({
+          result_id: resultId,
+          column_name: r.columnName,
+          outlier_count: r.outlierCount,
+          missing_count: r.missingCount,
+          min_threshold: r.minThreshold ?? undefined,
+          max_threshold: r.maxThreshold ?? undefined
+        }));
+        this.outlierRepo.batchCreateOutlierColumnStats(statsToSave);
+      }
+
+      console.log('[OutlierDetection] Detection completed. Column results:', columnResults);
 
       // 7. 更新检测结果
       const outlierRate = totalRows > 0 ? (totalOutliers / (totalRows * targetColumns.length)) * 100 : 0;
@@ -611,6 +694,7 @@ export class OutlierDetectionService {
         columnResults: columnResults.map(r => ({
           columnName: r.columnName,
           outlierCount: r.outlierCount,
+          missingCount: r.missingCount,
           minThreshold: r.minThreshold,
           maxThreshold: r.maxThreshold
         }))
@@ -681,6 +765,7 @@ export class OutlierDetectionService {
   getOutlierResultStats(resultId: number): ServiceResponse<Array<{
     columnName: string;
     outlierCount: number;
+    missingCount: number;
     minThreshold: number | null;
     maxThreshold: number | null;
   }>> {
@@ -791,7 +876,8 @@ export class OutlierDetectionService {
           if (!outlierMap.has(outlier.row_index)) {
             outlierMap.set(outlier.row_index, new Set());
           }
-          outlierMap.get(outlier.row_index)!.add(outlier.column_name);
+          // 统一转为小写存储，以便不区分大小写匹配
+          outlierMap.get(outlier.row_index)!.add(outlier.column_name.toLowerCase());
         }
       }
 
@@ -803,24 +889,35 @@ export class OutlierDetectionService {
         const line = lines[i];
         if (!line.trim()) continue; // 跳过空行
 
-        // 统一处理（即使该行无异常，也要清理缺失值表示）
-        const values = line.split(','); // 同样假设简单CSV
+        // 简单 CSV 解析：处理逗号分割，并去除字段两端的引号
+        // 注意：这仍然不支持字段内部包含逗号的复杂 CSV 情况
+        const values = line.split(','); 
         const rowOutliers = outlierMap.get(i);
 
         const newValues = values.map((val: string, index: number) => {
+          // 清理值：去除两端空格和可能的引号
+          let cleanVal = val.trim();
+          if (cleanVal.startsWith('"') && cleanVal.endsWith('"')) {
+            cleanVal = cleanVal.slice(1, -1).trim();
+          }
+
           // 先清理缺失值表示
-          if (isMissingValue(val)) {
+          if (isMissingValue(cleanVal)) {
             return '';
           }
 
           // 再清理异常值
           if (rowOutliers && index < headers.length) {
             const colName = headers[index];
-            if (rowOutliers.has(colName)) {
+            // 使用小写进行匹配
+            if (rowOutliers.has(colName.toLowerCase())) {
               return ''; // 置空异常值
             }
           }
 
+          // 如果原值被清理过引号，这里保持原样返回还是返回清理后的？
+          // 通常为了保持格式一致性，如果之前有引号，可能 CSV 库写入时会有策略
+          // 这里我们简单起见，如果被置空了就返回空，否则返回原始 val (保留格式)
           return val;
         });
 

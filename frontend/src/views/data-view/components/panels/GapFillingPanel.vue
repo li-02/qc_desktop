@@ -15,7 +15,9 @@ import {
   InfoFilled
 } from "@element-plus/icons-vue";
 import type { DatasetInfo } from "@shared/types/projectInterface";
+import type { OutlierResult } from "@shared/types/database";
 import { useDatasetStore } from "@/stores/useDatasetStore";
+import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
 import * as echarts from 'echarts';
 
@@ -98,9 +100,23 @@ const currentView = ref<ViewMode>('config');
 
 // ==================== 侧边栏状态 ====================
 const datasetStore = useDatasetStore();
+const outlierStore = useOutlierDetectionStore();
 const currentVersion = computed(() => datasetStore.currentVersion);
 const versions = computed(() => datasetStore.versions);
 const currentVersionStats = computed(() => datasetStore.currentVersionStats);
+
+// 异常检测结果（用于获取版本名称）
+const outlierResults = ref<OutlierResult[]>([]);
+// 版本ID -> 异常检测结果名称的映射
+const versionNameMap = computed(() => {
+  const map = new Map<number, string>();
+  for (const result of outlierResults.value) {
+    if (result.generated_version_id && result.name) {
+      map.set(result.generated_version_id, result.name);
+    }
+  }
+  return map;
+});
 
 const imputationResults = ref<ImputationResult[]>([]);
 const currentResultId = ref<number | null>(null);
@@ -296,13 +312,15 @@ const getStatusText = (status: ImputationResultStatus): string => {
   return texts[status];
 };
 
-const getVersionLabel = (stage?: string) => {
-  switch (stage) {
-    case 'RAW': return '原始版本';
-    case 'FILTERED': return '经过过滤';
-    case 'QC': return '插补后';
-    default: return stage || '未知版本';
+const getVersionLabel = (stage?: string, versionId?: number) => {
+  if (stage === 'RAW') return '原始版本';
+  if (stage === 'FILTERED' && versionId) {
+    const outlierName = versionNameMap.value.get(versionId);
+    if (outlierName) return outlierName;
+    return '经过过滤';
   }
+  if (stage === 'QC') return '插补后';
+  return stage || '未知版本';
 };
 
 const getVersionTagType = (stage?: string) => {
@@ -339,12 +357,8 @@ const handleVersionChange = async (versionId: number) => {
 };
 
 const formatVersionLabel = (version: any) => {
-  const stageMap: Record<string, string> = {
-    'RAW': '原始版本',
-    'FILTERED': '经过过滤',
-    'QC': '插补后'
-  };
-  return `${stageMap[version.stageType] || version.stageType} #${version.id}`;
+  const label = getVersionLabel(version.stageType, version.id);
+  return `${label} #${version.id}`;
 };
 
 // ==================== 视图切换 ====================
@@ -620,6 +634,20 @@ const updateComparisonChart = async () => {
 };
 
 // ==================== 生命周期 ====================
+const loadOutlierResults = async () => {
+  if (!props.datasetInfo?.id) {
+    outlierResults.value = [];
+    return;
+  }
+  try {
+    const results = await outlierStore.getDetectionResults(String(props.datasetInfo.id));
+    outlierResults.value = results || [];
+  } catch (e) {
+    console.error('加载异常检测结果失败:', e);
+    outlierResults.value = [];
+  }
+};
+
 watch(
   () => props.datasetInfo,
   () => {
@@ -627,6 +655,7 @@ watch(
     currentResultId.value = null;
     currentView.value = 'config';
     loadHistory();
+    loadOutlierResults();
   },
   { immediate: true }
 );
@@ -714,7 +743,7 @@ onUnmounted(() => {
                   @update:model-value="handleVersionChange"
                   class="version-selector"
                   size="small"
-                  style="width: 240px"
+                  style="width: 320px"
                 >
                   <el-option
                     v-for="ver in versions"
@@ -725,7 +754,7 @@ onUnmounted(() => {
                     <div class="version-option-item">
                       <div class="version-option-left">
                         <el-tag :type="getVersionTagType(ver.stageType)" size="small" effect="light" class="version-tag">
-                          {{ getVersionLabel(ver.stageType) }}
+                          {{ getVersionLabel(ver.stageType, ver.id) }}
                         </el-tag>
                         <span class="version-option-id">#{{ ver.id }}</span>
                       </div>

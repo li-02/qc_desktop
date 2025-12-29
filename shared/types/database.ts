@@ -147,6 +147,7 @@ export interface OutlierResult extends BaseEntity {
   detection_config_id?: number;
   column_name: string;
   detection_method: DetectionMethodId;
+  name?: string; // 用户自定义名称 (默认为 方法-时间)
   outlier_indices?: string; // JSON 数组
   outlier_count: number;
   total_rows?: number;

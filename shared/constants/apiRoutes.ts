@@ -54,6 +54,7 @@ export const API_ROUTES = {
     GET_RESULT_DETAILS: "outlier/get-result-details",
     GET_RESULT_STATS: "outlier/get-result-stats",
     DELETE_DETECTION_RESULT: "outlier/delete-detection-result",
+    RENAME_DETECTION_RESULT: "outlier/rename-detection-result",
     
     // 结果应用与回退
     APPLY_FILTERING: "outlier/apply-filtering",

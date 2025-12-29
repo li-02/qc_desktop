@@ -321,6 +321,21 @@ export class OutlierDetectionRepository {
   }
 
   /**
+   * 重命名检测结果
+   */
+  renameDetectionResult(id: number, name: string): boolean {
+    const result = this.db
+      .prepare(`
+        UPDATE biz_outlier_result 
+        SET name = ?, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = ? AND is_del = 0
+      `)
+      .run(name, id);
+
+    return result.changes > 0;
+  }
+
+  /**
    * 创建检测结果 (旧版兼容)
    */
   createOutlierResult(result: Omit<OutlierResult, 'id' | 'created_at' | 'updated_at' | 'deleted_at' | 'is_del'>): number {

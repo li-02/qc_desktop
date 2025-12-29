@@ -499,6 +499,28 @@ export const useOutlierDetectionStore = defineStore("outlierDetection", () => {
   };
 
   /**
+   * 重命名检测结果
+   */
+  const renameDetectionResult = async (resultId: string, name: string) => {
+    try {
+      const result = await window.electronAPI.invoke(
+        API_ROUTES.OUTLIER.RENAME_DETECTION_RESULT,
+        { resultId, name }
+      );
+      if (result.success) {
+        ElMessage.success("已重命名");
+        return true;
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error: any) {
+      console.error("重命名失败:", error);
+      ElMessage.error(error.message || "重命名失败");
+      return false;
+    }
+  };
+
+  /**
    * 应用异常值过滤
    */
   const applyOutlierFiltering = async (resultId: string) => {
@@ -590,6 +612,7 @@ export const useOutlierDetectionStore = defineStore("outlierDetection", () => {
     getDetectionResultDetails,
     getOutlierResultStats,
     deleteDetectionResult,
+    renameDetectionResult,
     applyOutlierFiltering,
     revertOutlierFiltering,
 

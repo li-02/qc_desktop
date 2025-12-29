@@ -187,6 +187,7 @@ export class DatabaseManager {
         detection_config_id INTEGER,           -- 检测配置ID (可为NULL表示临时检测)
         column_name TEXT,                      -- 检测的列名
         detection_method TEXT NOT NULL,        -- 使用的检测方法
+        name TEXT,                             -- 用户自定义名称 (默认为 方法-时间)
         outlier_indices TEXT,                  -- 异常值行索引 (JSON数组格式)
         outlier_count INTEGER DEFAULT 0,       -- 异常值数量
         total_rows INTEGER DEFAULT 0,          -- 总行数
@@ -201,6 +202,13 @@ export class DatabaseManager {
         -- 外键约束在业务层处理: version_id -> biz_dataset_version.id, detection_config_id -> conf_outlier_detection.id
       );
     `);
+
+    // 为已存在的表添加 name 列（如果不存在）
+    try {
+      this.db.exec(`ALTER TABLE biz_outlier_result ADD COLUMN name TEXT;`);
+    } catch (e) {
+      // 列已存在，忽略错误
+    }
 
     // 异常值详情表 (biz_outlier_detail)
     this.db.exec(`

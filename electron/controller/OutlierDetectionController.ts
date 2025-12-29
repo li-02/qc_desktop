@@ -535,6 +535,35 @@ export class OutlierDetectionController extends BaseController {
   }
 
   /**
+   * 重命名检测结果
+   */
+  async renameDetectionResult(
+    args: { resultId: string; name: string },
+    _event: IpcMainInvokeEvent
+  ) {
+    return this.handleAsync(async () => {
+      if (!args.resultId) {
+        throw new Error('结果ID不能为空');
+      }
+      if (!args.name) {
+        throw new Error('名称不能为空');
+      }
+
+      const resultId = parseInt(args.resultId);
+      if (isNaN(resultId)) {
+        throw new Error('无效的结果ID');
+      }
+
+      const result = this.outlierService.renameDetectionResult(resultId, args.name);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      return { success: true };
+    });
+  }
+
+  /**
    * 应用异常值过滤
    */
   async applyOutlierFiltering(

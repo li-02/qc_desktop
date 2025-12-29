@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Loading, Refresh, Search, Setting, Check, Close, VideoPlay, Delete, Plus, ArrowLeft, MagicStick, RefreshLeft, Download } from "@element-plus/icons-vue";
+import { Loading, Refresh, Search, Setting, Check, Close, VideoPlay, Delete, Plus, ArrowLeft, MagicStick, RefreshLeft, Download, Edit } from "@element-plus/icons-vue";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import type { DatasetInfo } from "@shared/types/projectInterface";
@@ -54,6 +54,10 @@ const detailPageSize = ref(100);
 const executing = ref(false);
 const applying = ref(false); // 应用过滤中
 const currentSelectedColumn = ref("");
+
+// 重命名状态
+const editingResultId = ref<number | null>(null);
+const editingName = ref("");
 
 // 本地状态
 const searchText = ref("");
@@ -284,6 +288,66 @@ const deleteResult = async (resultId: number, event?: Event) => {
   } catch {
     // 用户取消
   }
+};
+
+const getResultDisplayName = (result: OutlierResult) => {
+  if (result.name) {
+    return result.name;
+  }
+  // 默认名称：方法-时间
+  const methodName = getMethodDisplayName(result.detection_method);
+  const time = formatDateTime(result.executed_at);
+  return `${methodName}-${time}`;
+};
+
+const getMethodDisplayName = (method: string) => {
+  const methodMap: Record<string, string> = {
+    'THRESHOLD_STATIC': '静态阈值',
+    'ZSCORE': 'Z-Score',
+    'MODIFIED_ZSCORE': 'MAD Z-Score',
+    'IQR': 'IQR',
+    'DESPIKING_MAD': 'MAD Despiking'
+  };
+  return methodMap[method] || method;
+};
+
+const startRenaming = (result: OutlierResult, event: Event) => {
+  event.stopPropagation();
+  editingResultId.value = result.id;
+  editingName.value = result.name || getResultDisplayName(result);
+};
+
+const cancelRenaming = (event?: Event) => {
+  if (event) {
+    event.stopPropagation();
+  }
+  editingResultId.value = null;
+  editingName.value = "";
+};
+
+const saveRenaming = async (event?: Event) => {
+  if (event) {
+    event.stopPropagation();
+  }
+  if (!editingResultId.value || !editingName.value.trim()) {
+    cancelRenaming();
+    return;
+  }
+  
+  const success = await outlierStore.renameDetectionResult(
+    String(editingResultId.value),
+    editingName.value.trim()
+  );
+  
+  if (success) {
+    // 更新本地状态
+    const result = detectionResults.value.find(r => r.id === editingResultId.value);
+    if (result) {
+      result.name = editingName.value.trim();
+    }
+  }
+  
+  cancelRenaming();
 };
 
 const applyFiltering = async () => {
@@ -566,7 +630,34 @@ onMounted(() => {
                 :class="{ active: currentResultId === result.id }"
                 @click="viewResult(result)">
                 <div class="history-item-header">
-                  <span class="history-time">{{ formatDateTime(result.executed_at) }}</span>
+                  <!-- 名称显示/编辑区域 -->
+                  <div class="history-name-wrapper" v-if="editingResultId !== result.id">
+                    <span class="history-name" :title="getResultDisplayName(result)">{{ getResultDisplayName(result) }}</span>
+                    <el-button 
+                      size="small" 
+                      text 
+                      class="rename-btn"
+                      @click="startRenaming(result, $event)">
+                      <el-icon><Edit /></el-icon>
+                    </el-button>
+                  </div>
+                  <!-- 编辑模式 -->
+                  <div class="history-name-edit" v-else @click.stop>
+                    <el-input
+                      v-model="editingName"
+                      size="small"
+                      placeholder="输入名称"
+                      @keyup.enter="saveRenaming($event)"
+                      @keyup.escape="cancelRenaming($event)"
+                      autofocus
+                    />
+                    <el-button size="small" type="primary" text @click="saveRenaming($event)">
+                      <el-icon><Check /></el-icon>
+                    </el-button>
+                    <el-button size="small" text @click="cancelRenaming($event)">
+                      <el-icon><Close /></el-icon>
+                    </el-button>
+                  </div>
                   <el-button 
                     size="small" 
                     text 
@@ -1096,6 +1187,58 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
+  gap: 8px;
+}
+
+.history-name-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.history-name {
+  font-size: 13px;
+  color: #1f2937;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rename-btn {
+  opacity: 0;
+  transition: opacity 0.2s;
+  padding: 2px;
+  height: auto;
+  flex-shrink: 0;
+}
+
+.history-item:hover .rename-btn {
+  opacity: 0.6;
+}
+
+.history-item:hover .rename-btn:hover {
+  opacity: 1;
+  color: #10b981;
+}
+
+.history-name-edit {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.history-name-edit .el-input {
+  flex: 1;
+}
+
+.history-name-edit .el-input :deep(.el-input__inner) {
+  font-size: 12px;
+  height: 26px;
 }
 
 .history-time {
@@ -1109,6 +1252,7 @@ onMounted(() => {
   transition: opacity 0.2s;
   padding: 4px;
   height: auto;
+  flex-shrink: 0;
 }
 
 .history-item:hover .delete-btn {

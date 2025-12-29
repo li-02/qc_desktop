@@ -798,6 +798,24 @@ export class OutlierDetectionService {
   }
 
   /**
+   * 重命名检测结果
+   */
+  renameDetectionResult(resultId: number, name: string): ServiceResponse<void> {
+    try {
+      if (!name || name.trim() === '') {
+        return { success: false, error: '名称不能为空' };
+      }
+      const success = this.outlierRepo.renameDetectionResult(resultId, name.trim());
+      if (!success) {
+        return { success: false, error: '检测结果不存在' };
+      }
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: `重命名失败: ${error.message}` };
+    }
+  }
+
+  /**
    * 应用异常值过滤
    * 生成新的数据版本，将异常值置空
    */

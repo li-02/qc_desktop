@@ -369,6 +369,11 @@ export class ControllerRegistry {
         handler: this.outlierController.deleteDetectionResult.bind(this.outlierController),
         description: "删除检测结果",
       },
+      {
+        path: "outlier/rename-detection-result",
+        handler: this.outlierController.renameDetectionResult.bind(this.outlierController),
+        description: "重命名检测结果",
+      },
       // 结果应用与回退
       {
         path: "outlier/apply-filtering",

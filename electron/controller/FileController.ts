@@ -113,6 +113,7 @@ export class FileController extends BaseController {
     args: {
       filePath: string;
       columnName?: string; // 可选：只读取特定列
+      missingValueTypes?: string[]; // 可选：缺失值类型
     },
     event: IpcMainInvokeEvent
   ) {
@@ -135,15 +136,31 @@ export class FileController extends BaseController {
       const fileContent = fs.readFileSync(args.filePath, "utf-8");
 
       // 使用worker解析文件，读取全部数据
-      const result = await this.parseFileWithWorker("csv", fileContent, -1, []);
+      const result = await this.parseFileWithWorker("csv", fileContent, -1, args.missingValueTypes || []);
 
       // 获取时区设置
       const timezoneResult = this.settingsRepository.getTimezone();
       const timezone = timezoneResult.success ? timezoneResult.data! : 'UTC+8';
 
+      // 辅助函数：判断是否为缺失值
+      const isMissingValue = (value: any, missingTypes: string[]): boolean => {
+        if (!missingTypes || missingTypes.length === 0) return false;
+        
+        if (value === null || value === undefined) {
+          return missingTypes.includes("null") || missingTypes.includes("");
+        }
+        
+        const stringValue = String(value).trim();
+        return missingTypes.some(type => {
+          if (type === "") return stringValue === "";
+          return stringValue.toLowerCase() === type.toLowerCase();
+        });
+      };
+
       // 如果指定了列名，只返回该列的数据和统计信息
       if (args.columnName && result.tableData) {
         const columnName = args.columnName;
+        const missingTypes = args.missingValueTypes || [];
 
         // 识别时间列
         const timestampKey = this.findTimestampKey(result.tableData);
@@ -154,14 +171,19 @@ export class FileController extends BaseController {
             const rawTimestamp = timestampKey ? row[timestampKey] : null;
             const epochMs = rawTimestamp ? normalizeTimestamp(rawTimestamp, timezone) : null;
             
+            let value = row[columnName];
+            // 标准化缺失值为 null
+            if (isMissingValue(value, missingTypes)) {
+              value = null;
+            }
+
             return {
-              [columnName]: row[columnName],
+              [columnName]: value,
               TIMESTAMP: rawTimestamp,
               _epochMs: epochMs,
               _formattedTime: epochMs ? formatTimestamp(epochMs, timezone) : null,
             };
-          })
-          .filter((row: any) => row[columnName] !== undefined && row[columnName] !== null);
+          });
 
         // 按时间排序（如果有有效的时间戳）
         columnData.sort((a: any, b: any) => {

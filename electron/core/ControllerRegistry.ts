@@ -74,7 +74,7 @@ export class ControllerRegistry {
       this.projectService = new ProjectService(this.projectRepository, this.datasetRepository);
       console.log("✓ ProjectService 初始化完成");
 
-      this.datasetService = new DatasetService(this.datasetRepository, this.projectRepository);
+      this.datasetService = new DatasetService(this.datasetRepository, this.projectRepository, this.settingsRepository);
       console.log("✓ DatasetService 初始化完成");
 
       this.outlierService = new OutlierDetectionService(this.outlierRepository, this.datasetRepository);
@@ -212,6 +212,11 @@ export class ControllerRegistry {
         path: "datasets/get-version-stats",
         handler: this.datasetController.getDatasetVersionStats.bind(this.datasetController),
         description: "获取版本统计信息",
+      },
+      {
+        path: "datasets/get-version-missing-stats",
+        handler: this.datasetController.getDatasetVersionMissingStats.bind(this.datasetController),
+        description: "获取版本缺失值统计信息",
       },
       {
         path: "datasets/export",

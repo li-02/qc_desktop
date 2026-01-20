@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
+import { formatLocalWithTZ } from '@/utils/timeUtils';
 import { ElMessage } from "element-plus";
 import { Loading, Refresh, Search } from "@element-plus/icons-vue";
 import { useDatasetStore } from "@/stores/useDatasetStore";
@@ -213,14 +214,7 @@ const formatTimestamp = (timestamp: string) => {
     }
     
     // 格式化为本地时间
-    return date.toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
+    return formatLocalWithTZ(date.getTime());
   } catch (error) {
     console.error('时间格式化错误:', error);
     return timestamp;
@@ -387,7 +381,7 @@ onMounted(() => {
                 <el-option
                   v-for="v in versions"
                   :key="v.id"
-                  :label="`${v.stageType} (${new Date(v.createdAt).toLocaleDateString()})`"
+                  :label="`${v.stageType} (${formatLocalWithTZ(v.createdAt)})`"
                   :value="v.id"
                 />
               </el-select>

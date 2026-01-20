@@ -17,6 +17,7 @@ export interface DatasetBaseInfo {
   dirPath: string; // 数据集目录
   originalFile: string;
   fileCount?: number;
+  versionCount?: number;
   totalSizeBytes?: number;
   originalFileSizeBytes?: number;
   createdAt: number;
@@ -60,6 +61,7 @@ export interface DataQualityInfo {
 }
 // 处理后文件信息接口
 export interface ProcessedFileInfo {
+  id?: string;
   name: string;
   filePath: string;
   size: string;
@@ -131,6 +133,7 @@ export interface ImportDatasetRequest {
   missingValueTypes: string[];
   rows: number;
   columns: string[];
+  sourceTimezone?: string; // 原始数据时区，可选，默认'auto'
 }
 
 // 统一的响应格式

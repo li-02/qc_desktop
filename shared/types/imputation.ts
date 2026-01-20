@@ -36,27 +36,55 @@ export interface ImputationMethod {
   methodName: string;
   category: ImputationCategory;
   description: string;
-  defaultParams?: Record<string, any>;
   requiresPython: boolean;
   isAvailable: boolean;
   estimatedTime?: EstimatedTime;
   accuracy?: AccuracyLevel;
   priority: number;
+  applicableDataTypes: string[]; // 适用的数据类型
+  icon?: string; // 方法图标
   createdAt: string;
   updatedAt: string;
 }
 
 /** 插补方法参数定义 */
 export interface ImputationMethodParam {
-  name: string;
-  type: 'number' | 'string' | 'boolean' | 'select';
+  id: number;
+  methodId: ImputationMethodId;
+  paramKey: string;
+  paramName: string;
+  paramType: 'number' | 'select' | 'boolean' | 'range';
+  defaultValue: string | null;
+  minValue?: number;
+  maxValue?: number;
+  stepValue?: number;
+  options?: string | null; // JSON字符串
+  tooltip?: string;
+  isRequired: boolean;
+  isAdvanced: boolean;
+  paramOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 插补方法参数选项 */
+export interface ImputationMethodParamOption {
   label: string;
-  defaultValue: any;
+  value: number | string;
+}
+
+/** 插补方法参数配置（前端使用） */
+export interface ImputationMethodParamConfig {
+  key: string;
+  label: string;
+  type: 'number' | 'select' | 'boolean' | 'range';
+  default: number | string | boolean;
+  options?: ImputationMethodParamOption[];
   min?: number;
   max?: number;
-  options?: { value: any; label: string }[];
-  description?: string;
-  required?: boolean;
+  step?: number;
+  tooltip?: string;
+  advanced?: boolean; // 是否为高级参数
 }
 
 // ==================== 结果接口 ====================
@@ -141,8 +169,9 @@ export interface ExecuteImputationRequest {
   datasetId: number;
   versionId: number;
   methodId: ImputationMethodId;
-  targetColumns: string[];
+  targetColumns: string[] | null; // null表示全部列
   params?: Record<string, any>;
+  validateSplit?: number; // 验证集比例（0-0.3）
 }
 
 /** 执行插补响应 */
@@ -253,12 +282,34 @@ export interface ImputationMethodRow {
   method_name: string;
   category: string;
   description: string | null;
-  default_params: string | null;
   requires_python: number;
   is_available: number;
   estimated_time: string | null;
   accuracy: string | null;
   priority: number;
+  applicable_data_types: string | null;
+  icon: string | null;
+  created_at: string;
+  updated_at: string;
+  is_del: number;
+}
+
+/** 插补方法参数数据库行 */
+export interface ImputationMethodParamRow {
+  id: number;
+  method_id: string;
+  param_key: string;
+  param_name: string;
+  param_type: string;
+  default_value: string | null;
+  min_value: number | null;
+  max_value: number | null;
+  step_value: number | null;
+  options: string | null;
+  tooltip: string | null;
+  is_required: number;
+  is_advanced: number;
+  param_order: number;
   created_at: string;
   updated_at: string;
   is_del: number;

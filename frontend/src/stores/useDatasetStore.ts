@@ -25,6 +25,9 @@ export const useDatasetStore = defineStore("dataset", () => {
     if (!projectStore.currentProject) return [];
     return datasets.value.filter(d => d.belongTo === projectStore.currentProject?.id);
   });
+  const currentDatasetMissingMarkers = computed(() => {
+    return currentDataset.value?.missingValueTypes || [];
+  });
 
   // Actions
   const loadDatasets = async (projectId?: string) => {
@@ -247,6 +250,7 @@ export const useDatasetStore = defineStore("dataset", () => {
     hasDatasets,
     datasetsSortedByDate,
     currentProjectDatasets,
+    currentDatasetMissingMarkers,
     // Actions
     loadDatasets,
     setCurrentDataset,

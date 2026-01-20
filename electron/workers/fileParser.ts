@@ -9,20 +9,23 @@ if (parentPort) {
   console.log("Worker: 文件解析器已启动");
 
   messagePort.on("message", async message => {
-    const { type, data, maxRows, missingValueTypes } = message;
+    const { type, data, maxRows, missingValueTypes, timeColumn } = message;
+    console.log(`Worker received task: type=${type}, maxRows=${maxRows}, timeColumn=${timeColumn}`);
+    console.log(`Worker received missingValueTypes:`, JSON.stringify(missingValueTypes));
 
     try {
       let result;
       if (type === "csv") {
-        result = await parseCSV(data, maxRows, missingValueTypes);
+        result = await parseCSV(data, maxRows, missingValueTypes, timeColumn);
       } else if (type === "excel") {
-        result = await parseExcel(data, maxRows, missingValueTypes);
+        result = await parseExcel(data, maxRows, missingValueTypes, timeColumn);
       } else {
         throw new Error("不支持的文件类型");
       }
 
       messagePort.postMessage({ success: true, data: result });
     } catch (error: any) {
+      console.error("Worker error:", error);
       messagePort.postMessage({ success: false, error: error.message });
     }
   });
@@ -80,10 +83,22 @@ function calculateMissingValueStats(
   });
 
   // 遍历所有数据统计缺失值
-  data.forEach(row => {
+  data.forEach((row, index) => {
     hasMissingValue = false; // 每行开始时重置标志
+
+    // DEBUG: Log first 5 rows for pm2_5
+    if (index < 5 && row['pm2_5'] !== undefined) {
+      // console.log(`Row ${index} pm2_5 value:`, row['pm2_5'], 'Type:', typeof row['pm2_5']);
+    }
+
     columns.forEach(column => {
       const value = row[column];
+
+      // DEBUG: Log detailed mismatch for first missing expectation
+      if (index === 1 && column === 'pm2_5') { // Row 2 in file (index 1 here?)
+        console.log(`Checking Row ${index} Col ${column}. Value:`, value, `(${typeof value})`);
+        console.log('Is Missing?', isMissingValue(value, missingValueTypes));
+      }
 
       if (isMissingValue(value, missingValueTypes)) {
         hasMissingValue = true;
@@ -165,8 +180,71 @@ function calculateColumnStatistics(
   };
 }
 
+// 时间分布统计接口
+interface TimeDistribution {
+  monthly: Record<string, number>; // "2023-01": 10
+  hourly: Record<string, number>;  // "00": 5, "14": 8
+  heatmap: Record<string, number>; // "2023-01-01 14": 2 (Day + Hour)
+}
+
+// 计算时间分布
+function calculateTimeDistribution(
+  data: any[],
+  timeColumn: string,
+  columns: string[],
+  missingValueTypes: string[]
+): TimeDistribution {
+  const monthly: Record<string, number> = {};
+  const hourly: Record<string, number> = {};
+  const heatmap: Record<string, number> = {};
+
+  // 初始化小时统计 (00-23)
+  for (let i = 0; i < 24; i++) {
+    const h = i.toString().padStart(2, '0');
+    hourly[h] = 0;
+  }
+
+  data.forEach(row => {
+    const timeVal = row[timeColumn];
+    if (!timeVal) return;
+
+    // 尝试解析日期
+    // 支持多种格式，这里简单处理，实际可能需要更强健的解析
+    const date = new Date(timeVal);
+    if (isNaN(date.getTime())) return;
+
+    // 检查该行是否有任意缺失值
+    let hasMissing = false;
+    for (const col of columns) {
+      // 跳过时间列本身的检查 (通常时间列不应缺失，但如果缺失也就是无法定位时间)
+      if (col === timeColumn) continue;
+      if (isMissingValue(row[col], missingValueTypes)) {
+        hasMissing = true;
+        break;
+      }
+    }
+
+    if (hasMissing) {
+      // 月份 YYYY-MM
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      monthly[monthKey] = (monthly[monthKey] || 0) + 1;
+
+      // 小时 HH
+      const hourKey = String(date.getHours()).padStart(2, '0');
+      hourly[hourKey] = (hourly[hourKey] || 0) + 1;
+
+      // 热力图 YYYY-MM-DD HH
+      const dayKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const heatmapKey = `${dayKey} ${hourKey}`;
+      heatmap[heatmapKey] = (heatmap[heatmapKey] || 0) + 1;
+    }
+  });
+
+  return { monthly, hourly, heatmap };
+}
+
 // 使用papaparse解析CSV文件
-function parseCSV(content: any, maxRows = 20, missingValueTypes: string[] = []) {
+function parseCSV(content: any, maxRows = 20, missingValueTypes: string[] = [], timeColumn: string = "") {
   try {
     // 完整解析（用于统计）
     const fullResults = Papa.parse(content, {
@@ -183,6 +261,7 @@ function parseCSV(content: any, maxRows = 20, missingValueTypes: string[] = []) 
     let columnMissingStatus: ColumnMissingStatus | undefined = {};
     let columnStatistics: Record<string, any> = {};
     let completeRecords = 0;
+    let timeDistribution: TimeDistribution | undefined;
 
     if (fullResults.data && fullResults.data.length > 0) {
       totalRows = fullResults.data.length;
@@ -237,7 +316,7 @@ function parseCSV(content: any, maxRows = 20, missingValueTypes: string[] = []) 
 }
 
 // 解析Excel文件
-function parseExcel(buffer: ArrayBuffer | Uint8Array | Buffer, maxRows = 20, missingValueTypes: string[] = []) {
+function parseExcel(buffer: ArrayBuffer | Uint8Array | Buffer, maxRows = 20, missingValueTypes: string[] = [], timeColumn: string = "") {
   try {
     const workbook = XLSX.read(buffer);
     const firstSheetName = workbook.SheetNames[0];
@@ -261,6 +340,7 @@ function parseExcel(buffer: ArrayBuffer | Uint8Array | Buffer, maxRows = 20, mis
     let columnMissingStatus: ColumnMissingStatus | undefined = {};
     let columnStatistics: Record<string, any> = {};
     let completeRecords = 0;
+    let timeDistribution: TimeDistribution | undefined;
 
     if (fullData && fullData.length > 0) {
       const headers: any[] = fullData[0].map(h => String(h));
@@ -299,6 +379,11 @@ function parseExcel(buffer: ArrayBuffer | Uint8Array | Buffer, maxRows = 20, mis
               columnStatistics[col] = colStats;
             }
           });
+
+          // 如果有时间列，计算时间分布
+          if (timeColumn && headers.includes(timeColumn)) {
+            timeDistribution = calculateTimeDistribution(formattedData, timeColumn, headers, missingValueTypes);
+          }
         }
 
         // 设置预览数据
@@ -319,6 +404,7 @@ function parseExcel(buffer: ArrayBuffer | Uint8Array | Buffer, maxRows = 20, mis
       columnMissingStatus,
       columnStatistics,
       completeRecords,
+      timeDistribution
     };
   } catch (error: any) {
     throw new Error(`Excel解析错误: ${error.message}`);

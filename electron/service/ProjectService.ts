@@ -18,6 +18,23 @@ export class ProjectService {
     this.datasetRepository = datasetRepository;
   }
 
+  /**
+   * 解析 SQLite 存储的 DATETIME 字符串为 UTC epoch(ms)
+   * 保持与 DatasetService 相同的解析策略，避免时区误差
+   */
+  private parseSQLiteTimestampAsUTC(timestamp?: string | null): number {
+    if (!timestamp) return NaN;
+    try {
+      const iso = String(timestamp).trim().replace(" ", "T") + "Z";
+      const t = Date.parse(iso);
+      if (!isNaN(t)) return t;
+    } catch (e) {
+      // fallback below
+    }
+    const fallback = Date.parse(String(timestamp));
+    return isNaN(fallback) ? NaN : fallback;
+  }
+
   async getAllProjects(): Promise<ServiceResponse<ProjectInfo[]>> {
     try {
       const sitesResult = this.projectRepository.getAllProjects();
@@ -174,14 +191,27 @@ export class ProjectService {
       id: site.id.toString(),
       name: site.site_name,
       path: "", 
-      createdAt: new Date(site.created_at).getTime(),
-      lastUpdated: new Date(site.updated_at).getTime(),
+      // SQLite CURRENT_TIMESTAMP is UTC; parse explicitly as UTC to get correct epoch(ms)
+      createdAt: this.parseSQLiteTimestampAsUTC(site.created_at),
+      lastUpdated: this.parseSQLiteTimestampAsUTC(site.updated_at),
       siteInfo: {
         longitude: site.longitude?.toString() || "",
         latitude: site.latitude?.toString() || "",
         altitude: site.altitude?.toString() || "",
       },
-      datasets: datasets.map(d => ({
+      datasets: datasets.map(d => {
+        // determine version count for this dataset (used by UI to show versions)
+        let versionCount = 0;
+        try {
+          const versionsRes = this.datasetRepository.getVersionsByDatasetId(d.id);
+          if (versionsRes.success && Array.isArray(versionsRes.data)) {
+            versionCount = versionsRes.data.length;
+          }
+        } catch {
+          versionCount = 0;
+        }
+
+        return ({
         ...((): {
           dirPath: string;
           fileCount: number;
@@ -204,25 +234,39 @@ export class ProjectService {
           }
 
           try {
+            // Only count actual data files to avoid counting auxiliary or hidden files.
+            const allowedExts = new Set([".csv", ".xlsx", ".xls"]);
+
             if (dirPath && fs.existsSync(dirPath)) {
               const entries = fs.readdirSync(dirPath, { withFileTypes: true });
               for (const entry of entries) {
                 if (!entry.isFile()) continue;
+                // ignore hidden/temp files
+                if (entry.name.startsWith(".")) continue;
+                const ext = path.extname(entry.name).toLowerCase();
+                if (!allowedExts.has(ext)) continue;
                 const fp = path.join(dirPath, entry.name);
                 try {
                   const st = fs.statSync(fp);
                   fileCount += 1;
                   totalSizeBytes += st.size;
                 } catch {
-                  // ignore
+                  // ignore stat errors for individual files
                 }
               }
             } else if (sourceFilePath && fs.existsSync(sourceFilePath)) {
-              fileCount = 1;
-              totalSizeBytes = originalFileSizeBytes;
+              const ext = path.extname(sourceFilePath).toLowerCase();
+              if ([".csv", ".xlsx", ".xls"].includes(ext)) {
+                fileCount = 1;
+                totalSizeBytes = originalFileSizeBytes;
+              } else {
+                // non-data file stored as original - still treat as 1 file but size unknown
+                fileCount = 1;
+                totalSizeBytes = originalFileSizeBytes || 0;
+              }
             }
           } catch {
-            // ignore
+            // ignore directory read errors
           }
 
           return {
@@ -236,9 +280,12 @@ export class ProjectService {
         name: d.dataset_name,
         type: "csv",
         originalFile: d.source_file_path || "",
-        createdAt: new Date(d.import_time).getTime(),
-        belongTo: site.id.toString()
-      }))
+        // 同样将 import_time 明确按 UTC 解析
+        createdAt: this.parseSQLiteTimestampAsUTC(d.import_time),
+        belongTo: site.id.toString(),
+        versionCount
+      } as any);
+    })
     };
   }
 }

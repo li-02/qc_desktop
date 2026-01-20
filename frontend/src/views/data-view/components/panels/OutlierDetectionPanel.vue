@@ -419,15 +419,10 @@ const exportCleanedData = async () => {
   await datasetStore.exportVersion(Number(versionId), fileName);
 };
 
+import { formatLocalWithTZ } from '@/utils/timeUtils';
 const formatDateTime = (dateStr: string) => {
   if (!dateStr) return '-';
-  const date = new Date(dateStr);
-  return date.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  return formatLocalWithTZ(dateStr);
 };
 
 const getStatusType = (status: string) => {

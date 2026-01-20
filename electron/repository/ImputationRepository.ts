@@ -1,6 +1,7 @@
 import { DatabaseManager } from '../core/DatabaseManager';
 import type {
   ImputationMethodRow,
+  ImputationMethodParamRow,
   ImputationResultRow,
   ImputationDetailRow,
   ImputationColumnStatRow,
@@ -30,13 +31,18 @@ export class ImputationRepository {
    * 根据分类获取插补方法
    */
   getMethodsByCategory(category: ImputationCategory): ImputationMethodRow[] {
+    // 确保 category 是有效的字符串类型
+    if (category === undefined || category === null) {
+      return [];
+    }
+    const validCategory = String(category);
     return this.db
       .prepare(`
         SELECT * FROM conf_imputation_method 
         WHERE category = ? AND is_del = 0 
         ORDER BY priority DESC
       `)
-      .all(category) as ImputationMethodRow[];
+      .all(validCategory) as ImputationMethodRow[];
   }
 
   /**
@@ -56,12 +62,49 @@ export class ImputationRepository {
    * 根据方法ID获取插补方法
    */
   getMethodById(methodId: string): ImputationMethodRow | undefined {
+    // 确保 methodId 是有效的字符串类型
+    if (methodId === undefined || methodId === null) {
+      return undefined;
+    }
+    const validMethodId = String(methodId);
     return this.db
       .prepare(`
-        SELECT * FROM conf_imputation_method 
+        SELECT * FROM conf_imputation_method
         WHERE method_id = ? AND is_del = 0
       `)
-      .get(methodId) as ImputationMethodRow | undefined;
+      .get(validMethodId) as ImputationMethodRow | undefined;
+  }
+
+  /**
+   * 获取方法的参数定义
+   */
+  getMethodParams(methodId: string): ImputationMethodParamRow[] {
+    // 确保 methodId 是有效的字符串类型
+    if (methodId === undefined || methodId === null) {
+      return [];
+    }
+    const validMethodId = String(methodId);
+    return this.db
+      .prepare(`
+        SELECT * FROM conf_imputation_method_params
+        WHERE method_id = ? AND is_del = 0
+        ORDER BY param_order ASC
+      `)
+      .all(validMethodId) as ImputationMethodParamRow[];
+  }
+
+  /**
+   * 获取方法及其参数定义
+   */
+  getMethodWithParams(methodId: string): {
+    method: ImputationMethodRow;
+    params: ImputationMethodParamRow[];
+  } | null {
+    const method = this.getMethodById(methodId);
+    if (!method) return null;
+
+    const params = this.getMethodParams(methodId);
+    return { method, params };
   }
 
   // ==================== 插补结果 ====================
@@ -131,6 +174,20 @@ export class ImputationRepository {
         resultId
       );
   }
+
+  /**
+   * 更新插补结果的新版本ID
+   */
+  updateResultNewVersion(resultId: number, newVersionId: number): void {
+    this.db
+      .prepare(`
+        UPDATE biz_imputation_result 
+        SET new_version_id = ?, status = 'APPLIED', updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `)
+      .run(newVersionId, resultId);
+  }
+
 
   /**
    * 获取插补结果

@@ -2,6 +2,7 @@ import { ImputationRepository } from '../repository/ImputationRepository';
 import { DatabaseManager } from '../core/DatabaseManager';
 import type {
   ImputationMethod,
+  ImputationMethodParam,
   ImputationResult,
   ImputationDetail,
   ImputationColumnStat,
@@ -11,10 +12,12 @@ import type {
   ExecuteImputationRequest,
   ExecuteImputationResponse,
   ImputationMethodRow,
+  ImputationMethodParamRow,
   ImputationResultRow,
 } from '@shared/types/imputation';
 import type { DatasetVersion } from '@shared/types/database';
 import * as fs from 'fs';
+import * as path from 'path';
 import * as Papa from 'papaparse';
 
 // 进度回调类型
@@ -55,6 +58,27 @@ export class ImputationService {
     return rows.map(this.mapMethodRow);
   }
 
+  /**
+   * 获取方法的参数定义
+   */
+  getMethodParams(methodId: string): ImputationMethodParam[] {
+    const rows = this.repository.getMethodParams(methodId);
+    return rows.map(this.mapMethodParamRow);
+  }
+
+  /**
+   * 获取方法及其参数定义
+   */
+  getMethodWithParams(methodId: string): { method: ImputationMethod; params: ImputationMethodParam[] } | undefined {
+    const result = this.repository.getMethodWithParams(methodId);
+    if (!result) return undefined;
+
+    return {
+      method: this.mapMethodRow(result.method),
+      params: result.params.map(this.mapMethodParamRow),
+    };
+  }
+
   // ==================== 执行插补 ====================
 
   /**
@@ -66,12 +90,30 @@ export class ImputationService {
   ): Promise<ExecuteImputationResponse> {
     const startTime = Date.now();
 
+    // 获取版本信息
+    const version = this.db
+      .prepare('SELECT * FROM biz_dataset_version WHERE id = ?')
+      .get(request.versionId) as DatasetVersion | undefined;
+    if (!version) {
+      throw new Error(`版本不存在: ${request.versionId}`);
+    }
+
+    // 读取数据以确定列名
+    const data = await this.readDataFile(version.file_path);
+    if (!data || data.length === 0) {
+      throw new Error('数据为空');
+    }
+
+    // 处理目标列
+    const availableColumns = Object.keys(data[0]);
+    const targetColumns = request.targetColumns || availableColumns;
+
     // 创建结果记录
     const resultId = this.repository.createResult({
       datasetId: request.datasetId,
       versionId: request.versionId,
       methodId: request.methodId,
-      targetColumns: request.targetColumns,
+      targetColumns: targetColumns,
       methodParams: request.params,
     });
 
@@ -89,30 +131,8 @@ export class ImputationService {
         message: '正在准备数据...',
       });
 
-      // 获取版本信息
-      const version = this.db
-        .prepare('SELECT * FROM biz_dataset_version WHERE id = ?')
-        .get(request.versionId) as DatasetVersion | undefined;
-      if (!version) {
-        throw new Error(`版本不存在: ${request.versionId}`);
-      }
-
-      // 读取数据
-      this.emitProgress(resultId, {
-        resultId,
-        stage: 'preparing',
-        progress: 10,
-        message: '正在读取数据文件...',
-      });
-
-      const data = await this.readDataFile(version.file_path);
-      if (!data || data.length === 0) {
-        throw new Error('数据为空');
-      }
-
       // 验证目标列
-      const columns = Object.keys(data[0]);
-      const invalidColumns = request.targetColumns.filter(col => !columns.includes(col));
+      const invalidColumns = targetColumns.filter(col => !availableColumns.includes(col));
       if (invalidColumns.length > 0) {
         throw new Error(`无效的列: ${invalidColumns.join(', ')}`);
       }
@@ -128,7 +148,7 @@ export class ImputationService {
       const { imputedData, details, columnStats } = await this.performImputation(
         resultId,
         data,
-        request.targetColumns,
+        targetColumns,
         request.methodId,
         request.params || {},
         (progress, message, currentColumn) => {
@@ -264,7 +284,7 @@ export class ImputationService {
 
       // 提取列数据
       const columnData = data.map(row => row[columnName]);
-      const numericData = columnData.map(v => 
+      const numericData = columnData.map(v =>
         v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? null : Number(v)
       );
 
@@ -398,8 +418,8 @@ export class ImputationService {
   private imputeMedian(data: (number | null)[], validValues: number[]): (number | null)[] {
     const sorted = [...validValues].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
-    const median = sorted.length % 2 === 0 
-      ? (sorted[mid - 1] + sorted[mid]) / 2 
+    const median = sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
       : sorted[mid];
     return data.map(v => v === null ? median : v);
   }
@@ -460,7 +480,7 @@ export class ImputationService {
    */
   private imputeLinear(data: (number | null)[]): (number | null)[] {
     const result = [...data];
-    
+
     // 找到所有有效值的索引和值
     const validPoints: { index: number; value: number }[] = [];
     data.forEach((v, i) => {
@@ -545,16 +565,16 @@ export class ImputationService {
   private calculateConfidence(methodId: ImputationMethodId, imputedValue: number, validValues: number[]): number {
     // 简单的置信度计算：基于插补值与有效值的相似性
     if (validValues.length === 0) return 0.5;
-    
+
     const mean = this.calculateMean(validValues);
     const std = this.calculateStd(validValues, mean);
-    
+
     if (std === 0) return 1.0;
-    
+
     // 使用正态分布概率作为置信度
     const zScore = Math.abs(imputedValue - mean) / std;
     const confidence = Math.exp(-0.5 * zScore * zScore);
-    
+
     // 根据方法调整置信度
     const methodMultiplier: Record<string, number> = {
       'MEAN': 0.6,
@@ -566,7 +586,7 @@ export class ImputationService {
       'SPLINE': 0.85,
       'POLYNOMIAL': 0.8,
     };
-    
+
     return Math.min(1.0, confidence * (methodMultiplier[methodId] || 0.75));
   }
 
@@ -576,7 +596,7 @@ export class ImputationService {
     }
 
     const ext = filePath.toLowerCase().split('.').pop();
-    
+
     if (ext === 'csv') {
       return this.readCsvFile(filePath);
     } else {
@@ -593,11 +613,11 @@ export class ImputationService {
         skipEmptyLines: true,
         dynamicTyping: true,
       });
-      
+
       if (result.errors.length > 0) {
         console.warn('CSV 解析警告:', result.errors);
       }
-      
+
       resolve(result.data as Record<string, any>[]);
     });
   }
@@ -680,6 +700,142 @@ export class ImputationService {
     this.repository.deleteResult(resultId);
   }
 
+  // ==================== 结果应用与导出 ====================
+
+  /**
+   * 重构数据（原始数据 + 插补详情）
+   */
+  async reconstructData(resultId: number): Promise<Record<string, any>[]> {
+    const result = this.getResult(resultId);
+    if (!result) throw new Error(`Result not found: ${resultId}`);
+
+    // 获取版本信息
+    const version = this.db.prepare('SELECT * FROM biz_dataset_version WHERE id = ?').get(result.versionId) as DatasetVersion;
+    if (!version) throw new Error('Original version not found');
+
+    // 读取原始数据
+    const data = await this.readDataFile(version.file_path);
+
+    // 获取详情并应用
+    const details = this.getDetails(resultId, undefined, -1);
+
+    // 创建快速查找映射 (rowIndex -> details)
+    const detailsMap = new Map<number, typeof details>();
+    for (const detail of details) {
+      if (!detailsMap.has(detail.rowIndex)) {
+        detailsMap.set(detail.rowIndex, []);
+      }
+      detailsMap.get(detail.rowIndex)?.push(detail);
+    }
+
+    // 应用插补值
+    for (const [rowIndex, rowDetails] of detailsMap) {
+      if (data[rowIndex]) {
+        for (const detail of rowDetails) {
+          data[rowIndex][detail.columnName] = detail.imputedValue;
+        }
+      }
+    }
+
+    return data;
+  }
+
+  /**
+   * 应用插补结果为新版本
+   */
+  async applyVersion(resultId: number, remark?: string): Promise<DatasetVersion> {
+    const result = this.getResult(resultId);
+    if (!result) throw new Error('Result not found');
+
+    // 1. 重构数据
+    const data = await this.reconstructData(resultId);
+
+    // 2. 生成新文件路径
+    const version = this.db.prepare('SELECT * FROM biz_dataset_version WHERE id = ?').get(result.versionId) as DatasetVersion;
+    if (!version) throw new Error('Original version not found');
+
+    const dir = path.dirname(version.file_path);
+    const ext = path.extname(version.file_path);
+    const name = path.basename(version.file_path, ext);
+    // 避免文件名冲突，使用时间戳或UUID，这里简单用 resultId
+    const newFileName = `${name}_imputed_${resultId}_${Date.now()}${ext}`;
+    const newFilePath = path.join(dir, newFileName);
+
+    // 3. 写入文件
+    const csv = Papa.unparse(data);
+    fs.writeFileSync(newFilePath, csv, 'utf-8');
+
+    // 4. 创建新版本记录
+    const stmt = this.db.prepare(`
+      INSERT INTO biz_dataset_version (
+          dataset_id, parent_version_id, stage_type, 
+          file_path, created_at, remark
+      ) VALUES (
+          @dataset_id, @parent_version_id, @stage_type,
+          @file_path, @created_at, @remark
+      )
+    `);
+
+    const now = new Date().toISOString();
+    const info = stmt.run({
+      dataset_id: result.datasetId,
+      parent_version_id: result.versionId,
+      stage_type: 'QC',
+      file_path: newFilePath,
+      created_at: now,
+      remark: remark || `Imputed using ${result.methodId}`
+    });
+
+    const newVersionId = Number(info.lastInsertRowid);
+
+    // 5. 创建统计详情记录
+    const statStmt = this.db.prepare(`
+      INSERT INTO stat_version_detail (
+        version_id, total_rows, total_cols, created_at
+      ) VALUES (
+        @version_id, @total_rows, @total_cols, @created_at
+      )
+    `);
+
+    // 计算总列数
+    const totalCols = data.length > 0 ? Object.keys(data[0]).length : 0;
+
+    statStmt.run({
+      version_id: newVersionId,
+      total_rows: data.length,
+      total_cols: totalCols,
+      created_at: now
+    });
+
+    // 6. 更新结果关联
+    this.repository.updateResultNewVersion(resultId, newVersionId);
+
+    // 标记详情已应用
+    this.repository.markDetailsApplied(resultId);
+
+    return this.db.prepare('SELECT * FROM biz_dataset_version WHERE id = ?').get(newVersionId) as DatasetVersion;
+  }
+
+  /**
+   * 导出插补结果为文件
+   */
+  async exportFile(resultId: number, targetPath?: string): Promise<string> {
+    const data = await this.reconstructData(resultId);
+    const csv = Papa.unparse(data);
+
+    // 如果没有提供路径，则返回 CSV 内容（或者这里假设由 Controller 处理路径选择）
+    // 这里我们假设 Controller 已经处理了路径选择，或者我们返回内容供 Controller 处理
+    // 但 Service 层通常不处理 UI 交互。
+    // 如果 targetPath 存在，则写入。
+
+    if (targetPath) {
+      fs.writeFileSync(targetPath, csv, 'utf-8');
+      return targetPath;
+    }
+
+    return csv; // Return CSV content if no path (allow Controller to handle)
+  }
+
   // ==================== 映射方法 ====================
 
   private mapMethodRow(row: ImputationMethodRow): ImputationMethod {
@@ -689,12 +845,34 @@ export class ImputationService {
       methodName: row.method_name,
       category: row.category as ImputationCategory,
       description: row.description || '',
-      defaultParams: row.default_params ? JSON.parse(row.default_params) : undefined,
       requiresPython: row.requires_python === 1,
       isAvailable: row.is_available === 1,
       estimatedTime: row.estimated_time as any,
       accuracy: row.accuracy as any,
       priority: row.priority,
+      applicableDataTypes: row.applicable_data_types ? JSON.parse(row.applicable_data_types) : [],
+      icon: row.icon || undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private mapMethodParamRow(row: ImputationMethodParamRow): ImputationMethodParam {
+    return {
+      id: row.id,
+      methodId: row.method_id as ImputationMethodId,
+      paramKey: row.param_key,
+      paramName: row.param_name,
+      paramType: row.param_type as any,
+      defaultValue: row.default_value,
+      minValue: row.min_value || undefined,
+      maxValue: row.max_value || undefined,
+      stepValue: row.step_value || undefined,
+      options: row.options,
+      tooltip: row.tooltip || undefined,
+      isRequired: row.is_required === 1,
+      isAdvanced: row.is_advanced === 1,
+      paramOrder: row.param_order,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

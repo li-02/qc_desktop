@@ -13,14 +13,37 @@ import {
 } from "@shared/types/projectInterface";
 import { Dataset, DatasetVersion, StatVersionDetail, ColumnSetting } from "@shared/types/database";
 import { Worker } from "worker_threads";
+import { normalizeTimestamp, formatTimestamp } from "../utils/timeUtils";
+import { SettingsRepository } from "../repository/SettingsRepository";
 
 export class DatasetService {
   private datasetRepository: DatasetDBRepository;
   private projectRepository: ProjectDBRepository;
+  private settingsRepository: SettingsRepository;
 
-  constructor(datasetRepository: DatasetDBRepository, projectRepository: ProjectDBRepository) {
+  constructor(datasetRepository: DatasetDBRepository, projectRepository: ProjectDBRepository, settingsRepository: SettingsRepository) {
     this.datasetRepository = datasetRepository;
     this.projectRepository = projectRepository;
+    this.settingsRepository = settingsRepository;
+  }
+
+  /**
+   * 解析 SQLite 存储的 DATETIME 字符串（格式通常为 "YYYY-MM-DD HH:MM:SS"）为 UTC epoch(ms)
+   * SQLite 的 CURRENT_TIMESTAMP 返回的是 UTC 时间字符串，因此这里显式按 UTC 解析，避免时区偏移错误。
+   */
+  private parseSQLiteTimestampAsUTC(timestamp?: string | null): number {
+    if (!timestamp) return NaN;
+    try {
+      // 将 "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DDTHH:MM:SSZ" 强制作为 UTC 解析
+      const iso = String(timestamp).trim().replace(" ", "T") + "Z";
+      const t = Date.parse(iso);
+      if (!isNaN(t)) return t;
+    } catch (e) {
+      // fallback below
+    }
+    // 最后回退到常规解析（兼容性）
+    const fallback = Date.parse(String(timestamp));
+    return isNaN(fallback) ? NaN : fallback;
   }
 
   async importDataset(request: ImportDatasetRequest): Promise<ServiceResponse<{
@@ -28,6 +51,8 @@ export class DatasetService {
     datasetName: string;
     path: string;
   }>> {
+    // 解析时区设置
+    const sourceTimezone = request.sourceTimezone || 'auto';
     try {
       const validationResult = await this.validateImportRequest(request);
       if (!validationResult.success) {
@@ -57,7 +82,14 @@ export class DatasetService {
       const savedFileName = `original${originalExt}`;
       const savedFilePath = path.join(datasetDir, savedFileName);
 
-      fs.copyFileSync(request.file.path, savedFilePath);
+      // 在保存文件之前，先对数据进行时间转换处理
+      const processedFilePath = await this.processTimeDataBeforeSave(
+        request.file.path,
+        savedFilePath,
+        request.columns,
+        path.extname(request.file.name),
+        sourceTimezone
+      );
 
       // 识别时间列
       const timeColumn = this.findTimestampColumn(request.columns);
@@ -197,7 +229,7 @@ export class DatasetService {
             missingValueStats: {}, // Need to parse from json if available
             totalMissingCount: stat.total_missing_count,
             qualityPercentage: stat.total_rows > 0 ? ((stat.total_rows * stat.total_cols - stat.total_missing_count) / (stat.total_rows * stat.total_cols)) * 100 : 0,
-            analyzedAt: new Date(stat.calculated_at).getTime(),
+            analyzedAt: this.parseSQLiteTimestampAsUTC(stat.calculated_at),
             columnMissingStatus: {}
           };
           if (stat.column_stats_json) {
@@ -220,8 +252,8 @@ export class DatasetService {
         id: dataset.id.toString(),
         name: dataset.dataset_name,
         type: "csv", // Default or store in db
-        createdAt: new Date(dataset.import_time).getTime(),
-        updatedAt: new Date(dataset.import_time).getTime(),
+        createdAt: this.parseSQLiteTimestampAsUTC(dataset.import_time),
+        updatedAt: this.parseSQLiteTimestampAsUTC(dataset.import_time),
         belongTo: dataset.site_id.toString(),
         dirPath: path.dirname(dataset.source_file_path || ""),
         missingValueTypes: (() => {
@@ -252,7 +284,7 @@ export class DatasetService {
           id: v.id.toString(),
           name: `Version ${v.id}`,
           filePath: v.file_path,
-          createdAt: new Date(v.created_at).getTime(),
+          createdAt: this.parseSQLiteTimestampAsUTC(v.created_at),
           type: v.stage_type,
           processingMethod: v.remark || "",
           rows: 0, // Need stats
@@ -280,7 +312,7 @@ export class DatasetService {
         datasetId: v.dataset_id,
         parentVersionId: v.parent_version_id || null,
         stageType: v.stage_type,
-        createdAt: new Date(v.created_at).getTime(),
+        createdAt: this.parseSQLiteTimestampAsUTC(v.created_at),
         remark: v.remark || ""
       }));
 
@@ -308,11 +340,83 @@ export class DatasetService {
           totalMissingCount: stat.total_missing_count,
           totalOutlierCount: stat.total_outlier_count,
           columnStats: stat.column_stats_json ? JSON.parse(stat.column_stats_json) : {},
-          calculatedAt: new Date(stat.calculated_at).getTime()
+          calculatedAt: this.parseSQLiteTimestampAsUTC(stat.calculated_at)
         }
       };
     } catch (error: any) {
       return { success: false, error: `获取版本统计信息失败: ${error.message}` };
+    }
+  }
+
+  async getDatasetVersionMissingStats(
+    datasetId: string,
+    versionId: string,
+    missingMarkers: string[]
+  ): Promise<ServiceResponse<{
+    totalRows: number;
+    totalMissingValues: number;
+    overallMissingRate: number;
+    columnStats: Array<{
+      columnName: string;
+      missingCount: number;
+      totalCount: number;
+      missingRate: number;
+    }>;
+    timeDistribution?: {
+      monthly: Record<string, number>;
+      hourly: Record<string, number>;
+      heatmap: Record<string, number>;
+    };
+  }>> {
+    try {
+      const dId = parseInt(datasetId);
+      const vId = parseInt(versionId);
+
+      if (isNaN(dId)) return { success: false, error: "无效的数据集ID" };
+      if (isNaN(vId)) return { success: false, error: "无效的版本ID" };
+
+      // 获取版本信息
+      const versionResult = this.datasetRepository.getDatasetVersionById(vId);
+      if (!versionResult.success || !versionResult.data) {
+        return { success: false, error: "未找到版本信息" };
+      }
+
+      const version = versionResult.data;
+      if (!version.file_path || !fs.existsSync(version.file_path)) {
+        return { success: false, error: "版本文件不存在" };
+      }
+
+      // 获取数据集信息以获取列信息
+      const datasetResult = this.datasetRepository.getDatasetById(dId);
+      if (!datasetResult.success) {
+        return { success: false, error: "未找到数据集信息" };
+      }
+
+      // 分析文件中的缺失值
+      // 分析文件中的缺失值
+      const analysisResult = await this.analyzeFileMissingValues(
+        version.file_path,
+        missingMarkers,
+        datasetResult.data!.time_column || undefined
+      );
+
+      if (!analysisResult.success) {
+        return { success: false, error: analysisResult.error };
+      }
+
+      const data = analysisResult.data!;
+      return {
+        success: true,
+        data: {
+          totalRows: data.totalRows,
+          totalMissingValues: data.totalMissingCount,
+          overallMissingRate: data.overallMissingRate,
+          columnStats: data.columnStats,
+          timeDistribution: data.timeDistribution
+        }
+      };
+    } catch (error: any) {
+      return { success: false, error: `获取版本缺失值统计失败: ${error.message}` };
     }
   }
 
@@ -329,7 +433,7 @@ export class DatasetService {
       if (!versionResult.success || !versionResult.data) {
         return { success: false, error: "未找到版本信息" };
       }
-      
+
       const version = versionResult.data;
       if (!version.file_path || !fs.existsSync(version.file_path)) {
         return { success: false, error: "版本文件不存在" };
@@ -337,7 +441,7 @@ export class DatasetService {
 
       // Copy file to target path
       fs.copyFileSync(version.file_path, targetPath);
-      
+
       return { success: true };
     } catch (error: any) {
       return { success: false, error: `导出失败: ${error.message}` };
@@ -442,7 +546,7 @@ export class DatasetService {
           missingValueStats: missingValueStats,
           totalMissingCount: stat.total_missing_count,
           qualityPercentage: stat.total_rows > 0 ? ((stat.total_rows - stat.total_missing_count) / stat.total_rows) * 100 : 100,
-          analyzedAt: new Date(stat.calculated_at).getTime(),
+          analyzedAt: this.parseSQLiteTimestampAsUTC(stat.calculated_at),
           columnMissingStatus: columnMissingStatus,
           columnStatistics: columnStatistics
         };
@@ -591,6 +695,244 @@ export class DatasetService {
         success: false,
         error: `文件分析失败: ${error.message}`,
       };
+    }
+  }
+
+  /**
+   * 分析文件中的缺失值统计
+   */
+
+  private async analyzeFileMissingValues(
+    filePath: string,
+    missingMarkers: string[],
+    timeColumn?: string
+  ): Promise<ServiceResponse<{
+    totalRows: number;
+    totalMissingCount: number;
+    overallMissingRate: number;
+    columnStats: Array<{
+      columnName: string;
+      missingCount: number;
+      totalCount: number;
+      missingRate: number;
+    }>;
+    timeDistribution?: {
+      monthly: Record<string, number>;
+      hourly: Record<string, number>;
+      heatmap: Record<string, number>;
+    };
+  }>> {
+    try {
+      // 读取文件内容
+      const fileExtension = path.extname(filePath).toLowerCase();
+      let fileContent: string | Buffer;
+
+      if (fileExtension === ".csv") {
+        fileContent = fs.readFileSync(filePath, "utf-8");
+      } else {
+        fileContent = fs.readFileSync(filePath);
+      }
+
+      // 使用worker解析文件并分析缺失值
+      const workerPath = path.join(__dirname, "../workers", "fileParser.js");
+
+      const parseResult = await new Promise<any>((resolve, reject) => {
+        const worker = new Worker(workerPath);
+
+        worker.on("message", (result: any) => {
+          worker.terminate();
+          if (result.success) {
+            resolve(result.data);
+          } else {
+            reject(new Error(result.error));
+          }
+        });
+
+        worker.on("error", (error: any) => {
+          worker.terminate();
+          reject(error);
+        });
+
+        worker.postMessage({
+          type: fileExtension === ".csv" ? "csv" : "excel",
+          data: fileContent,
+          maxRows: -1, // 分析所有行
+          missingValueTypes: missingMarkers,
+          analyzeMissingOnly: true, // 只分析缺失值，不需要完整的数据
+          timeColumn: timeColumn
+        });
+      });
+
+      // 处理解析结果
+      const totalRows = parseResult.totalRows || 0;
+      const columnMissingStatus = parseResult.columnMissingStatus || {};
+      const columns = parseResult.columns || [];
+      const timeDistribution = parseResult.timeDistribution;
+
+      // 计算每列的统计信息
+      // 计算每列的统计信息，并过滤掉时间列
+      const columnStats = columns
+        .filter((col: any) => {
+          const colName = typeof col === 'string' ? col : col.prop;
+          return !timeColumn || colName !== timeColumn;
+        })
+        .map((col: any) => {
+          // worker返回的columns是 {prop, label} 格式的对象数组，或者在某些情况下可能是字符串数组
+          const columnName = typeof col === 'string' ? col : col.prop;
+          const missingCount = columnMissingStatus[columnName] || 0;
+          const missingRate = totalRows > 0 ? (missingCount / totalRows) * 100 : 0;
+
+          return {
+            columnName,
+            missingCount,
+            totalCount: totalRows,
+            missingRate
+          };
+        });
+
+      // 计算总体统计
+      const totalMissingCount = columnStats.reduce((sum: number, col: any) => sum + col.missingCount, 0);
+      const totalCells = totalRows * columnStats.length; // use filtered length
+      const overallMissingRate = totalCells > 0 ? (totalMissingCount / totalCells) * 100 : 0;
+
+      return {
+        success: true,
+        data: {
+          totalRows,
+          totalMissingCount,
+          overallMissingRate,
+          columnStats,
+          timeDistribution
+        }
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `文件缺失值分析失败: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * 在保存文件之前处理时间数据，确保时间列转换为北京时间格式
+   */
+  private async processTimeDataBeforeSave(
+    sourceFilePath: string,
+    targetFilePath: string,
+    columns: string[],
+    fileExtension: string,
+    sourceTimezone: string
+  ): Promise<string> {
+    try {
+      // 使用前端检测到的用户系统时区
+      const timezone = sourceTimezone;
+      console.log('后端接收到的原始数据时区:', timezone);
+
+      // 读取原始文件内容
+      let fileContent: string | Buffer;
+      const fileType = fileExtension.toLowerCase().replace(".", "");
+
+      if (fileType === "csv") {
+        fileContent = fs.readFileSync(sourceFilePath, "utf-8");
+      } else {
+        fileContent = fs.readFileSync(sourceFilePath);
+      }
+
+      // 使用worker解析文件
+      const parseResult = await new Promise<any>((resolve, reject) => {
+        const workerPath = path.join(__dirname, "../workers", "fileParser.js");
+        const worker = new Worker(workerPath);
+
+        worker.on("message", (result: any) => {
+          worker.terminate();
+          if (result.success) {
+            resolve(result.data);
+          } else {
+            reject(new Error(result.error));
+          }
+        });
+
+        worker.on("error", (error: any) => {
+          worker.terminate();
+          reject(error);
+        });
+
+        worker.postMessage({
+          type: fileType === "csv" ? "csv" : "excel",
+          data: fileContent,
+          maxRows: -1,
+          missingValueTypes: [],
+        });
+      });
+
+      // 识别时间列
+      const timeColumn = this.findTimestampColumn(columns);
+      if (!timeColumn || !parseResult.tableData || parseResult.tableData.length === 0) {
+        // 没有时间列或没有数据，直接复制文件
+        fs.copyFileSync(sourceFilePath, targetFilePath);
+        return targetFilePath;
+      }
+
+      // 对时间列进行转换
+      const processedData = parseResult.tableData.map((row: any) => {
+        const processedRow = { ...row };
+
+        if (processedRow[timeColumn] !== null && processedRow[timeColumn] !== undefined && processedRow[timeColumn] !== '') {
+          const originalValue = processedRow[timeColumn];
+
+          // 检查是否已经有明确的时区信息（如包含Z、+08:00等）
+          const hasTimezoneInfo = /[Zz]$|[+-]\d{2}:?\d{2}$/.test(String(originalValue));
+
+          if (hasTimezoneInfo) {
+            // 如果已经有时区信息，直接解析并转换为北京时间
+            const epochMs = normalizeTimestamp(originalValue, timezone);
+            if (epochMs !== null) {
+              processedRow[timeColumn] = formatTimestamp(epochMs, 'UTC+8', 'datetime') + ':00';
+            }
+          } else {
+            // 如果没有时区信息，根据当前系统时区解析，然后转换为北京时间
+            const epochMs = normalizeTimestamp(originalValue, timezone);
+            if (epochMs !== null) {
+              processedRow[timeColumn] = formatTimestamp(epochMs, 'UTC+8', 'datetime') + ':00';
+            }
+          }
+        }
+
+        return processedRow;
+      });
+
+      // 将处理后的数据写回文件
+      if (fileType === "csv") {
+        // 生成CSV内容
+        const headers = columns;
+        const csvContent = [
+          headers.join(','),
+          ...processedData.map((row: any) =>
+            headers.map(col => {
+              const value = row[col];
+              // 如果包含逗号或引号，需要用引号包围并转义
+              if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
+                return `"${value.replace(/"/g, '""')}"`;
+              }
+              return String(value ?? '');
+            }).join(',')
+          )
+        ].join('\n');
+
+        fs.writeFileSync(targetFilePath, csvContent, 'utf-8');
+      } else {
+        // 对于Excel文件，目前先复制原始文件（后续可以扩展Excel处理逻辑）
+        console.warn('Excel文件时间转换暂未实现，直接复制原始文件');
+        fs.copyFileSync(sourceFilePath, targetFilePath);
+      }
+
+      return targetFilePath;
+
+    } catch (error: any) {
+      console.error('时间数据预处理失败:', error);
+      // 处理失败时，直接复制原始文件
+      fs.copyFileSync(sourceFilePath, targetFilePath);
+      return targetFilePath;
     }
   }
 }

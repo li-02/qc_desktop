@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { formatLocalWithTZ } from '@/utils/timeUtils';
 import { ElMessage } from "element-plus";
 import {
   Calendar,
@@ -71,13 +72,7 @@ const completeRecords = computed(() => {
 // Methods
 const formatDate = (timestamp: number): string => {
   if (!timestamp) return "未知";
-  return new Date(timestamp).toLocaleDateString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatLocalWithTZ(timestamp);
 };
 
 const formatFileSize = (sizeStr: string | number): string => {

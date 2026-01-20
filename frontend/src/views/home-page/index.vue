@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { formatLocalWithTZ } from '@/utils/timeUtils';
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import {
@@ -14,6 +15,7 @@ import {
   Monitor,
   DataLine,
   PieChart,
+  InfoFilled,
 } from "@element-plus/icons-vue";
 import { useProjectStore } from "@/stores/useProjectStore";
 import emitter from "@/utils/eventBus";
@@ -67,7 +69,8 @@ const quickStats = computed(() => {
   }, 0);
 
   const totalFiles = datasets.reduce((sum, d) => {
-    return sum + (d.fileCount || (d.originalFile ? 1 : 0));
+    // Use dataset version count instead of directory file count
+    return sum + (d.versionCount || 0);
   }, 0);
 
   return [
@@ -86,15 +89,16 @@ const quickStats = computed(() => {
       icon: "DataLine",
     },
     {
-      title: "文件总数",
+      title: "版本数",
       value: totalFiles.toString(),
+      tooltip: "版本数 = 每个数据集的处理/版本个数（例如每次处理/导出会产生一个版本）",
       trend: "up",
       color: "orange",
       icon: "Monitor",
     },
     {
       title: "最后更新",
-      value: project?.lastUpdated ? new Date(project.lastUpdated).toLocaleDateString() : "-",
+      value: project?.lastUpdated ? formatLocalWithTZ(project.lastUpdated) : "-",
       trend: "neutral",
       color: "purple",
       icon: "PieChart",
@@ -192,7 +196,12 @@ const showGuide = () => {
                   </el-icon>
                 </div>
                 <div class="stat-content">
-                  <h4 class="stat-title">{{ stat.title }}</h4>
+                  <h4 class="stat-title">
+                    {{ stat.title }}
+                    <el-tooltip v-if="stat.tooltip" :content="stat.tooltip" placement="top">
+                      <el-icon class="tooltip-icon"><InfoFilled /></el-icon>
+                    </el-tooltip>
+                  </h4>
                   <div class="stat-value">{{ stat.value }}</div>
                 </div>
               </div>
@@ -640,6 +649,13 @@ const showGuide = () => {
   font-size: 14px;
   color: #6b7280;
   margin: 0 0 4px 0;
+}
+
+.tooltip-icon {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-left: 8px;
+  vertical-align: middle;
 }
 
 .stat-value {

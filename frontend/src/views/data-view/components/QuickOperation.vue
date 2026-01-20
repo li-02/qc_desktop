@@ -172,6 +172,7 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive } from "vue";
+import { formatLocalWithTZ } from '@/utils/timeUtils';
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Lightning, Setting } from "@element-plus/icons-vue";
 import type { DatasetInfo } from "@shared/types/projectInterface";
@@ -439,15 +440,8 @@ const getOperationTagType = (status: string) => {
 };
 
 const formatRelativeTime = (timestamp: number): string => {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const minutes = Math.floor(diff / (1000 * 60));
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-
-  if (minutes < 1) return "刚刚";
-  if (minutes < 60) return `${minutes}分钟前`;
-  if (hours < 24) return `${hours}小时前`;
-  return new Date(timestamp).toLocaleDateString();
+  // 按要求显示 本地时间 + 时区 后缀
+  return formatLocalWithTZ(timestamp);
 };
 
 const viewOperationDetails = (operation: any) => {

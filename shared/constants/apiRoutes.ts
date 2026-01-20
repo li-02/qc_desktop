@@ -16,6 +16,7 @@ export const API_ROUTES = {
     GET_VERSION_STATS: "datasets/get-version-stats",
     EXPORT: "datasets/export",
     DELETE: "datasets/delete",
+    GET_VERSION_MISSING_STATS: "datasets/get-version-missing-stats",
   },
 
   // 文件处理
@@ -55,7 +56,7 @@ export const API_ROUTES = {
     GET_RESULT_STATS: "outlier/get-result-stats",
     DELETE_DETECTION_RESULT: "outlier/delete-detection-result",
     RENAME_DETECTION_RESULT: "outlier/rename-detection-result",
-    
+
     // 结果应用与回退
     APPLY_FILTERING: "outlier/apply-filtering",
     REVERT_FILTERING: "outlier/revert-filtering",
@@ -77,6 +78,8 @@ export const API_ROUTES = {
     GET_METHODS: "imputation:getMethods",
     GET_METHODS_BY_CATEGORY: "imputation:getMethodsByCategory",
     GET_AVAILABLE_METHODS: "imputation:getAvailableMethods",
+    GET_METHOD_PARAMS: "imputation:getMethodParams",
+    GET_METHOD_WITH_PARAMS: "imputation:getMethodWithParams",
     // 执行插补
     EXECUTE: "imputation:execute",
     // 结果管理
@@ -85,6 +88,8 @@ export const API_ROUTES = {
     GET_DETAILS: "imputation:getDetails",
     GET_COLUMN_STATS: "imputation:getColumnStats",
     DELETE_RESULT: "imputation:deleteResult",
+    APPLY_VERSION: "imputation:applyVersion",
+    EXPORT_FILE: "imputation:exportFile",
   },
 
   // 菜单事件

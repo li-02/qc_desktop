@@ -331,7 +331,7 @@ export class DatabaseManager {
     if (!this.db) return;
 
     // 插补方法配置表 (conf_imputation_method)
-    // 存储可用的插补方法及其默认参数
+    // 存储可用的插补方法及其基本信息
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS conf_imputation_method (
         id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 方法唯一标识
@@ -339,15 +339,41 @@ export class DatabaseManager {
         method_name TEXT NOT NULL,             -- 方法显示名称
         category TEXT NOT NULL CHECK(category IN ('basic', 'statistical', 'timeseries', 'ml', 'dl')),  -- 方法分类
         description TEXT,                      -- 方法描述
-        default_params TEXT,                   -- 默认参数 (JSON格式)
         requires_python BOOLEAN DEFAULT 0,     -- 是否需要Python环境
         is_available BOOLEAN DEFAULT 1,        -- 是否可用
         estimated_time TEXT CHECK(estimated_time IN ('fast', 'medium', 'slow')),  -- 预估耗时
         accuracy TEXT CHECK(accuracy IN ('low', 'medium', 'high')),  -- 准确度等级
         priority INTEGER DEFAULT 0,            -- 显示优先级
+        applicable_data_types TEXT,            -- 适用数据类型 (JSON数组)
+        icon TEXT,                             -- 方法图标
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         is_del BOOLEAN DEFAULT 0
+      );
+    `);
+
+    // 插补方法参数定义表 (conf_imputation_method_params)
+    // 存储每个方法的参数配置信息，支持动态参数管理
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS conf_imputation_method_params (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 参数唯一标识
+        method_id TEXT NOT NULL,               -- 所属方法ID
+        param_key TEXT NOT NULL,               -- 参数键名
+        param_name TEXT NOT NULL,              -- 参数显示名称
+        param_type TEXT NOT NULL CHECK(param_type IN ('number', 'select', 'boolean', 'range')),  -- 参数类型
+        default_value TEXT,                    -- 默认值
+        min_value REAL,                        -- 数值类型最小值
+        max_value REAL,                        -- 数值类型最大值
+        step_value REAL,                       -- 数值类型步长
+        options TEXT,                          -- 选择项配置 (JSON格式)
+        tooltip TEXT,                          -- 参数提示信息
+        is_required BOOLEAN DEFAULT 0,         -- 是否必需参数
+        is_advanced BOOLEAN DEFAULT 0,         -- 是否为高级参数
+        param_order INTEGER DEFAULT 0,         -- 参数显示顺序
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        is_del BOOLEAN DEFAULT 0,
+        FOREIGN KEY (method_id) REFERENCES conf_imputation_method(method_id) ON DELETE CASCADE
       );
     `);
 
@@ -444,23 +470,29 @@ export class DatabaseManager {
 
     // 创建索引以提升查询性能
     this.db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_imputation_result_dataset 
+      CREATE INDEX IF NOT EXISTS idx_imputation_result_dataset
         ON biz_imputation_result(dataset_id, version_id);
-      
-      CREATE INDEX IF NOT EXISTS idx_imputation_result_status 
+
+      CREATE INDEX IF NOT EXISTS idx_imputation_result_status
         ON biz_imputation_result(status);
-      
-      CREATE INDEX IF NOT EXISTS idx_imputation_detail_result 
+
+      CREATE INDEX IF NOT EXISTS idx_imputation_detail_result
         ON biz_imputation_detail(result_id, column_name);
-      
-      CREATE INDEX IF NOT EXISTS idx_imputation_detail_row 
+
+      CREATE INDEX IF NOT EXISTS idx_imputation_detail_row
         ON biz_imputation_detail(result_id, row_index);
-        
-      CREATE INDEX IF NOT EXISTS idx_imputation_column_stat_result 
+
+      CREATE INDEX IF NOT EXISTS idx_imputation_column_stat_result
         ON biz_imputation_column_stat(result_id);
-        
-      CREATE INDEX IF NOT EXISTS idx_imputation_model_dataset 
+
+      CREATE INDEX IF NOT EXISTS idx_imputation_model_dataset
         ON biz_imputation_model(dataset_id, method_id);
+
+      CREATE INDEX IF NOT EXISTS idx_imputation_method_category
+        ON conf_imputation_method(category, priority);
+
+      CREATE INDEX IF NOT EXISTS idx_imputation_method_params_method
+        ON conf_imputation_method_params(method_id, param_order);
     `);
 
     // 插入默认的插补方法配置
@@ -468,48 +500,244 @@ export class DatabaseManager {
   }
 
   /**
-   * 插入默认的插补方法配置
+   * 插入默认的插补方法配置和参数定义
    */
   private insertDefaultImputationMethods(): void {
     if (!this.db) return;
 
     const defaultMethods = [
       // 基础方法
-      { method_id: 'MEAN', method_name: '均值填充', category: 'basic', description: '使用列均值填充缺失值', requires_python: 0, estimated_time: 'fast', accuracy: 'low', priority: 100 },
-      { method_id: 'MEDIAN', method_name: '中位数填充', category: 'basic', description: '使用列中位数填充缺失值', requires_python: 0, estimated_time: 'fast', accuracy: 'low', priority: 99 },
-      { method_id: 'MODE', method_name: '众数填充', category: 'basic', description: '使用列众数填充缺失值', requires_python: 0, estimated_time: 'fast', accuracy: 'low', priority: 98 },
-      { method_id: 'FORWARD_FILL', method_name: '向前填充', category: 'basic', description: '使用前一个有效值填充', requires_python: 0, estimated_time: 'fast', accuracy: 'low', priority: 97 },
-      { method_id: 'BACKWARD_FILL', method_name: '向后填充', category: 'basic', description: '使用后一个有效值填充', requires_python: 0, estimated_time: 'fast', accuracy: 'low', priority: 96 },
+      {
+        method_id: 'MEAN',
+        method_name: '均值填充',
+        category: 'basic',
+        description: '使用列均值填充缺失值',
+        requires_python: 0,
+        estimated_time: 'fast',
+        accuracy: 'low',
+        priority: 100,
+        applicable_data_types: JSON.stringify(['numeric']),
+        icon: '📊'
+      },
+      {
+        method_id: 'MEDIAN',
+        method_name: '中位数填充',
+        category: 'basic',
+        description: '使用列中位数填充缺失值',
+        requires_python: 0,
+        estimated_time: 'fast',
+        accuracy: 'low',
+        priority: 99,
+        applicable_data_types: JSON.stringify(['numeric']),
+        icon: '📊'
+      },
+      {
+        method_id: 'MODE',
+        method_name: '众数填充',
+        category: 'basic',
+        description: '使用列众数填充缺失值',
+        requires_python: 0,
+        estimated_time: 'fast',
+        accuracy: 'low',
+        priority: 98,
+        applicable_data_types: JSON.stringify(['numeric', 'string']),
+        icon: '📊'
+      },
+      {
+        method_id: 'FORWARD_FILL',
+        method_name: '向前填充',
+        category: 'basic',
+        description: '使用前一个有效值填充',
+        requires_python: 0,
+        estimated_time: 'fast',
+        accuracy: 'low',
+        priority: 97,
+        applicable_data_types: JSON.stringify(['numeric', 'string']),
+        icon: '⏪'
+      },
+      {
+        method_id: 'BACKWARD_FILL',
+        method_name: '向后填充',
+        category: 'basic',
+        description: '使用后一个有效值填充',
+        requires_python: 0,
+        estimated_time: 'fast',
+        accuracy: 'low',
+        priority: 96,
+        applicable_data_types: JSON.stringify(['numeric', 'string']),
+        icon: '⏩'
+      },
       // 统计方法
-      { method_id: 'LINEAR', method_name: '线性插值', category: 'statistical', description: '基于线性关系进行插值', requires_python: 0, estimated_time: 'fast', accuracy: 'medium', priority: 90 },
-      { method_id: 'SPLINE', method_name: '样条插值', category: 'statistical', description: '使用样条曲线进行插值', requires_python: 0, estimated_time: 'fast', accuracy: 'medium', priority: 89 },
-      { method_id: 'POLYNOMIAL', method_name: '多项式插值', category: 'statistical', description: '使用多项式曲线进行插值', requires_python: 0, estimated_time: 'fast', accuracy: 'medium', priority: 88 },
-      { method_id: 'SEASONAL', method_name: '季节性插值', category: 'statistical', description: '考虑季节性模式的插值', requires_python: 1, estimated_time: 'medium', accuracy: 'high', priority: 87 },
+      {
+        method_id: 'LINEAR',
+        method_name: '线性插值',
+        category: 'statistical',
+        description: '基于线性关系进行插值',
+        requires_python: 0,
+        estimated_time: 'fast',
+        accuracy: 'medium',
+        priority: 90,
+        applicable_data_types: JSON.stringify(['numeric']),
+        icon: '📈'
+      },
+      {
+        method_id: 'SPLINE',
+        method_name: '样条插值',
+        category: 'statistical',
+        description: '使用样条曲线进行插值',
+        requires_python: 1,
+        estimated_time: 'fast',
+        accuracy: 'medium',
+        priority: 89,
+        applicable_data_types: JSON.stringify(['numeric']),
+        icon: '📈'
+      },
+      {
+        method_id: 'POLYNOMIAL',
+        method_name: '多项式插值',
+        category: 'statistical',
+        description: '使用多项式曲线进行插值',
+        requires_python: 1,
+        estimated_time: 'fast',
+        accuracy: 'medium',
+        priority: 88,
+        applicable_data_types: JSON.stringify(['numeric']),
+        icon: '📈'
+      },
       // 时序方法
-      { method_id: 'ARIMA', method_name: 'ARIMA模型', category: 'timeseries', description: '基于ARIMA时序模型的插补', requires_python: 1, estimated_time: 'medium', accuracy: 'high', priority: 80 },
-      { method_id: 'SARIMA', method_name: 'SARIMA模型', category: 'timeseries', description: '考虑季节性的ARIMA模型', requires_python: 1, estimated_time: 'medium', accuracy: 'high', priority: 79 },
-      { method_id: 'ETS', method_name: 'ETS模型', category: 'timeseries', description: '指数平滑状态空间模型', requires_python: 1, estimated_time: 'medium', accuracy: 'high', priority: 78 },
+      {
+        method_id: 'ARIMA',
+        method_name: 'ARIMA模型',
+        category: 'timeseries',
+        description: '基于ARIMA时序模型的插补',
+        requires_python: 1,
+        estimated_time: 'medium',
+        accuracy: 'high',
+        priority: 80,
+        applicable_data_types: JSON.stringify(['numeric']),
+        icon: '⏱️'
+      },
+      {
+        method_id: 'SARIMA',
+        method_name: 'SARIMA模型',
+        category: 'timeseries',
+        description: '考虑季节性的ARIMA模型',
+        requires_python: 1,
+        estimated_time: 'medium',
+        accuracy: 'high',
+        priority: 79,
+        applicable_data_types: JSON.stringify(['numeric']),
+        icon: '⏱️'
+      },
+      {
+        method_id: 'ETS',
+        method_name: 'ETS模型',
+        category: 'timeseries',
+        description: '指数平滑状态空间模型',
+        requires_python: 1,
+        estimated_time: 'medium',
+        accuracy: 'high',
+        priority: 78,
+        applicable_data_types: JSON.stringify(['numeric']),
+        icon: '⏱️'
+      },
       // 机器学习方法
-      { method_id: 'KNN', method_name: 'KNN插补', category: 'ml', description: '基于K近邻算法的插补', requires_python: 1, estimated_time: 'medium', accuracy: 'high', priority: 70 },
-      { method_id: 'RANDOM_FOREST', method_name: '随机森林', category: 'ml', description: '基于随机森林的插补', requires_python: 1, estimated_time: 'slow', accuracy: 'high', priority: 69 },
-      { method_id: 'MICE', method_name: 'MICE多重插补', category: 'ml', description: '链式方程多重插补', requires_python: 1, estimated_time: 'slow', accuracy: 'high', priority: 68 },
-      { method_id: 'MISSFOREST', method_name: 'MissForest', category: 'ml', description: '基于随机森林的迭代插补', requires_python: 1, estimated_time: 'slow', accuracy: 'high', priority: 67 },
+      {
+        method_id: 'KNN',
+        method_name: 'KNN插补',
+        category: 'ml',
+        description: '基于K近邻算法的插补',
+        requires_python: 1,
+        estimated_time: 'medium',
+        accuracy: 'high',
+        priority: 70,
+        applicable_data_types: JSON.stringify(['numeric']),
+        icon: '🤖'
+      },
+      {
+        method_id: 'RANDOM_FOREST',
+        method_name: '随机森林',
+        category: 'ml',
+        description: '基于随机森林的插补',
+        requires_python: 1,
+        estimated_time: 'slow',
+        accuracy: 'high',
+        priority: 69,
+        applicable_data_types: JSON.stringify(['numeric']),
+        icon: '🤖'
+      },
+      {
+        method_id: 'MICE',
+        method_name: 'MICE多重插补',
+        category: 'ml',
+        description: '链式方程多重插补',
+        requires_python: 1,
+        estimated_time: 'slow',
+        accuracy: 'high',
+        priority: 68,
+        applicable_data_types: JSON.stringify(['numeric']),
+        icon: '🤖'
+      },
+      {
+        method_id: 'MISSFOREST',
+        method_name: 'MissForest',
+        category: 'ml',
+        description: '基于随机森林的迭代插补',
+        requires_python: 1,
+        estimated_time: 'slow',
+        accuracy: 'high',
+        priority: 67,
+        applicable_data_types: JSON.stringify(['numeric']),
+        icon: '🤖'
+      },
       // 深度学习方法
-      { method_id: 'LSTM', method_name: 'LSTM网络', category: 'dl', description: '基于LSTM的时序插补', requires_python: 1, estimated_time: 'slow', accuracy: 'high', priority: 60 },
-      { method_id: 'GRU', method_name: 'GRU网络', category: 'dl', description: '基于GRU的时序插补', requires_python: 1, estimated_time: 'slow', accuracy: 'high', priority: 59 },
-      { method_id: 'TRANSFORMER', method_name: 'Transformer', category: 'dl', description: '基于Transformer的插补', requires_python: 1, estimated_time: 'slow', accuracy: 'high', priority: 58 },
-      { method_id: 'VAE', method_name: 'VAE变分自编码器', category: 'dl', description: '基于变分自编码器的插补', requires_python: 1, estimated_time: 'slow', accuracy: 'high', priority: 57 },
-      { method_id: 'GAIN', method_name: 'GAIN生成对抗网络', category: 'dl', description: '基于GAN的缺失值插补', requires_python: 1, estimated_time: 'slow', accuracy: 'high', priority: 56 },
+      {
+        method_id: 'LSTM',
+        method_name: 'LSTM网络',
+        category: 'dl',
+        description: '基于LSTM的时序插补',
+        requires_python: 1,
+        estimated_time: 'slow',
+        accuracy: 'high',
+        priority: 60,
+        applicable_data_types: JSON.stringify(['numeric']),
+        icon: '🧠'
+      },
+      {
+        method_id: 'GRU',
+        method_name: 'GRU网络',
+        category: 'dl',
+        description: '基于GRU的时序插补',
+        requires_python: 1,
+        estimated_time: 'slow',
+        accuracy: 'high',
+        priority: 59,
+        applicable_data_types: JSON.stringify(['numeric']),
+        icon: '🧠'
+      },
+      {
+        method_id: 'TRANSFORMER',
+        method_name: 'Transformer',
+        category: 'dl',
+        description: '基于Transformer的插补',
+        requires_python: 1,
+        estimated_time: 'slow',
+        accuracy: 'high',
+        priority: 58,
+        applicable_data_types: JSON.stringify(['numeric']),
+        icon: '🧠'
+      }
     ];
 
-    const insertStmt = this.db.prepare(`
-      INSERT OR IGNORE INTO conf_imputation_method 
-        (method_id, method_name, category, description, requires_python, estimated_time, accuracy, priority)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    // 插入方法
+    const insertMethodStmt = this.db.prepare(`
+      INSERT OR IGNORE INTO conf_imputation_method
+        (method_id, method_name, category, description, requires_python, estimated_time, accuracy, priority, applicable_data_types, icon)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const method of defaultMethods) {
-      insertStmt.run(
+      insertMethodStmt.run(
         method.method_id,
         method.method_name,
         method.category,
@@ -517,7 +745,87 @@ export class DatabaseManager {
         method.requires_python,
         method.estimated_time,
         method.accuracy,
-        method.priority
+        method.priority,
+        method.applicable_data_types,
+        method.icon
+      );
+    }
+
+    // 插入方法参数定义
+    this.insertDefaultMethodParams();
+  }
+
+  /**
+   * 插入默认的方法参数定义
+   */
+  private insertDefaultMethodParams(): void {
+    if (!this.db) return;
+
+    const defaultParams = [
+      // ARIMA 参数
+      { method_id: 'ARIMA', param_key: 'autoSelect', param_name: '自动选择参数', param_type: 'boolean', default_value: 'true', tooltip: '是否自动选择最优的ARIMA参数', is_required: false, is_advanced: false, param_order: 1 },
+      { method_id: 'ARIMA', param_key: 'p', param_name: 'AR阶数 (p)', param_type: 'number', default_value: '1', min_value: 0, max_value: 5, step_value: 1, tooltip: '自回归阶数', is_required: false, is_advanced: false, param_order: 2 },
+      { method_id: 'ARIMA', param_key: 'd', param_name: '差分次数 (d)', param_type: 'number', default_value: '1', min_value: 0, max_value: 2, step_value: 1, tooltip: '差分阶数', is_required: false, is_advanced: false, param_order: 3 },
+      { method_id: 'ARIMA', param_key: 'q', param_name: 'MA阶数 (q)', param_type: 'number', default_value: '1', min_value: 0, max_value: 5, step_value: 1, tooltip: '移动平均阶数', is_required: false, is_advanced: false, param_order: 4 },
+
+      // SARIMA 参数
+      { method_id: 'SARIMA', param_key: 'autoSelect', param_name: '自动选择参数', param_type: 'boolean', default_value: 'true', tooltip: '是否自动选择最优的SARIMA参数', is_required: false, is_advanced: false, param_order: 1 },
+      { method_id: 'SARIMA', param_key: 'p', param_name: 'AR阶数 (p)', param_type: 'number', default_value: '1', min_value: 0, max_value: 5, step_value: 1, tooltip: '自回归阶数', is_required: false, is_advanced: false, param_order: 2 },
+      { method_id: 'SARIMA', param_key: 'd', param_name: '差分次数 (d)', param_type: 'number', default_value: '1', min_value: 0, max_value: 2, step_value: 1, tooltip: '差分阶数', is_required: false, is_advanced: false, param_order: 3 },
+      { method_id: 'SARIMA', param_key: 'q', param_name: 'MA阶数 (q)', param_type: 'number', default_value: '1', min_value: 0, max_value: 5, step_value: 1, tooltip: '移动平均阶数', is_required: false, is_advanced: false, param_order: 4 },
+      { method_id: 'SARIMA', param_key: 'P', param_name: '季节性AR阶数 (P)', param_type: 'number', default_value: '1', min_value: 0, max_value: 5, step_value: 1, tooltip: '季节性自回归阶数', is_required: false, is_advanced: false, param_order: 5 },
+      { method_id: 'SARIMA', param_key: 'D', param_name: '季节性差分次数 (D)', param_type: 'number', default_value: '1', min_value: 0, max_value: 2, step_value: 1, tooltip: '季节性差分阶数', is_required: false, is_advanced: false, param_order: 6 },
+      { method_id: 'SARIMA', param_key: 'Q', param_name: '季节性MA阶数 (Q)', param_type: 'number', default_value: '1', min_value: 0, max_value: 5, step_value: 1, tooltip: '季节性移动平均阶数', is_required: false, is_advanced: false, param_order: 7 },
+      { method_id: 'SARIMA', param_key: 's', param_name: '季节性周期 (s)', param_type: 'number', default_value: '24', min_value: 2, max_value: 365, step_value: 1, tooltip: '季节性周期长度', is_required: false, is_advanced: false, param_order: 8 },
+
+      // KNN 参数
+      { method_id: 'KNN', param_key: 'n_neighbors', param_name: 'K近邻数量', param_type: 'number', default_value: '5', min_value: 1, max_value: 20, step_value: 1, tooltip: '用于插补的近邻数量', is_required: true, is_advanced: false, param_order: 1 },
+
+      // 样条插值参数
+      { method_id: 'SPLINE', param_key: 'degree', param_name: '样条度数', param_type: 'select', default_value: '3', options: JSON.stringify([
+        { label: '线性 (1阶)', value: '1' },
+        { label: '二次 (2阶)', value: '2' },
+        { label: '三次 (3阶)', value: '3' }
+      ]), tooltip: '样条曲线的度数，影响插值平滑度', is_required: true, is_advanced: false, param_order: 1 },
+
+      // 多项式插值参数
+      { method_id: 'POLYNOMIAL', param_key: 'degree', param_name: '多项式度数', param_type: 'number', default_value: '2', min_value: 1, max_value: 5, step_value: 1, tooltip: '多项式的度数，度数越高拟合越精确但可能过拟合', is_required: true, is_advanced: false, param_order: 1 },
+
+      // ETS 参数
+      { method_id: 'ETS', param_key: 'trend', param_name: '趋势组件', param_type: 'select', default_value: 'add', options: JSON.stringify([
+        { label: '加法趋势', value: 'add' },
+        { label: '乘法趋势', value: 'mul' },
+        { label: '无趋势', value: 'none' }
+      ]), tooltip: '趋势组件的类型', is_required: false, is_advanced: false, param_order: 1 },
+      { method_id: 'ETS', param_key: 'seasonal', param_name: '季节性组件', param_type: 'select', default_value: 'add', options: JSON.stringify([
+        { label: '加法季节性', value: 'add' },
+        { label: '乘法季节性', value: 'mul' },
+        { label: '无季节性', value: 'none' }
+      ]), tooltip: '季节性组件的类型', is_required: false, is_advanced: false, param_order: 2 },
+      { method_id: 'ETS', param_key: 'seasonal_periods', param_name: '季节性周期', param_type: 'number', default_value: '24', min_value: 2, max_value: 365, step_value: 1, tooltip: '季节性周期长度', is_required: false, is_advanced: false, param_order: 3 }
+    ];
+
+    const insertParamStmt = this.db.prepare(`
+      INSERT OR IGNORE INTO conf_imputation_method_params
+        (method_id, param_key, param_name, param_type, default_value, min_value, max_value, step_value, options, tooltip, is_required, is_advanced, param_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const param of defaultParams) {
+      insertParamStmt.run(
+        param.method_id,
+        param.param_key,
+        param.param_name,
+        param.param_type,
+        param.default_value,
+        param.min_value || null,
+        param.max_value || null,
+        param.step_value || null,
+        param.options || null,
+        param.tooltip || null,
+        (param.is_required || false) ? 1 : 0,
+        (param.is_advanced || false) ? 1 : 0,
+        param.param_order
       );
     }
   }

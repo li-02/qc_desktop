@@ -84,16 +84,10 @@ const getDatasetTypeLabel = (type: string): string => {
   return labelMap[type] || type;
 };
 
+import { formatLocalWithTZ } from '@/utils/timeUtils';
 const formatRelativeTime = (timestamp: number): string => {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-  if (hours < 1) return "刚刚";
-  if (hours < 24) return `${hours}小时前`;
-  if (days < 7) return `${days}天前`;
-  return new Date(timestamp).toLocaleDateString();
+  // 按用户要求：所有时间显示为本地时间 + 时区后缀
+  return formatLocalWithTZ(timestamp);
 };
 </script>
 

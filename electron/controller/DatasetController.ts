@@ -34,6 +34,7 @@ export class DatasetController extends BaseController {
         missingValueTypes: string[];
         rows: number;
         columns: string[];
+        sourceTimezone?: string;
       };
     },
     event: IpcMainInvokeEvent
@@ -60,6 +61,7 @@ export class DatasetController extends BaseController {
         missingValueTypes: args.importOption.missingValueTypes.map(v => v.trim()),
         rows: Number(args.importOption.rows),
         columns: args.importOption.columns.map(col => col.trim()).filter(col => col.length > 0),
+        sourceTimezone: args.importOption.sourceTimezone || 'auto',
       };
 
       const result = await this.datasetService.importDataset(request);
@@ -166,6 +168,45 @@ export class DatasetController extends BaseController {
       const result = await this.datasetService.getDatasetVersionStats(args.versionId.trim());
       if (!result.success) {
         throw new Error(result.error || "获取版本统计信息失败");
+      }
+
+      return result.data;
+    });
+  }
+
+  /**
+   * 获取版本缺失值统计信息
+   */
+  async getDatasetVersionMissingStats(
+    args: {
+      datasetId: string;
+      versionId: string;
+      missingMarkers: string[];
+    },
+    event: IpcMainInvokeEvent
+  ) {
+    return this.handleAsync(async () => {
+      // 参数校验
+      if (!args.datasetId || typeof args.datasetId !== "string") {
+        throw new Error("数据集ID不能为空");
+      }
+
+      if (!args.versionId || typeof args.versionId !== "string") {
+        throw new Error("版本ID不能为空");
+      }
+
+      if (!Array.isArray(args.missingMarkers)) {
+        throw new Error("缺失值标记必须是数组");
+      }
+
+      const result = await this.datasetService.getDatasetVersionMissingStats(
+        args.datasetId.trim(),
+        args.versionId.trim(),
+        args.missingMarkers
+      );
+
+      if (!result.success) {
+        throw new Error(result.error || "获取版本缺失值统计失败");
       }
 
       return result.data;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick, onBeforeUnmount } from "vue";
+import { formatLocalWithTZ } from "@/utils/timeUtils";
 import * as echarts from "echarts";
 
 interface Props {
@@ -222,12 +223,12 @@ const extractTimeSeriesFromCsv = (csvData: any, columnName: string): Array<{ tim
     console.log('使用后端标准化的时间数据');
     
     // 使用后端已标准化的数据，数据已按时间排序
-    return csvData.tableData
+  return csvData.tableData
       .map((row: any) => {
         const value = row[columnName];
         if (value !== null && value !== undefined && !isNaN(Number(value))) {
           return {
-            time: row._formattedTime || row.TIMESTAMP || String(row._epochMs),
+            time: row._epochMs ? formatLocalWithTZ(row._epochMs) : (row._formattedTime || row.TIMESTAMP || String(row._epochMs)),
             value: Number(value),
             epochMs: row._epochMs,
           };
@@ -652,7 +653,7 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
         let timeStr = dataPoint.value[0];
         if (!isIndexBased) {
             const date = new Date(dataPoint.value[0]);
-            timeStr = echarts.format.formatTime("yyyy-MM-dd hh:mm:ss", date.getTime());
+            timeStr = formatLocalWithTZ(date.getTime());
         }
         return `时间/索引: ${timeStr}<br/>${props.selectedColumn}: ${dataPoint.value[1].toFixed(3)}`;
       },

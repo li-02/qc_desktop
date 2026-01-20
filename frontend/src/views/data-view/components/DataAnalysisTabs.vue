@@ -53,8 +53,6 @@ const tabs = computed(() => [
     name: "异常检测",
     icon: "🔍",
     disabled: !props.datasetInfo,
-    badge: hasOutliers.value ? "!" : null,
-    badgeType: "warning" as const,
     description: "识别和处理数据中的异常值",
   },
   {
@@ -62,8 +60,6 @@ const tabs = computed(() => [
     name: "缺失值处理",
     icon: "🔧",
     disabled: !props.datasetInfo,
-    badge: hasMissingValues.value ? missingValueCount.value : null,
-    badgeType: "danger" as const,
     description: "检测和填补数据中的缺失值",
   },
   {
@@ -83,19 +79,6 @@ const tabs = computed(() => [
 ]);
 
 // Computed properties
-const hasMissingValues = computed(() => {
-  return props.datasetInfo?.missingValueTypes && props.datasetInfo.missingValueTypes.length > 0;
-});
-
-const missingValueCount = computed(() => {
-  if (!props.datasetInfo) return 0;
-  return props.datasetInfo.missingValueTypes.length * 10;
-});
-
-const hasOutliers = computed(() => {
-  return props.datasetInfo && Math.random() > 0.5;
-});
-
 // Methods
 const switchTab = (tabId: string) => {
   const tab = tabs.value.find(t => t.id === tabId);
@@ -181,14 +164,7 @@ defineExpose({
           <!-- 标签文字 -->
           <span class="tab-text">{{ tab.name }}</span>
 
-          <!-- 徽章指示器 -->
-          <div v-if="tab.badge && !tab.disabled" class="tab-badge-container">
-            <div :class="['tab-badge', `tab-badge--${tab.badgeType}`]">
-              {{ tab.badge }}
-            </div>
-            <!-- 徽章光晕效果 -->
-            <div class="tab-badge-glow" :class="`tab-badge-glow--${tab.badgeType}`"></div>
-          </div>
+
 
           <!-- 禁用状态遮罩 -->
           <div v-if="tab.disabled" class="tab-disabled-mask"></div>
@@ -423,79 +399,7 @@ defineExpose({
   letter-spacing: 0.025em;
 }
 
-/* 徽章 */
-.tab-badge-container {
-  position: relative;
-}
 
-.tab-badge {
-  padding: 4px 10px;
-  border-radius: 9999px;
-  font-size: 12px;
-  font-weight: 700;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  border: 1px solid;
-  transform: scale(1);
-  transition: all 0.2s ease;
-}
-
-.tab-button:hover .tab-badge {
-  transform: scale(1.1);
-}
-
-.tab-badge--primary {
-  background: linear-gradient(to right, rgba(219, 234, 254, 1), rgba(191, 219, 254, 1));
-  color: rgba(29, 78, 216, 1);
-  border-color: rgba(191, 219, 254, 1);
-}
-
-.tab-badge--success {
-  background: linear-gradient(to right, rgba(209, 250, 229, 1), rgba(187, 247, 208, 1));
-  color: rgba(4, 120, 87, 1);
-  border-color: rgba(167, 243, 208, 1);
-}
-
-.tab-badge--warning {
-  background: linear-gradient(to right, rgba(254, 243, 199, 1), rgba(253, 230, 138, 1));
-  color: rgba(146, 64, 14, 1);
-  border-color: rgba(252, 211, 77, 1);
-}
-
-.tab-badge--danger {
-  background: linear-gradient(to right, rgba(254, 242, 242, 1), rgba(254, 202, 202, 1));
-  color: rgba(153, 27, 27, 1);
-  border-color: rgba(252, 165, 165, 1);
-}
-
-.tab-badge--info {
-  background: linear-gradient(to right, rgba(250, 250, 249, 1), rgba(245, 245, 244, 1));
-  color: rgba(68, 64, 60, 1);
-  border-color: rgba(231, 229, 228, 1);
-}
-
-.tab-badge-glow {
-  position: absolute;
-  inset: 0;
-  border-radius: 9999px;
-  filter: blur(4px);
-  opacity: 0.3;
-}
-
-.tab-badge-glow--primary {
-  background: rgba(59, 130, 246, 1);
-}
-.tab-badge-glow--success {
-  background: rgba(52, 211, 153, 1);
-}
-.tab-badge-glow--warning {
-  background: rgba(251, 191, 36, 1);
-}
-.tab-badge-glow--danger {
-  background: rgba(239, 68, 68, 1);
-}
-.tab-badge-glow--info {
-  background: rgba(120, 113, 108, 1);
-}
 
 /* 禁用遮罩 */
 .tab-disabled-mask {

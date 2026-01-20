@@ -45,6 +45,26 @@ const missingTypesList = ref([
     label: "NaN",
   },
   {
+    value: "null",
+    label: "null",
+  },
+  {
+    value: "NULL",
+    label: "NULL",
+  },
+  {
+    value: "NA",
+    label: "NA",
+  },
+  {
+    value: "na",
+    label: "na",
+  },
+  {
+    value: "undefined",
+    label: "undefined",
+  },
+  {
     value: "",
     label: "空值",
   },
@@ -57,6 +77,49 @@ const selectedFile = ref<File>();
 const missingValueTypes = ref(missingTypesList.value.map(t => t.value)); // 选中的缺失值类型
 // 文件处理状态
 const fileProcessing = ref(false);
+
+// 获取用户系统时区
+const getSystemTimezone = (): string => {
+  try {
+    // 获取用户系统时区
+    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    console.log('检测到用户系统时区:', userTimezone);
+
+    // 转换为我们支持的格式
+    const timezoneMap: Record<string, string> = {
+      'Asia/Shanghai': 'UTC+8',
+      'Asia/Hong_Kong': 'UTC+8',
+      'Asia/Taipei': 'UTC+8',
+      'Asia/Seoul': 'UTC+9',
+      'Asia/Tokyo': 'UTC+9',
+      'Asia/Singapore': 'UTC+8',
+      'Asia/Kuala_Lumpur': 'UTC+8',
+      'Asia/Bangkok': 'UTC+7',
+      'Asia/Jakarta': 'UTC+7',
+      'Asia/Manila': 'UTC+8',
+      'Australia/Sydney': 'UTC+10',
+      'Australia/Melbourne': 'UTC+10',
+      'Australia/Perth': 'UTC+8',
+      'Pacific/Auckland': 'UTC+12',
+      'America/New_York': 'UTC-5',
+      'America/Chicago': 'UTC-6',
+      'America/Denver': 'UTC-7',
+      'America/Los_Angeles': 'UTC-8',
+      'Europe/London': 'UTC+0',
+      'Europe/Paris': 'UTC+1',
+      'Europe/Berlin': 'UTC+1',
+      'Europe/Moscow': 'UTC+3',
+    };
+
+    const detectedTimezone = timezoneMap[userTimezone] || 'UTC+8'; // 默认北京时间
+    console.log('转换为应用程序时区格式:', detectedTimezone);
+    return detectedTimezone;
+  } catch (error) {
+    console.warn('无法获取系统时区，使用默认时区:', error);
+    return 'UTC+8'; // 默认北京时间
+  }
+};
+
 
 // 第二步 选择数据类型
 const dataOptions = [
@@ -235,6 +298,7 @@ const submitImportOption = async () => {
           .map(col => col.label)
           .filter((label): label is string => typeof label === "string")
           .map(str => String(str)),
+        sourceTimezone: getSystemTimezone(),
       },
     };
     const result = await datasetStore.importData(pureData.importOption);
@@ -1099,4 +1163,5 @@ defineExpose({
 ::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
 }
+
 </style>

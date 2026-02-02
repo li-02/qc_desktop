@@ -215,6 +215,18 @@ export const useGapFillingStore = defineStore("gapFilling", () => {
     ) || null;
   };
 
+  // 从历史记录恢复统计信息
+  const restoreFromHistory = (datasetId: number, versionId: number): boolean => {
+    const stats = getHistoryStats(datasetId, versionId);
+    if (stats) {
+      missingStats.value = stats;
+      selectedDatasetId.value = datasetId;
+      selectedVersionId.value = versionId;
+      return true;
+    }
+    return false;
+  };
+
   return {
     // 状态
     selectedDatasetId,
@@ -233,6 +245,7 @@ export const useGapFillingStore = defineStore("gapFilling", () => {
     detectMissingInMemory,
     loadVersionMissingStats,
     getHistoryStats,
+    restoreFromHistory,
     clearStats,
     getVersionSampleData
   };

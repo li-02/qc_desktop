@@ -451,12 +451,15 @@ export class DatabaseManager {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS biz_imputation_model (
         id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 模型唯一标识
-        dataset_id INTEGER NOT NULL,           -- 数据集ID
+        dataset_id INTEGER,                    -- 数据集ID (可为空，表示通用模型)
         method_id TEXT NOT NULL,               -- 插补方法
         model_name TEXT,                       -- 模型名称
         model_path TEXT,                       -- 模型文件路径
-        model_params TEXT,                     -- 模型参数 (JSON)
-        training_columns TEXT,                 -- 训练使用的列 (JSON数组)
+        model_params TEXT,                     -- 模型超参数 (JSON)
+        target_column TEXT,                    -- 目标插补列名
+        feature_columns TEXT,                  -- 模型需要的特征列 (JSON数组，包含目标列)
+        time_column TEXT DEFAULT 'record_time', -- 模型期望的时间列名
+        training_columns TEXT,                 -- 训练使用的列 (JSON数组，兼容旧字段)
         training_samples INTEGER,              -- 训练样本数
         validation_score REAL,                 -- 验证分数
         is_active BOOLEAN DEFAULT 1,           -- 是否激活
@@ -467,6 +470,20 @@ export class DatabaseManager {
         is_del BOOLEAN DEFAULT 0
       );
     `);
+
+    // 为旧表添加新字段（如果不存在）
+    try {
+      this.db.exec(`ALTER TABLE biz_imputation_model ADD COLUMN target_column TEXT`);
+    } catch (e) { /* 字段已存在 */ }
+    try {
+      this.db.exec(`ALTER TABLE biz_imputation_model ADD COLUMN feature_columns TEXT`);
+    } catch (e) { /* 字段已存在 */ }
+    try {
+      this.db.exec(`ALTER TABLE biz_imputation_model ADD COLUMN time_column TEXT DEFAULT 'record_time'`);
+    } catch (e) { /* 字段已存在 */ }
+
+    // 插入默认模型配置（如果不存在）
+    this.insertDefaultImputationModels();
 
     // 创建索引以提升查询性能
     this.db.exec(`
@@ -692,6 +709,18 @@ export class DatabaseManager {
       },
       // 深度学习方法
       {
+        method_id: 'TIMEMIXER_PP',
+        method_name: 'TimeMixer++',
+        category: 'dl',
+        description: '基于TimeMixer++的高精度时序插补模型，支持多变量时序数据，适用于生态环境监测数据',
+        requires_python: 1,
+        estimated_time: 'slow',
+        accuracy: 'high',
+        priority: 65,
+        applicable_data_types: JSON.stringify(['numeric']),
+        icon: '🧠'
+      },
+      {
         method_id: 'LSTM',
         method_name: 'LSTM网络',
         category: 'dl',
@@ -802,7 +831,21 @@ export class DatabaseManager {
         { label: '乘法季节性', value: 'mul' },
         { label: '无季节性', value: 'none' }
       ]), tooltip: '季节性组件的类型', is_required: false, is_advanced: false, param_order: 2 },
-      { method_id: 'ETS', param_key: 'seasonal_periods', param_name: '季节性周期', param_type: 'number', default_value: '24', min_value: 2, max_value: 365, step_value: 1, tooltip: '季节性周期长度', is_required: false, is_advanced: false, param_order: 3 }
+      { method_id: 'ETS', param_key: 'seasonal_periods', param_name: '季节性周期', param_type: 'number', default_value: '24', min_value: 2, max_value: 365, step_value: 1, tooltip: '季节性周期长度', is_required: false, is_advanced: false, param_order: 3 },
+
+      // TimeMixer++ 参数
+      { method_id: 'TIMEMIXER_PP', param_key: 'model_path', param_name: '模型文件路径', param_type: 'string', default_value: '', tooltip: '训练好的模型文件路径 (.pypots 文件)，留空则使用数据集关联的模型', is_required: false, is_advanced: false, param_order: 1 },
+      { method_id: 'TIMEMIXER_PP', param_key: 'seq_len', param_name: '序列长度', param_type: 'number', default_value: '96', min_value: 24, max_value: 512, step_value: 24, tooltip: '滑动窗口长度，必须与训练时一致', is_required: true, is_advanced: false, param_order: 2 },
+      { method_id: 'TIMEMIXER_PP', param_key: 'n_layers', param_name: '层数', param_type: 'number', default_value: '2', min_value: 1, max_value: 8, step_value: 1, tooltip: '模型层数', is_required: false, is_advanced: true, param_order: 3 },
+      { method_id: 'TIMEMIXER_PP', param_key: 'd_model', param_name: '隐藏层维度', param_type: 'number', default_value: '32', min_value: 16, max_value: 256, step_value: 16, tooltip: '隐藏层特征维度', is_required: false, is_advanced: true, param_order: 4 },
+      { method_id: 'TIMEMIXER_PP', param_key: 'd_ffn', param_name: 'FFN维度', param_type: 'number', default_value: '64', min_value: 32, max_value: 512, step_value: 32, tooltip: '前馈网络维度', is_required: false, is_advanced: true, param_order: 5 },
+      { method_id: 'TIMEMIXER_PP', param_key: 'top_k', param_name: 'Top-K频率', param_type: 'number', default_value: '5', min_value: 1, max_value: 20, step_value: 1, tooltip: 'Top-K 频率成分数量', is_required: false, is_advanced: true, param_order: 6 },
+      { method_id: 'TIMEMIXER_PP', param_key: 'n_heads', param_name: '注意力头数', param_type: 'number', default_value: '4', min_value: 1, max_value: 16, step_value: 1, tooltip: 'Multi-head Attention 的头数', is_required: false, is_advanced: true, param_order: 7 },
+      { method_id: 'TIMEMIXER_PP', param_key: 'n_kernels', param_name: 'Kernel数量', param_type: 'number', default_value: '3', min_value: 1, max_value: 8, step_value: 1, tooltip: 'Inception Kernel 数量', is_required: false, is_advanced: true, param_order: 8 },
+      { method_id: 'TIMEMIXER_PP', param_key: 'dropout', param_name: 'Dropout率', param_type: 'number', default_value: '0.1', min_value: 0, max_value: 0.5, step_value: 0.05, tooltip: 'Dropout 比率', is_required: false, is_advanced: true, param_order: 9 },
+      { method_id: 'TIMEMIXER_PP', param_key: 'down_layers', param_name: '下采样层数', param_type: 'number', default_value: '3', min_value: 1, max_value: 5, step_value: 1, tooltip: '下采样层数', is_required: false, is_advanced: true, param_order: 10 },
+      { method_id: 'TIMEMIXER_PP', param_key: 'down_window', param_name: '下采样窗口', param_type: 'number', default_value: '2', min_value: 2, max_value: 8, step_value: 1, tooltip: '下采样窗口大小', is_required: false, is_advanced: true, param_order: 11 },
+      { method_id: 'TIMEMIXER_PP', param_key: 'use_gpu', param_name: '使用GPU', param_type: 'boolean', default_value: 'true', tooltip: '是否使用GPU加速（如可用）', is_required: false, is_advanced: false, param_order: 12 }
     ];
 
     const insertParamStmt = this.db.prepare(`
@@ -827,6 +870,77 @@ export class DatabaseManager {
         (param.is_advanced || false) ? 1 : 0,
         param.param_order
       );
+    }
+  }
+
+  /**
+   * 插入预训练的插补模型配置
+   */
+  private insertDefaultImputationModels(): void {
+    if (!this.db) return;
+
+    const path = require('path');
+    const { app } = require('electron');
+    
+    // 开发环境：项目根目录/python
+    // 生产环境：resources/python（通过 electron-builder extraResources 配置）
+    const pythonDir = app.isPackaged
+      ? path.join(process.resourcesPath, 'python')
+      : path.join(__dirname, '..', '..', '..', 'python');
+    
+    const models = [
+      {
+        method_id: 'TIMEMIXER_PP',
+        model_name: 'CO2通量插补模型',
+        model_path: path.join(pythonDir, 'timemixerpp_co2_flux.pypots'),
+        target_column: 'co2_flux',
+        feature_columns: JSON.stringify([
+          'record_time', 'co2_flux', 'rg_1_1_2', 'rn_1_1_1', 
+          'ta_1_2_1', 'vpd', 'rh_1_1_1', 'swc_1_1_1', 'ts_1_1_1'
+        ]),
+        time_column: 'record_time',
+        model_params: JSON.stringify({
+          seq_len: 96, n_layers: 2, d_model: 32, d_ffn: 64,
+          top_k: 5, n_heads: 4, n_kernels: 3, dropout: 0.1,
+          down_layers: 3, down_window: 2
+        }),
+        is_active: 1
+      },
+      {
+        method_id: 'TIMEMIXER_PP',
+        model_name: 'PM2.5插补模型',
+        model_path: path.join(pythonDir, 'timermixerpp_pm2_5.pypots'),
+        target_column: 'pm2_5',
+        feature_columns: JSON.stringify(['record_time', 'pm2_5']),
+        time_column: 'record_time',
+        model_params: JSON.stringify({
+          seq_len: 96, n_layers: 2, d_model: 32, d_ffn: 64,
+          top_k: 5, n_heads: 4, n_kernels: 3, dropout: 0.1,
+          down_layers: 3, down_window: 2
+        }),
+        is_active: 1
+      }
+    ];
+
+    const insertModelStmt = this.db.prepare(`
+      INSERT OR IGNORE INTO biz_imputation_model
+        (dataset_id, method_id, model_name, model_path, model_params, 
+         target_column, feature_columns, time_column, is_active, trained_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `);
+
+    for (const model of models) {
+      const existing = this.db.prepare(`
+        SELECT id FROM biz_imputation_model WHERE model_name = ? AND is_del = 0
+      `).get(model.model_name);
+
+      if (!existing) {
+        insertModelStmt.run(
+          null, model.method_id, model.model_name, model.model_path,
+          model.model_params, model.target_column, model.feature_columns,
+          model.time_column, model.is_active
+        );
+      }
     }
   }
 

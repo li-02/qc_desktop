@@ -113,7 +113,7 @@ export class DatasetService {
         parent_version_id: null as any,
         stage_type: 'RAW',
         file_path: savedFilePath,
-        remark: 'Initial Import'
+        remark: '原始导入'
       });
 
       if (!versionIdResult.success) {
@@ -312,6 +312,7 @@ export class DatasetService {
         datasetId: v.dataset_id,
         parentVersionId: v.parent_version_id || null,
         stageType: v.stage_type,
+        filePath: v.file_path,
         createdAt: this.parseSQLiteTimestampAsUTC(v.created_at),
         remark: v.remark || ""
       }));

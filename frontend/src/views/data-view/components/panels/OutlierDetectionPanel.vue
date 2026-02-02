@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Loading, Refresh, Search, Setting, Check, Close, VideoPlay, Delete, Plus, ArrowLeft, MagicStick, RefreshLeft, Download, Edit } from "@element-plus/icons-vue";
+import { Loading, Refresh, Search, Setting, Check, Close, VideoPlay, Delete, Plus, ArrowLeft, MagicStick, RefreshLeft, Download, Edit, Connection } from "@element-plus/icons-vue";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import type { ColumnSetting, OutlierResult, OutlierDetail } from "@shared/types/database";
 import OutlierChart from "../charts/OutlierChart.vue";
+import VersionManager from '../VersionManager.vue';
 
 const datasetStore = useDatasetStore();
 const outlierStore = useOutlierDetectionStore();
@@ -26,6 +27,13 @@ const panelLoading = computed(() => props.loading || outlierStore.loading);
 
 // View State
 const activeView = ref<'config' | 'result'>('config');
+const showVersionDrawer = ref(false);
+const currentVersion = computed(() => datasetStore.currentVersion);
+
+const handleVersionSwitch = async (versionId: number) => {
+  await datasetStore.setCurrentVersion(versionId);
+  showVersionDrawer.value = false;
+};
 
 // 检测结果状态
 const detectionResults = ref<OutlierResult[]>([]);
@@ -157,8 +165,13 @@ const executeDetection = async () => {
   
   try {
     executing.value = true;
-    // 使用版本 ID，如果没有则使用 0
-    const versionId = datasetInfo.value.id; // TODO: 获取实际版本 ID
+    // 使用版本 ID
+    const versionId = currentVersion.value?.id;
+    if (!versionId) {
+      ElMessage.warning('未能获取当前数据版本');
+      executing.value = false;
+      return;
+    }
     
     const result = await outlierStore.executeThresholdDetection(
       String(datasetInfo.value.id),
@@ -690,6 +703,9 @@ onMounted(() => {
                 <span class="header-desc">为每个变量设置有效数据范围，超出范围的值将被标记为异常</span>
               </div>
               <div class="header-actions">
+                <el-button class="action-btn" plain @click="showVersionDrawer = true">
+                  <el-icon><Connection /></el-icon> 版本谱系
+                </el-button>
                 <el-dropdown @command="applyTemplate" :disabled="outlierStore.saving">
                   <el-button class="action-btn" plain>
                     <el-icon><Setting /></el-icon> 模板
@@ -1071,6 +1087,21 @@ onMounted(() => {
         <div class="no-data-subtitle">请从左侧选择一个数据集</div>
       </div>
     </div>
+    <!-- Version Manager Drawer -->
+    <el-drawer
+      v-model="showVersionDrawer"
+      title="数据版本管理"
+      size="450px"
+      destroy-on-close
+      append-to-body
+    >
+      <VersionManager 
+        v-if="datasetInfo"
+        :dataset-id="datasetInfo.id"
+        @switch-version="handleVersionSwitch"
+        @close="showVersionDrawer = false"
+      />
+    </el-drawer>
   </div>
 </template>
 

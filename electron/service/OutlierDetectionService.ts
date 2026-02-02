@@ -957,7 +957,7 @@ export class OutlierDetectionService {
         parent_version_id: result.version_id,
         stage_type: 'FILTERED',
         file_path: newFilePath,
-        remark: `Applied outlier filtering (Result #${resultId})`
+        remark: `异常值过滤 (结果 #${resultId})`
       });
 
       if (!newVersionIdResult.success) {

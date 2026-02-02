@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import emitter from "@/utils/eventBus";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Plus, Refresh, ArrowDown, ArrowUp, CaretLeft, CaretRight, Sort, Delete, Files, Close, Setting } from "@element-plus/icons-vue";
+import DatasetVersionTree from "@/components/sidebar/DatasetVersionTree.vue";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
@@ -24,6 +25,7 @@ const openSettingsDialog = () => {
 // 侧边栏状态
 const isCollapsed = ref(false);
 const expandedProjects = ref<Set<string>>(new Set());
+const expandedDatasets = ref<Set<string>>(new Set());
 const isBatchMode = ref(false);
 const selectedProjectIds = ref<Set<string>>(new Set());
 
@@ -139,6 +141,19 @@ const isProjectExpanded = (projectId: string): boolean => {
   return expandedProjects.value.has(projectId);
 };
 
+// 数据集展开控制
+const toggleDatasetExpanded = (datasetId: string) => {
+  if (expandedDatasets.value.has(datasetId)) {
+    expandedDatasets.value.delete(datasetId);
+  } else {
+    expandedDatasets.value.add(datasetId);
+  }
+};
+
+const isDatasetExpanded = (datasetId: string): boolean => {
+  return expandedDatasets.value.has(datasetId);
+};
+
 // 项目选择
 const selectProject = (projectId: string) => {
   const project = projectStore.projects.find(p => p.id === projectId);
@@ -157,7 +172,18 @@ const handleProjectClick = (projectId: string) => {
 const selectDataset = (projectId: string, datasetId: string) => {
   projectStore.setCurrentProject(projectId);
   datasetStore.setCurrentDataset(datasetId);
-  ElMessage.info(`已选择数据集: ${datasetId}`);
+  // 自动展开数据集版本树
+  expandedDatasets.value.add(datasetId);
+  router.push("/data-view");
+};
+
+// 处理版本选择
+const handleVersionSelect = (projectId: string, datasetId: string, versionId: number) => {
+  projectStore.setCurrentProject(projectId);
+  if (datasetStore.currentDataset?.id !== datasetId) {
+    datasetStore.setCurrentDataset(datasetId);
+  }
+  datasetStore.setCurrentVersion(versionId);
   router.push("/data-view");
 };
 
@@ -281,10 +307,6 @@ const getDatasetTypeLabel = (type: string): string => {
   return labelMap[type] || type.toUpperCase();
 };
 
-import { formatLocalWithTZ } from '@/utils/timeUtils';
-const formatRelativeTime = (timestamp: number): string => {
-  return formatLocalWithTZ(timestamp);
-};
 
 // 监听导入成功，自动展开项目
 const handleImportSuccess = () => {
@@ -500,25 +522,43 @@ onUnmounted(() => {
                   <div
                     v-for="dataset in project.datasets"
                     :key="dataset.id"
-                    :class="[
-                      'dataset-item',
-                      {
-                        active: datasetStore.currentDataset?.id === dataset.id,
-                      },
-                    ]"
-                    @click.stop="selectDataset(project.id, dataset.id)">
-                    <div class="dataset-header">
-                      <div class="dataset-icon">{{ getDatasetIcon(dataset.type) }}</div>
-                      <div class="dataset-name">{{ dataset.name }}</div>
-                      <div class="dataset-type">{{ getDatasetTypeLabel(dataset.type) }}</div>
-                      <button
-                        class="dataset-delete-btn"
-                        @click.stop="confirmDeleteDataset(project.id, dataset.id)"
-                        title="删除数据集">
-                        <el-icon><Delete /></el-icon>
-                      </button>
+                    class="dataset-wrapper">
+                    <!-- 数据集主行 -->
+                    <div
+                      :class="[
+                        'dataset-item',
+                        {
+                          active: datasetStore.currentDataset?.id === dataset.id,
+                          expanded: isDatasetExpanded(dataset.id),
+                        },
+                      ]"
+                      @click.stop="selectDataset(project.id, dataset.id)">
+                      <div class="dataset-header">
+                        <!-- 展开/收起按钮 -->
+                        <button
+                          class="dataset-expand-btn"
+                          :class="{ expanded: isDatasetExpanded(dataset.id) }"
+                          @click.stop="toggleDatasetExpanded(dataset.id)">
+                          <el-icon><CaretRight /></el-icon>
+                        </button>
+                        <div class="dataset-icon">{{ getDatasetIcon(dataset.type) }}</div>
+                        <div class="dataset-name">{{ dataset.name }}</div>
+                        <div class="dataset-type">{{ getDatasetTypeLabel(dataset.type) }}</div>
+                        <button
+                          class="dataset-delete-btn"
+                          @click.stop="confirmDeleteDataset(project.id, dataset.id)"
+                          title="删除数据集">
+                          <el-icon><Delete /></el-icon>
+                        </button>
+                      </div>
                     </div>
-                    <div class="dataset-meta">修改于 {{ formatRelativeTime(dataset.createdAt) }}</div>
+                    
+                    <!-- 版本树 -->
+                    <DatasetVersionTree
+                      :dataset-id="dataset.id"
+                      :is-expanded="isDatasetExpanded(dataset.id)"
+                      @select-version="(versionId) => handleVersionSelect(project.id, dataset.id, versionId)"
+                    />
                   </div>
                 </div>
 
@@ -1099,15 +1139,19 @@ onUnmounted(() => {
 }
 
 .datasets-list.expanded {
-  max-height: 400px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.dataset-wrapper {
+  margin-bottom: 4px;
 }
 
 .dataset-item {
   background: rgba(255, 255, 255, 0.6);
   border: 1px solid rgba(229, 231, 235, 0.3);
   border-radius: 8px;
-  padding: 12px;
-  margin-bottom: 6px;
+  padding: 8px 10px;
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
@@ -1129,7 +1173,6 @@ onUnmounted(() => {
 .dataset-item:hover {
   background: rgba(255, 255, 255, 0.8);
   border-color: rgba(139, 92, 246, 0.3);
-  transform: translateX(4px);
 }
 
 .dataset-item:hover::before {
@@ -1137,20 +1180,53 @@ onUnmounted(() => {
 }
 
 .dataset-item.active {
-  background: rgba(139, 92, 246, 0.08);
-  border-color: rgba(139, 92, 246, 0.4);
-  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.15);
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.4);
 }
 
 .dataset-item.active::before {
   transform: scaleY(1);
+  background: #10b981;
+}
+
+.dataset-item.expanded {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  margin-bottom: 0;
 }
 
 .dataset-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: 6px;
+}
+
+/* 数据集展开按钮 */
+.dataset-expand-btn {
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #9ca3af;
+  font-size: 10px;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.dataset-expand-btn:hover {
+  background: rgba(107, 114, 128, 0.1);
+  color: #6b7280;
+}
+
+.dataset-expand-btn.expanded {
+  transform: rotate(90deg);
+  color: #10b981;
 }
 
 .dataset-icon {

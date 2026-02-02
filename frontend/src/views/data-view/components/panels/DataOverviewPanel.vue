@@ -2,16 +2,30 @@
 import { ref, computed, watch, onMounted } from "vue";
 import { formatLocalWithTZ } from '@/utils/timeUtils';
 import { ElMessage } from "element-plus";
-import { Loading, Refresh, Search } from "@element-plus/icons-vue";
+import { Loading, Refresh, Search, Connection } from "@element-plus/icons-vue";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import DataVisualizationChart from "../charts/DataVisualizationChart.vue";
+import VersionManager from '../VersionManager.vue';
 import { API_ROUTES } from "@shared/constants/apiRoutes";
 import type { OutlierResult } from "@shared/types/database";
 
 const datasetStore = useDatasetStore();
 const outlierStore = useOutlierDetectionStore();
 const datasetInfo = computed(() => datasetStore.currentDataset);
+
+// UI 状态
+const showVersionDrawer = ref(false);
+const refreshing = ref(false);
+const columnSearchText = ref('');
+const selectedColumn = ref('');
+const chartType = ref<'scatter' | 'heatmap'>('scatter');
+const chartLoading = ref(false);
+const csvData = ref<any>(null);
+const columnStatistics = ref<any>(null);
+const correlationLoading = ref(false);
+const correlationHeaders = ref<string[]>([]);
+const correlationMatrix = ref<{ name: string; values: number[] }[]>([]);
 
 // 异常检测结果
 const outlierResults = ref<OutlierResult[]>([]);
@@ -90,70 +104,31 @@ const numericColumns = computed(() => {
      if (statsObj.columnMissingStatus) {
          return Object.keys(statsObj.columnMissingStatus).map(name => ({ name, type: 'numeric' }));
      }
-     // Old format fallback
-     return Object.keys(statsObj).map(name => ({ name, type: 'numeric' }));
   }
   return datasetInfo.value?.originalFile?.columns?.map(name => ({ name, type: 'numeric' })) || [];
-});// Emits
-const emit = defineEmits<{
-  refresh: [];
-}>();
-
-// Reactive state
-const refreshing = ref(false);
-const columnSearchText = ref("");
-const selectedColumn = ref("");
-const chartType = ref("scatter");
-const chartLoading = ref(false);
-const correlationLoading = ref(false);
-const correlationMatrix = ref<Array<{ name: string; values: number[] }>>([]);
-const correlationHeaders = ref<string[]>([]);
-const csvData = ref<any>(null); // 存储读取的CSV数据
-const columnStatistics = ref<{
-  mean: number;
-  std: number;
-  min: number;
-  max: number;
-  count: number;
-  validCount: number;
-  minTimestamp?: string;
-  maxTimestamp?: string;
-} | null>(null); // 存储列统计信息
+});
 
 const dataQualityClass = computed(() => {
-  const percentage = dataQualityPercentage.value;
-  if (percentage >= 95) return "text-emerald-600";
-  if (percentage >= 85) return "text-yellow-600";
-  return "text-red-600";
+  const p = dataQualityPercentage.value;
+  if (p >= 95) return 'excellent';
+  if (p >= 85) return 'good';
+  return 'poor';
 });
 
 // Methods
-const getColumnStatusColor = (col: { missingCount: number }) => {
-  if (col.missingCount > 10) return "bg-red-400";
-  if (col.missingCount > 0) return "bg-orange-400";
-  return "bg-emerald-400";
+const handleVersionSwitch = async (versionId: number) => {
+  if (versionId === datasetStore.currentVersion?.id) return;
+  await datasetStore.setCurrentVersion(versionId);
+  showVersionDrawer.value = false;
+  ElMessage.success('已切换数据版本');
 };
 
-const getColumnTypeTag = (type: string) => {
-  const typeMap: Record<string, string> = {
-    numeric: "success",
-    text: "info",
-    datetime: "warning",
-  };
-  return typeMap[type] || "default";
-};
-
-const getColumnTypeLabel = (type: string) => {
-  const typeMap: Record<string, string> = {
-    numeric: "数值",
-    text: "文本",
-    datetime: "时间",
-  };
-  return typeMap[type] || type;
-};
-
-const getColumnTooltip = (col: { type: string; missingCount: number; uniqueCount: number }) => {
-  return `类型: ${getColumnTypeLabel(col.type)}\n缺失值: ${col.missingCount}\n唯一值: ${col.uniqueCount}`;
+const getCorrelationColor = (value: number) => {
+  const absValue = Math.abs(value);
+  if (absValue >= 0.7) return 'strong';
+  if (absValue >= 0.4) return 'moderate';
+  if (absValue >= 0.2) return 'weak';
+  return 'none';
 };
 
 const getColumnStats = (columnName: string) => {
@@ -173,7 +148,7 @@ const getColumnStats = (columnName: string) => {
 
   // 2. 如果有从后端返回的实时统计信息（CSV读取），使用它
   if (columnStatistics.value && selectedColumn.value === columnName) {
-      return {
+    return {
       mean: columnStatistics.value.mean.toFixed(2),
       std: columnStatistics.value.std.toFixed(2),
       min: columnStatistics.value.min.toFixed(2),
@@ -183,7 +158,7 @@ const getColumnStats = (columnName: string) => {
     };
   }
 
-    // 否则返回默认值（当数据未加载时）
+  // 否则返回默认值（当数据未加载时）
   return {
     mean: "加载中...",
     std: "加载中...",
@@ -194,30 +169,17 @@ const getColumnStats = (columnName: string) => {
   };
 };
 
-const getCorrelationColor = (value: number) => {
-  const abs = Math.abs(value);
-  if (abs >= 0.7) return "strong";
-  if (abs >= 0.4) return "moderate";
-  if (abs >= 0.2) return "weak";
-  return "none";
-};
-
-// 格式化时间戳显示
-const formatTimestamp = (timestamp: string) => {
+const formatTimestamp = (timestamp: string | number) => {
   if (!timestamp) return '';
-  
   try {
     const date = new Date(timestamp);
     if (isNaN(date.getTime())) {
-      // 如果不是标准时间格式，可能是其他格式，直接返回
-      return timestamp;
+      return String(timestamp);
     }
-    
-    // 格式化为本地时间
     return formatLocalWithTZ(date.getTime());
   } catch (error) {
     console.error('时间格式化错误:', error);
-    return timestamp;
+    return String(timestamp);
   }
 };
 
@@ -233,8 +195,8 @@ const loadCsvData = async () => {
 
   chartLoading.value = true;
   try {
-    // 从数据集信息中获取文件路径
-    const filePath = datasetInfo.value?.originalFile?.filePath;
+    // 从数据集信息中获取文件路径 (优先使用当前版本的路径)
+    const filePath = datasetStore.currentVersion?.filePath || datasetInfo.value?.originalFile?.filePath;
     if (!filePath) {
       throw new Error("未找到数据文件路径");
     }
@@ -385,10 +347,16 @@ onMounted(() => {
                   :value="v.id"
                 />
               </el-select>
+              <button class="action-btn" @click="showVersionDrawer = true" title="版本谱系" style="margin-right: 8px;">
+                <el-icon class="action-icon"><Connection /></el-icon>
+              </button>
               <button class="action-btn refresh-btn" @click="$emit('refresh')" :disabled="refreshing" title="刷新数据">
                 <el-icon class="action-icon" :class="{ spinning: refreshing }">
                   <Refresh />
                 </el-icon>
+              </button>
+              <button class="action-btn refresh-btn" @click="$emit('refresh')" :disabled="refreshing" title="刷新数据" style="margin-right: 8px;">
+                <el-icon class="action-icon"><Connection /></el-icon>
               </button>
             </div>
           </div>
@@ -620,7 +588,23 @@ onMounted(() => {
           <button class="empty-action" @click="calculateCorrelation">了解更多</button>
         </div>
       </div>
-    </template>
+
+    <!-- Version Manager Drawer -->
+    <el-drawer
+      v-model="showVersionDrawer"
+      title="数据版本管理"
+      size="450px"
+      destroy-on-close
+      append-to-body
+    >
+      <VersionManager 
+        v-if="datasetInfo"
+        :dataset-id="datasetInfo.id"
+        @switch-version="handleVersionSwitch"
+        @close="showVersionDrawer = false"
+      />
+    </el-drawer>
+  </template>
 
     <!-- 无数据状态 -->
     <div v-else class="no-data-container">
@@ -637,7 +621,6 @@ onMounted(() => {
 /* 主容器样式 */
 .overview-container {
   padding: 20px;
-  space-y: 20px;
   background: #f8fafc;
   min-height: 100vh;
 }

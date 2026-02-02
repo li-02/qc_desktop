@@ -22,7 +22,7 @@ export class ProjectDBRepository {
 
   getAllProjects(): ServiceResponse<Site[]> {
     try {
-      const stmt = this.db.prepare('SELECT * FROM sys_site ORDER BY updated_at DESC');
+      const stmt = this.db.prepare('SELECT * FROM sys_site WHERE is_del = 0 ORDER BY updated_at DESC');
       const sites = stmt.all() as Site[];
       return { success: true, data: sites };
     } catch (error: any) {

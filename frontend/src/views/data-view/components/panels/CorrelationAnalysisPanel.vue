@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
 import { ElMessage, ElNotification, ElMessageBox } from "element-plus";
-import { Download, Refresh, InfoFilled, Setting, Delete } from "@element-plus/icons-vue";
+import { Download, Refresh, InfoFilled, Setting, Delete, Connection } from "@element-plus/icons-vue";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import type { CorrelationResult } from "@shared/types/database";
 import CorrelationAnalysisChart from "../charts/CorrelationAnalysisChart.vue";
+import { useDatasetStore } from "@/stores/useDatasetStore";
+import VersionManager from '../VersionManager.vue';
 
 interface Props {
   datasetInfo?: DatasetInfo | null;
@@ -20,8 +22,11 @@ const emit = defineEmits<{
   refresh: [];
 }>();
 
+const datasetStore = useDatasetStore();
+
 // 响应式状态
 const analysisLoading = ref(false);
+const showVersionDrawer = ref(false);
 const csvData = ref<any>(null);
 const currentCorrelationMatrix = ref<number[][] | null>(null);
 const selectedColumns = ref<string[]>([]);
@@ -29,6 +34,13 @@ const analysisType = ref<"heatmap" | "scatter-matrix" | "network" | "time-lag">(
 const correlationMethod = ref<"pearson" | "spearman" | "kendall">("pearson");
 const minCorrelation = ref(0.3);
 const showAdvancedSettings = ref(false);
+
+const currentVersion = computed(() => datasetStore.currentVersion);
+
+const handleVersionSwitch = async (versionId: number) => {
+  await datasetStore.setCurrentVersion(versionId);
+  showVersionDrawer.value = false;
+};
 
 // 历史记录状态
 const analysisHistory = ref<CorrelationResult[]>([]);
@@ -256,11 +268,20 @@ const startAnalysis = async () => {
     analysisLoading.value = true;
     
     // Call backend to analyze and save
-    if (props.datasetInfo?.id && props.datasetInfo?.originalFile?.filePath) {
+    if (props.datasetInfo?.id) {
+      // 优先使用当前版本的路径和ID
+      const filePath = currentVersion.value?.filePath || props.datasetInfo.originalFile.filePath;
+      const versionId = currentVersion.value?.id || props.datasetInfo.id; // Fallback to datasetId if version missing? Better to require version.
+
+      if (!filePath) {
+         ElMessage.error("无法获取数据文件路径");
+         return;
+      }
+
       const result = await (window as any).electronAPI.invoke('correlation:analyze', {
         datasetId: props.datasetInfo.id,
-        versionId: props.datasetInfo.id,
-        filePath: props.datasetInfo.originalFile.filePath,
+        versionId: versionId,
+        filePath: filePath,
         columns: selectedColumns.value,
         method: correlationMethod.value,
         missingValueTypes: []
@@ -370,6 +391,12 @@ onMounted(() => {
       <div class="section-header">
         <div class="section-title">🔗 变量相关性分析</div>
         <div class="header-actions">
+          <el-button
+            size="small"
+            plain
+            @click="showVersionDrawer = true">
+            <el-icon><Connection /></el-icon> 版本谱系
+          </el-button>
           <el-button
             size="small"
             :icon="Setting"
@@ -575,6 +602,22 @@ onMounted(() => {
         :min-correlation="minCorrelation"
         :loading="analysisLoading" />
     </div>
+
+    <!-- Version Manager Drawer -->
+    <el-drawer
+      v-model="showVersionDrawer"
+      title="数据版本管理"
+      size="450px"
+      destroy-on-close
+      append-to-body
+    >
+      <VersionManager 
+        v-if="datasetInfo"
+        :dataset-id="datasetInfo.id"
+        @switch-version="handleVersionSwitch"
+        @close="showVersionDrawer = false"
+      />
+    </el-drawer>
   </div>
 </template>
 

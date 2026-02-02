@@ -10,7 +10,7 @@ export type ImputationMethodId =
   | 'LINEAR' | 'SPLINE' | 'POLYNOMIAL' | 'SEASONAL'
   | 'ARIMA' | 'SARIMA' | 'ETS'
   | 'KNN' | 'RANDOM_FOREST' | 'GRADIENT_BOOSTING' | 'MICE' | 'MISSFOREST'
-  | 'LSTM' | 'GRU' | 'TRANSFORMER' | 'VAE' | 'GAIN';
+  | 'TIMEMIXER_PP' | 'LSTM' | 'GRU' | 'TRANSFORMER' | 'VAE' | 'GAIN';
 
 /** 插补方法分类 */
 export type ImputationCategory = 'basic' | 'statistical' | 'timeseries' | 'ml' | 'dl';
@@ -25,7 +25,7 @@ export type EstimatedTime = 'fast' | 'medium' | 'slow';
 export type AccuracyLevel = 'low' | 'medium' | 'high';
 
 /** 执行阶段 */
-export type ImputationStage = 'preparing' | 'training' | 'imputing' | 'validating' | 'saving';
+export type ImputationStage = 'preparing' | 'training' | 'imputing' | 'validating' | 'saving' | 'completed';
 
 // ==================== 配置接口 ====================
 
@@ -148,13 +148,16 @@ export interface ImputationColumnStat {
 /** 插补模型 */
 export interface ImputationModel {
   id: number;
-  datasetId: number;
+  datasetId?: number;                    // 数据集ID（可为空表示通用模型）
   methodId: ImputationMethodId;
   modelName?: string;
   modelPath?: string;
-  modelParams?: Record<string, any>;
-  trainingColumns: string[];
-  trainingSamples: number;
+  modelParams?: Record<string, any>;     // 模型超参数
+  targetColumn?: string;                 // 目标插补列名
+  featureColumns?: string[];             // 模型需要的特征列（包含目标列）
+  timeColumn?: string;                   // 模型期望的时间列名（默认 record_time）
+  trainingColumns?: string[];            // 训练使用的列（兼容旧字段）
+  trainingSamples?: number;
   validationScore?: number;
   isActive: boolean;
   trainedAt?: string;
@@ -378,11 +381,14 @@ export interface ImputationColumnStatRow {
 /** 插补模型数据库行 */
 export interface ImputationModelRow {
   id: number;
-  dataset_id: number;
+  dataset_id: number | null;
   method_id: string;
   model_name: string | null;
   model_path: string | null;
   model_params: string | null;
+  target_column: string | null;
+  feature_columns: string | null;
+  time_column: string | null;
   training_columns: string | null;
   training_samples: number | null;
   validation_score: number | null;

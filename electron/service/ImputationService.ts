@@ -1,11 +1,13 @@
 import { ImputationRepository } from '../repository/ImputationRepository';
 import { DatabaseManager } from '../core/DatabaseManager';
+import { PythonBridgeService } from './PythonBridgeService';
 import type {
   ImputationMethod,
   ImputationMethodParam,
   ImputationResult,
   ImputationDetail,
   ImputationColumnStat,
+  ImputationModel,
   ImputationMethodId,
   ImputationCategory,
   ImputationProgressEvent,
@@ -145,22 +147,55 @@ export class ImputationService {
         message: '正在执行插补...',
       });
 
-      const { imputedData, details, columnStats } = await this.performImputation(
-        resultId,
-        data,
-        targetColumns,
-        request.methodId,
-        request.params || {},
-        (progress, message, currentColumn) => {
-          this.emitProgress(resultId, {
-            resultId,
-            stage: 'imputing',
-            progress: 20 + progress * 0.6, // 20% - 80%
-            message,
-            currentColumn,
-          });
-        }
-      );
+      // 根据方法类型选择执行路径
+      let imputedData: Record<string, any>[];
+      let details: Array<any>;
+      let columnStats: Array<any>;
+
+      if (this.isDeepLearningMethod(request.methodId)) {
+        // 深度学习方法需要特殊处理
+        const result = await this.performDeepLearningImputation(
+          resultId,
+          data,
+          targetColumns,
+          request.methodId,
+          request.params || {},
+          { file_path: version.file_path, dataset_id: request.datasetId },
+          (progress, message, currentColumn) => {
+            this.emitProgress(resultId, {
+              resultId,
+              stage: 'imputing',
+              progress: 20 + progress * 0.6,
+              message,
+              currentColumn,
+            });
+          }
+        );
+        imputedData = result.imputedData;
+        details = result.details;
+        columnStats = result.columnStats;
+      } else {
+        // 基础方法
+        const result = await this.performImputation(
+          resultId,
+          data,
+          targetColumns,
+          request.methodId,
+          request.params || {},
+          (progress, message, currentColumn) => {
+            this.emitProgress(resultId, {
+              resultId,
+              stage: 'imputing',
+              progress: 20 + progress * 0.6, // 20% - 80%
+              message,
+              currentColumn,
+            });
+          }
+        );
+        imputedData = result.imputedData;
+        details = result.details;
+        columnStats = result.columnStats;
+      }
 
       // 保存详情和统计
       this.emitProgress(resultId, {
@@ -378,28 +413,388 @@ export class ImputationService {
       return result; // 无法插补
     }
 
+    let imputed: (number | null)[];
+
     switch (methodId) {
       case 'MEAN':
-        return this.imputeMean(result, validValues);
+        imputed = this.imputeMean(result, validValues);
+        break;
       case 'MEDIAN':
-        return this.imputeMedian(result, validValues);
+        imputed = this.imputeMedian(result, validValues);
+        break;
       case 'MODE':
-        return this.imputeMode(result, validValues);
+        imputed = this.imputeMode(result, validValues);
+        break;
       case 'FORWARD_FILL':
-        return this.imputeForwardFill(result);
+        imputed = this.imputeForwardFill(result);
+        break;
       case 'BACKWARD_FILL':
-        return this.imputeBackwardFill(result);
+        imputed = this.imputeBackwardFill(result);
+        break;
       case 'LINEAR':
-        return this.imputeLinear(result);
+        imputed = this.imputeLinear(result);
+        break;
       case 'SPLINE':
-        return this.imputeSpline(result, params.degree || 3);
+        imputed = this.imputeSpline(result, params.degree || 3);
+        break;
       case 'POLYNOMIAL':
-        return this.imputePolynomial(result, params.degree || 2);
+        imputed = this.imputePolynomial(result, params.degree || 2);
+        break;
+      case 'TIMEMIXER_PP':
+        // TimeMixer++ 需要整体数据处理，在 performImputation 中特殊处理
+        // 这里返回原数据，实际插补在 performDeepLearningImputation 中执行
+        return result;
       default:
         // 对于需要Python的方法，暂时使用线性插值作为后备
         console.warn(`方法 ${methodId} 需要Python支持，使用线性插值作为后备`);
-        return this.imputeLinear(result);
+        imputed = this.imputeLinear(result);
     }
+
+    // 保持原始数据的小数位精度
+    return this.roundImputedValues(imputed, validValues);
+  }
+
+  /**
+   * 检查是否为深度学习方法
+   */
+  private isDeepLearningMethod(methodId: ImputationMethodId): boolean {
+    return ['TIMEMIXER_PP', 'LSTM', 'GRU', 'TRANSFORMER', 'VAE', 'GAIN'].includes(methodId);
+  }
+
+  /**
+   * 执行深度学习模型插补
+   */
+  private async performDeepLearningImputation(
+    resultId: number,
+    data: Record<string, any>[],
+    targetColumns: string[],
+    methodId: ImputationMethodId,
+    params: Record<string, any>,
+    version: { file_path: string; dataset_id: number },
+    onProgress: (progress: number, message: string, currentColumn?: string) => void
+  ): Promise<{
+    imputedData: Record<string, any>[];
+    details: Array<{
+      resultId: number;
+      columnName: string;
+      rowIndex: number;
+      originalValue: number | null;
+      imputedValue: number;
+      confidence?: number;
+      imputationMethod: string;
+    }>;
+    columnStats: Array<{
+      resultId: number;
+      columnName: string;
+      missingCount: number;
+      imputedCount: number;
+      imputationRate: number;
+      meanBefore?: number;
+      meanAfter?: number;
+      stdBefore?: number;
+      stdAfter?: number;
+      minImputed?: number;
+      maxImputed?: number;
+    }>;
+  }> {
+    if (methodId === 'TIMEMIXER_PP') {
+      return this.performTimeMixerPPImputation(
+        resultId, data, targetColumns, params, version, onProgress
+      );
+    }
+
+    throw new Error(`深度学习方法 ${methodId} 暂未实现`);
+  }
+
+  /**
+   * 执行 TimeMixer++ 插补
+   */
+  private async performTimeMixerPPImputation(
+    resultId: number,
+    data: Record<string, any>[],
+    targetColumns: string[],
+    params: Record<string, any>,
+    version: { file_path: string; dataset_id: number },
+    onProgress: (progress: number, message: string, currentColumn?: string) => void
+  ): Promise<{
+    imputedData: Record<string, any>[];
+    details: Array<{
+      resultId: number;
+      columnName: string;
+      rowIndex: number;
+      originalValue: number | null;
+      imputedValue: number;
+      confidence?: number;
+      imputationMethod: string;
+    }>;
+    columnStats: Array<{
+      resultId: number;
+      columnName: string;
+      missingCount: number;
+      imputedCount: number;
+      imputationRate: number;
+      meanBefore?: number;
+      meanAfter?: number;
+      stdBefore?: number;
+      stdAfter?: number;
+      minImputed?: number;
+      maxImputed?: number;
+    }>;
+  }> {
+    const pythonBridge = PythonBridgeService.getInstance();
+    const details: Array<any> = [];
+    const columnStats: Array<any> = [];
+
+    // 检查 Python 环境
+    onProgress(5, '正在检查 Python 环境...');
+    const pythonStatus = await pythonBridge.detectPython();
+    if (!pythonStatus.available) {
+      throw new Error('Python 环境未找到，请先安装 Python 3.8+');
+    }
+
+    // 获取模型配置
+    let modelPath = params.model_path;
+    let modelConfig: {
+      modelPath?: string;
+      modelParams?: Record<string, any>;
+      targetColumn?: string;
+      featureColumns?: string[];
+      timeColumn?: string;
+    } | null = null;
+
+    if (!modelPath) {
+      // 尝试从数据库获取关联的模型配置
+      modelConfig = this.getActiveModelFull(version.dataset_id, 'TIMEMIXER_PP');
+      if (modelConfig?.modelPath) {
+        modelPath = modelConfig.modelPath;
+      } else {
+        throw new Error('未指定模型文件路径，且数据集没有关联的 TimeMixer++ 模型');
+      }
+    }
+
+    // 获取数据集时间列配置
+    const dataset = this.db.prepare('SELECT time_column FROM sys_dataset WHERE id = ?').get(version.dataset_id) as { time_column?: string } | undefined;
+    const userTimeColumn = dataset?.time_column || 'record_time';
+    
+    // 模型期望的时间列名（从模型配置或默认）
+    const modelTimeColumn = modelConfig?.timeColumn || 'record_time';
+    
+    // 如果用户数据时间列与模型期望不同，需要重命名
+    let timeColumnRenamed = false;
+    const originalTimeColumnName = userTimeColumn;
+    if (userTimeColumn !== modelTimeColumn && data.length > 0 && userTimeColumn in data[0]) {
+      onProgress(8, `重命名时间列: ${userTimeColumn} -> ${modelTimeColumn}`);
+      for (const row of data) {
+        row[modelTimeColumn] = row[userTimeColumn];
+        if (userTimeColumn !== modelTimeColumn) {
+          delete row[userTimeColumn];
+        }
+      }
+      timeColumnRenamed = true;
+    }
+
+    // 验证特征列是否存在
+    const modelFeatureColumns = modelConfig?.featureColumns;
+    if (modelFeatureColumns && modelFeatureColumns.length > 0 && data.length > 0) {
+      const availableColumns = Object.keys(data[0]);
+      const missingFeatures = modelFeatureColumns.filter(col => 
+        col !== modelTimeColumn && !availableColumns.includes(col)
+      );
+      if (missingFeatures.length > 0) {
+        throw new Error(`数据缺少模型所需的特征列: ${missingFeatures.join(', ')}`);
+      }
+    }
+
+    // 为每个目标列执行插补
+    for (let colIndex = 0; colIndex < targetColumns.length; colIndex++) {
+      const columnName = targetColumns[colIndex];
+      const progress = 10 + (colIndex / targetColumns.length) * 80;
+      onProgress(progress, `正在插补列: ${columnName}`, columnName);
+
+      // 记录原始缺失值位置
+      const missingIndices: number[] = [];
+      const validValues: number[] = [];
+      data.forEach((row, idx) => {
+        const val = row[columnName];
+        if (val === null || val === undefined || val === '' || Number.isNaN(Number(val))) {
+          missingIndices.push(idx);
+        } else {
+          validValues.push(Number(val));
+        }
+      });
+
+      if (missingIndices.length === 0) {
+        columnStats.push({
+          resultId,
+          columnName,
+          missingCount: 0,
+          imputedCount: 0,
+          imputationRate: 0,
+        });
+        continue;
+      }
+
+      // 计算插补前统计
+      const meanBefore = this.calculateMean(validValues);
+      const stdBefore = this.calculateStd(validValues, meanBefore);
+
+      // 创建临时输入输出文件
+      const tempDir = path.dirname(version.file_path);
+      const tempInputFile = path.join(tempDir, `temp_input_${resultId}_${colIndex}.csv`);
+      const tempOutputFile = path.join(tempDir, `temp_output_${resultId}_${colIndex}.csv`);
+
+      try {
+        // 写入临时输入文件
+        const csvContent = Papa.unparse(data);
+        fs.writeFileSync(tempInputFile, csvContent, 'utf-8');
+
+        // 调用 Python 脚本
+        const result = await pythonBridge.runTimeMixerPPImputation({
+          modelPath,
+          inputFile: tempInputFile,
+          outputFile: tempOutputFile,
+          targetColumn: columnName,
+          timeColumn: modelTimeColumn,
+          seqLen: params.seq_len || 96,
+          nLayers: params.n_layers,
+          dModel: params.d_model,
+          dFfn: params.d_ffn,
+          topK: params.top_k,
+          nHeads: params.n_heads,
+          nKernels: params.n_kernels,
+          dropout: params.dropout,
+          downLayers: params.down_layers,
+          downWindow: params.down_window,
+          useGpu: params.use_gpu !== false,
+        }, (pythonProgress) => {
+          const adjustedProgress = progress + (pythonProgress.progress / 100) * (80 / targetColumns.length);
+          onProgress(adjustedProgress, pythonProgress.message, columnName);
+        });
+
+        if (!result.success) {
+          throw new Error(`TimeMixer++ 插补失败: ${result.error}`);
+        }
+
+        // 读取插补结果
+        if (!fs.existsSync(tempOutputFile)) {
+          throw new Error('插补结果文件未生成');
+        }
+
+        const imputedDataRaw = await this.readDataFile(tempOutputFile);
+        const imputedOnlyValues: number[] = [];
+
+        // 更新数据和记录详情
+        for (const idx of missingIndices) {
+          const imputedValue = Number(imputedDataRaw[idx]?.[columnName]);
+          if (!Number.isNaN(imputedValue)) {
+            imputedOnlyValues.push(imputedValue);
+            data[idx][columnName] = imputedValue;
+            details.push({
+              resultId,
+              columnName,
+              rowIndex: idx,
+              originalValue: null,
+              imputedValue,
+              confidence: 0.9, // TimeMixer++ 高置信度
+              imputationMethod: 'TIMEMIXER_PP',
+            });
+          }
+        }
+
+        // 计算插补后统计
+        const allValuesAfter = [...validValues, ...imputedOnlyValues];
+        const meanAfter = this.calculateMean(allValuesAfter);
+        const stdAfter = this.calculateStd(allValuesAfter, meanAfter);
+
+        columnStats.push({
+          resultId,
+          columnName,
+          missingCount: missingIndices.length,
+          imputedCount: imputedOnlyValues.length,
+          imputationRate: imputedOnlyValues.length / missingIndices.length,
+          meanBefore,
+          meanAfter,
+          stdBefore,
+          stdAfter,
+          minImputed: imputedOnlyValues.length > 0 ? Math.min(...imputedOnlyValues) : undefined,
+          maxImputed: imputedOnlyValues.length > 0 ? Math.max(...imputedOnlyValues) : undefined,
+        });
+      } finally {
+        // 清理临时文件
+        if (fs.existsSync(tempInputFile)) fs.unlinkSync(tempInputFile);
+        if (fs.existsSync(tempOutputFile)) fs.unlinkSync(tempOutputFile);
+      }
+    }
+
+    onProgress(100, '插补完成');
+    return { imputedData: data, details, columnStats };
+  }
+
+  /**
+   * 获取数据集的活跃模型（基础信息）
+   */
+  private getActiveModel(datasetId: number, methodId: string): {
+    modelPath?: string;
+    modelParams?: Record<string, any>;
+  } | null {
+    const row = this.db.prepare(`
+      SELECT model_path, model_params FROM biz_imputation_model
+      WHERE dataset_id = ? AND method_id = ? AND is_active = 1 AND is_del = 0
+      ORDER BY trained_at DESC LIMIT 1
+    `).get(datasetId, methodId) as { model_path?: string; model_params?: string } | undefined;
+
+    if (!row) return null;
+
+    return {
+      modelPath: row.model_path || undefined,
+      modelParams: row.model_params ? JSON.parse(row.model_params) : undefined,
+    };
+  }
+
+  /**
+   * 获取数据集的活跃模型（完整配置）
+   * 优先查找数据集专属模型，如果没有则查找通用模型（dataset_id 为 NULL）
+   */
+  private getActiveModelFull(datasetId: number, methodId: string): {
+    modelPath?: string;
+    modelParams?: Record<string, any>;
+    targetColumn?: string;
+    featureColumns?: string[];
+    timeColumn?: string;
+  } | null {
+    // 优先查找数据集专属模型
+    let row = this.db.prepare(`
+      SELECT model_path, model_params, target_column, feature_columns, time_column 
+      FROM biz_imputation_model
+      WHERE dataset_id = ? AND method_id = ? AND is_active = 1 AND is_del = 0
+      ORDER BY trained_at DESC LIMIT 1
+    `).get(datasetId, methodId) as { 
+      model_path?: string; 
+      model_params?: string;
+      target_column?: string;
+      feature_columns?: string;
+      time_column?: string;
+    } | undefined;
+
+    // 如果没有找到，查找通用模型（dataset_id 为 NULL）
+    if (!row) {
+      row = this.db.prepare(`
+        SELECT model_path, model_params, target_column, feature_columns, time_column 
+        FROM biz_imputation_model
+        WHERE dataset_id IS NULL AND method_id = ? AND is_active = 1 AND is_del = 0
+        ORDER BY trained_at DESC LIMIT 1
+      `).get(methodId) as typeof row;
+    }
+
+    if (!row) return null;
+
+    return {
+      modelPath: row.model_path || undefined,
+      modelParams: row.model_params ? JSON.parse(row.model_params) : undefined,
+      targetColumn: row.target_column || undefined,
+      featureColumns: row.feature_columns ? JSON.parse(row.feature_columns) : undefined,
+      timeColumn: row.time_column || 'record_time',
+    };
   }
 
   // ==================== 基础插补方法 ====================
@@ -549,6 +944,47 @@ export class ImputationService {
   }
 
   // ==================== 工具方法 ====================
+
+  /**
+   * 检测数值数组的小数位数（基于有效值）
+   */
+  private getDecimalPlaces(values: number[]): number {
+    if (values.length === 0) return 2; // 默认2位小数
+    
+    let maxDecimals = 0;
+    // 采样前1000个值
+    const sampleSize = Math.min(values.length, 1000);
+    for (let i = 0; i < sampleSize; i++) {
+      const val = values[i];
+      const strVal = val.toFixed(10).replace(/0+$/, '');
+      if (strVal.includes('.')) {
+        const decimals = strVal.split('.')[1]?.length || 0;
+        maxDecimals = Math.max(maxDecimals, decimals);
+      }
+    }
+    return maxDecimals;
+  }
+
+  /**
+   * 将插补值四舍五入到指定的小数位数
+   */
+  private roundToDecimalPlaces(value: number, decimals: number): number {
+    const factor = Math.pow(10, decimals);
+    return Math.round(value * factor) / factor;
+  }
+
+  /**
+   * 将插补结果数组四舍五入到原始数据的小数位精度
+   */
+  private roundImputedValues(
+    imputedData: (number | null)[],
+    originalValidValues: number[]
+  ): (number | null)[] {
+    const decimals = this.getDecimalPlaces(originalValidValues);
+    return imputedData.map(v => 
+      v === null ? null : this.roundToDecimalPlaces(v, decimals)
+    );
+  }
 
   private calculateMean(values: number[]): number {
     if (values.length === 0) return 0;
@@ -783,7 +1219,7 @@ export class ImputationService {
       stage_type: 'QC',
       file_path: newFilePath,
       created_at: now,
-      remark: remark || `Imputed using ${result.methodId}`
+      remark: remark || `插补处理 (${result.methodId})`
     });
 
     const newVersionId = Number(info.lastInsertRowid);
@@ -836,7 +1272,94 @@ export class ImputationService {
     return csv; // Return CSV content if no path (allow Controller to handle)
   }
 
+  // ==================== 模型管理 ====================
+
+  /**
+   * 创建插补模型记录
+   */
+  createModel(params: {
+    datasetId?: number;
+    methodId: string;
+    modelName?: string;
+    modelPath: string;
+    modelParams?: Record<string, any>;
+    targetColumn?: string;
+    featureColumns?: string[];
+    timeColumn?: string;
+    trainingColumns?: string[];
+    trainingSamples?: number;
+    validationScore?: number;
+  }): number {
+    return this.repository.createModel(params);
+  }
+
+  /**
+   * 获取数据集的所有模型
+   */
+  getModelsByDataset(datasetId: number, methodId?: string): ImputationModel[] {
+    const rows = this.repository.getModelsByDataset(datasetId, methodId);
+    return rows.map(this.mapModelRow);
+  }
+
+  /**
+   * 获取模型详情
+   */
+  getModel(modelId: number): ImputationModel | null {
+    const row = this.repository.getModelById(modelId);
+    return row ? this.mapModelRow(row) : null;
+  }
+
+  /**
+   * 设置活跃模型
+   */
+  setActiveModel(modelId: number): void {
+    this.repository.setActiveModel(modelId);
+  }
+
+  /**
+   * 更新模型信息
+   */
+  updateModel(modelId: number, params: {
+    modelName?: string;
+    modelPath?: string;
+    modelParams?: Record<string, any>;
+    targetColumn?: string;
+    featureColumns?: string[];
+    timeColumn?: string;
+    validationScore?: number;
+  }): void {
+    this.repository.updateModel(modelId, params);
+  }
+
+  /**
+   * 删除模型
+   */
+  deleteModel(modelId: number): void {
+    this.repository.deleteModel(modelId);
+  }
+
   // ==================== 映射方法 ====================
+
+  private mapModelRow(row: any): ImputationModel {
+    return {
+      id: row.id,
+      datasetId: row.dataset_id || undefined,
+      methodId: row.method_id as ImputationMethodId,
+      modelName: row.model_name || undefined,
+      modelPath: row.model_path || undefined,
+      modelParams: row.model_params ? JSON.parse(row.model_params) : undefined,
+      targetColumn: row.target_column || undefined,
+      featureColumns: row.feature_columns ? JSON.parse(row.feature_columns) : undefined,
+      timeColumn: row.time_column || 'record_time',
+      trainingColumns: row.training_columns ? JSON.parse(row.training_columns) : undefined,
+      trainingSamples: row.training_samples || undefined,
+      validationScore: row.validation_score || undefined,
+      isActive: row.is_active === 1,
+      trainedAt: row.trained_at || undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
 
   private mapMethodRow(row: ImputationMethodRow): ImputationMethod {
     return {

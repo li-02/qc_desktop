@@ -6,6 +6,7 @@ import type {
   ImputationResult,
   ImputationDetail,
   ImputationColumnStat,
+  ImputationModel,
   ImputationCategory,
   ExecuteImputationRequest,
   ExecuteImputationResponse,
@@ -43,6 +44,14 @@ export class ImputationController extends BaseController {
       'imputation:deleteResult': this.deleteResult.bind(this),
       'imputation:applyVersion': this.applyVersion.bind(this),
       'imputation:exportFile': this.exportFile.bind(this),
+
+      // 模型管理
+      'imputation:createModel': this.createModel.bind(this),
+      'imputation:getModelsByDataset': this.getModelsByDataset.bind(this),
+      'imputation:getModel': this.getModel.bind(this),
+      'imputation:setActiveModel': this.setActiveModel.bind(this),
+      'imputation:updateModel': this.updateModel.bind(this),
+      'imputation:deleteModel': this.deleteModel.bind(this),
     };
   }
 
@@ -289,6 +298,127 @@ export class ImputationController extends BaseController {
 
       await this.service.exportFile(args.resultId, filePath);
       return { success: true, data: filePath };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  // ==================== 模型管理 ====================
+
+  /**
+   * 创建插补模型
+   */
+  private async createModel(
+    args: {
+      datasetId?: number;
+      methodId: string;
+      modelName?: string;
+      modelPath: string;
+      modelParams?: Record<string, any>;
+      targetColumn?: string;
+      featureColumns?: string[];
+      timeColumn?: string;
+      trainingColumns?: string[];
+      trainingSamples?: number;
+      validationScore?: number;
+    },
+    _event: Electron.IpcMainInvokeEvent
+  ): Promise<{ success: boolean; data?: number; error?: string }> {
+    try {
+      const modelId = this.service.createModel(args);
+      return { success: true, data: modelId };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 获取数据集的所有模型
+   */
+  private async getModelsByDataset(
+    args: { datasetId: number; methodId?: string },
+    _event: Electron.IpcMainInvokeEvent
+  ): Promise<{ success: boolean; data?: ImputationModel[]; error?: string }> {
+    try {
+      const models = this.service.getModelsByDataset(args.datasetId, args.methodId);
+      return { success: true, data: models };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 获取模型详情
+   */
+  private async getModel(
+    modelId: number,
+    _event: Electron.IpcMainInvokeEvent
+  ): Promise<{ success: boolean; data?: ImputationModel | null; error?: string }> {
+    try {
+      const model = this.service.getModel(modelId);
+      return { success: true, data: model };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 设置活跃模型
+   */
+  private async setActiveModel(
+    modelId: number,
+    _event: Electron.IpcMainInvokeEvent
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.service.setActiveModel(modelId);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 更新模型信息
+   */
+  private async updateModel(
+    args: {
+      modelId: number;
+      modelName?: string;
+      modelPath?: string;
+      modelParams?: Record<string, any>;
+      targetColumn?: string;
+      featureColumns?: string[];
+      timeColumn?: string;
+      validationScore?: number;
+    },
+    _event: Electron.IpcMainInvokeEvent
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.service.updateModel(args.modelId, {
+        modelName: args.modelName,
+        modelPath: args.modelPath,
+        modelParams: args.modelParams,
+        targetColumn: args.targetColumn,
+        featureColumns: args.featureColumns,
+        timeColumn: args.timeColumn,
+        validationScore: args.validationScore,
+      });
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 删除模型
+   */
+  private async deleteModel(
+    modelId: number,
+    _event: Electron.IpcMainInvokeEvent
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.service.deleteModel(modelId);
+      return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };
     }

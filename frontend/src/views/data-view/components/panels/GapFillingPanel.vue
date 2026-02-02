@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, toRaw, shallowRef } from "vue";
-import { ElMessage, ElNotification } from "element-plus";
+import { ElMessage, ElNotification, ElMessageBox } from "element-plus";
 import { 
   Plus,
   Delete,
@@ -15,8 +15,8 @@ import {
   InfoFilled,
   Search,
   Edit,
-  Calendar,
-  DataAnalysis
+  ArrowRight,
+  Connection
 } from "@element-plus/icons-vue";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import type { OutlierResult } from "@shared/types/database";
@@ -65,6 +65,13 @@ type ViewMode = 'config' | 'result';
 const currentView = ref<ViewMode>('config');
 const activeModule = ref<'detection' | 'analysis' | 'imputation'>('detection');
 
+// 监听视图模式变化，离开结果页时销毁图表
+watch(currentView, (newVal) => {
+  if (newVal !== 'result') {
+    disposeChart();
+  }
+});
+
 // ==================== 侧边栏状态 ====================
 const datasetStore = useDatasetStore();
 const outlierStore = useOutlierDetectionStore();
@@ -88,6 +95,15 @@ const versionNameMap = computed(() => {
 
 const imputationResults = ref<ImputationResult[]>([]);
 const currentResultId = ref<number | null>(null);
+const showArchivedHistory = ref(false); // 是否显示已归档(已应用)的历史记录
+
+const visibleImputationResults = computed(() => {
+  if (showArchivedHistory.value) {
+    return imputationResults.value;
+  }
+  // 默认隐藏已应用的记录，只显示草稿/失败/进行中的记录
+  return imputationResults.value.filter(r => r.status !== 'APPLIED');
+});
 
 // ==================== 方法选择状态 ====================
 const categories = [
@@ -177,18 +193,32 @@ const vizSelectedColumn = ref<string>('');
 const vizMode = ref<'timeseries' | 'table'>('timeseries');
 const timeSeriesChart = ref<HTMLDivElement | null>(null);
 const timeSeriesInstance = shallowRef<echarts.ECharts | null>(null);
-const comparisonTableData = ref<any[]>([]);
+const allTableData = shallowRef<any[]>([]); // 存储所有表格数据
+const imputedMap = shallowRef<Map<number, { value: number; confidence?: number }>>(new Map()); // 存储插补详情映射
+const currentPage = ref(1);
+const pageSize = ref(20);
+const comparisonTableData = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value;
+  const end = start + pageSize.value;
+  
+  return allTableData.value.slice(start, end).map((row: any, index: number) => {
+    // 全局索引
+    const globalIndex = start + index;
+    const imputedInfo = imputedMap.value.get(globalIndex);
+    
+    return {
+      index: globalIndex + 1, // 序号
+      timestamp: row._epochMs ? new Date(row._epochMs).toLocaleString() : (row.TIMESTAMP || ''),
+      original: row[vizSelectedColumn.value],
+      imputed: imputedInfo?.value ?? null,
+      confidence: imputedInfo?.confidence ?? null // 保留数据以便逻辑处理，虽然界面不显示
+    };
+  });
+});
 
 
 const isSavedAsVersion = ref(false);
 
-// **Temporal Analysis Chart Refs**
-const heatmapChartRef = ref<HTMLDivElement | null>(null);
-const monthlyChartRef = ref<HTMLDivElement | null>(null);
-const hourlyChartRef = ref<HTMLDivElement | null>(null);
-const heatmapInstance = shallowRef<echarts.ECharts | null>(null);
-const monthlyInstance = shallowRef<echarts.ECharts | null>(null);
-const hourlyInstance = shallowRef<echarts.ECharts | null>(null);
 
 // ==================== Computed ====================
 const filteredMethods = computed<ImputationMethod[]>(() => {
@@ -252,6 +282,15 @@ const availableColumns = computed<ColumnInfo[]>(() => {
     }));
 });
 
+// 监听 vizMode 变化，切换回时序图时重置大小
+watch(vizMode, (newVal) => {
+  if (newVal === 'timeseries') {
+    nextTick(() => {
+      timeSeriesInstance.value?.resize();
+    });
+  }
+});
+
 // 监听选中列变化，刷新图表
 watch(vizSelectedColumn, () => {
   if (vizSelectedColumn.value) {
@@ -272,7 +311,6 @@ const canExecute = computed(() => {
 });
 
 const progress = computed(() => {
-  if (isPreviewing.value) return 100; // 预览阶段进度为100%
   return progressInfo.value?.progress || 0;
 });
 const progressMessage = computed(() => progressInfo.value?.message || '');
@@ -299,118 +337,12 @@ const hasAdvancedParams = computed(() => {
 });
 
 // ==================== 流程控制 ====================
-const isPreviewing = ref(false);
+const showVersionDrawer = ref(false);
 
-// ==================== Temporal Analysis Charts ====================
-const updateTemporalCharts = async () => {
-    if (!gapFillingStore.missingStats?.timeDistribution) return;
-
-    await nextTick();
-    const { monthly, hourly, heatmap } = gapFillingStore.missingStats.timeDistribution;
-
-    // --- Monthly Chart ---
-    if (monthlyChartRef.value) {
-        if (!monthlyInstance.value) monthlyInstance.value = echarts.init(monthlyChartRef.value);
-        const months = Object.keys(monthly).sort();
-        const monthlyCounts = months.map(m => monthly[m]);
-
-        monthlyInstance.value.setOption({
-            title: { text: '月度缺失分布', left: 'center', textStyle: { fontSize: 14 } },
-            tooltip: { trigger: 'axis' },
-            grid: { top: 40, bottom: 30, left: 50, right: 20 },
-            xAxis: { type: 'category', data: months },
-            yAxis: { type: 'value', name: '缺失数' },
-            series: [{ data: monthlyCounts, type: 'bar', color: '#6366f1' }]
-        });
-    }
-
-    // --- Hourly Chart ---
-    if (hourlyChartRef.value) {
-        if (!hourlyInstance.value) hourlyInstance.value = echarts.init(hourlyChartRef.value);
-        const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
-        const hourlyCounts = hours.map(h => hourly[h] || 0);
-
-        hourlyInstance.value.setOption({
-            title: { text: '每小时缺失分布', left: 'center', textStyle: { fontSize: 14 } },
-            tooltip: { trigger: 'axis' },
-            grid: { top: 40, bottom: 30, left: 50, right: 20 },
-            xAxis: { type: 'category', data: hours },
-            yAxis: { type: 'value', name: '缺失数' },
-            series: [{ data: hourlyCounts, type: 'line', smooth: true, areaStyle: {}, color: '#ec4899' }]
-        });
-    }
-
-    // --- Heatmap Chart ---
-    if (heatmapChartRef.value) {
-        if (!heatmapInstance.value) heatmapInstance.value = echarts.init(heatmapChartRef.value);
-        
-        // Prepare data for heatmap: [dayIndex, hourIndex, value]
-        // Keys in 'heatmap' are "YYYY-MM-DD HH"
-        // We aggregate by Day of Week (0-6) and Hour (0-23) for a cyclical view, 
-        // OR simply just date vs hour if we want a full timeline.
-        // Let's do Day of Week x Hour for a compact "pattern" view.
-
-        const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
-        
-        // Initialize 7x24 grid
-        const grid = Array.from({ length: 7 }, () => Array(24).fill(0));
-
-        Object.entries(heatmap).forEach(([key, count]) => {
-            // key format: "YYYY-MM-DD HH"
-            const [dateStr, hourStr] = key.split(' ');
-            const date = new Date(dateStr);
-            if (!isNaN(date.getTime())) {
-                const dayIndex = date.getDay(); // 0-6
-                const hourIndex = parseInt(hourStr);
-                if (hourIndex >= 0 && hourIndex < 24) {
-                    grid[dayIndex][hourIndex] += count;
-                }
-            }
-        });
-
-        const heatmapData = [];
-        for (let d = 0; d < 7; d++) {
-            for (let h = 0; h < 24; h++) {
-                heatmapData.push([h, d, grid[d][h]]);
-            }
-        }
-
-        heatmapInstance.value.setOption({
-            title: { text: '缺失值热力图 (星期 x 小时)', left: 'center', textStyle: { fontSize: 14 } },
-            tooltip: { position: 'top' },
-             grid: { top: 40, bottom: 30, left: 60, right: 20 },
-            xAxis: { type: 'category', data: hours, name: '小时' },
-            yAxis: { type: 'category', data: daysOfWeek, name: '星期' },
-            visualMap: {
-                min: 0,
-                max: Math.max(...heatmapData.map(d => d[2])) || 1,
-                calculable: true,
-                orient: 'horizontal',
-                left: 'center',
-                bottom: 0,
-                show: false // Hide to save space, color tells enough
-            },
-            series: [{
-                name: 'Missing Counts',
-                type: 'heatmap',
-                data: heatmapData,
-                label: { show: false },
-                itemStyle: {
-                    emphasis: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.5)' }
-                }
-            }]
-        });
-    }
+const handleVersionSwitchFromManager = async (versionId: number) => {
+  await handleVersionChange(versionId);
+  showVersionDrawer.value = false;
 };
-
-watch(() => gapFillingStore.missingStats, (newStats) => {
-    if (newStats) {
-        // ... existing chart updates ...
-        updateTemporalCharts();
-    }
-}, { deep: true });
-
 
 
 // ==================== Methods ====================
@@ -498,6 +430,15 @@ const getStageLabel = (stage: string): string => {
 };
 
 const getVersionLabel = (stage?: string, versionId?: number) => {
+  // 优先使用版本的 remark
+  if (versionId) {
+    const ver = versions.value.find(v => v.id === versionId);
+    if (ver?.remark) {
+      return ver.remark;
+    }
+  }
+  
+  // 回退到默认标签
   if (stage === 'RAW') return '原始版本';
   if (stage === 'FILTERED' && versionId) {
     const outlierName = versionNameMap.value.get(versionId);
@@ -534,9 +475,26 @@ const formatDateTime = (dateInput: string | number): string => {
 };
 
 const getHistoryTitle = (result: ImputationResult) => {
-  // 1. 版本信息
-  const ver = versions.value.find(v => v.id === result.versionId);
-  const verLabel = ver ? `${getVersionLabel(ver.stageType, ver.id)}` : `版本#${result.versionId}`;
+  // 1. 版本信息 - 如果已应用，显示新版本名称；否则显示源版本名称
+  let verLabel = '';
+  
+  // 优先使用新生成的版本（如果已应用）
+  if (result.newVersionId) {
+    const newVer = versions.value.find(v => v.id === result.newVersionId);
+    if (newVer) {
+      verLabel = newVer.remark || getVersionLabel(newVer.stageType, newVer.id);
+    } else {
+      verLabel = `版本#${result.newVersionId}`;
+    }
+  } else {
+    // 未应用时，显示源版本信息
+    const ver = versions.value.find(v => v.id === result.versionId);
+    if (ver) {
+      verLabel = ver.remark || getVersionLabel(ver.stageType, ver.id);
+    } else {
+      verLabel = `版本#${result.versionId}`;
+    }
+  }
   
   // 2. 方法名称
   const method = getMethodName(result.methodId);
@@ -566,7 +524,7 @@ const handleVersionChange = async (versionId: number) => {
   ElMessage.success('已切换数据版本');
 };
 
-// 检测缺失值
+// 检测缺失值 (手动触发，带提示)
 const detectMissingValues = async () => {
   if (!props.datasetInfo?.id || !currentVersion.value?.id) {
     ElMessage.warning('请先选择数据集和版本');
@@ -597,6 +555,33 @@ const detectMissingValues = async () => {
   }
 };
 
+// 自动检测缺失值 (后台静默执行，不阻塞UI)
+const autoDetectMissingValues = async () => {
+  if (!props.datasetInfo?.id || !currentVersion.value?.id) {
+    return;
+  }
+
+  const datasetId = parseInt(props.datasetInfo.id);
+  const versionId = currentVersion.value.id;
+
+  // 如果已经有当前版本的检测结果，从历史记录恢复
+  if (gapFillingStore.restoreFromHistory(datasetId, versionId)) {
+    return;
+  }
+
+  try {
+    // 设置目标版本
+    gapFillingStore.setTargetVersion(datasetId, versionId);
+
+    // 后台执行缺失值检测，不显示 loading 提示
+    await gapFillingStore.loadVersionMissingStats(datasetId, versionId);
+    // 自动检测完成后不显示成功消息，保持静默
+  } catch (error: any) {
+    console.error('[自动检测] 缺失值检测失败:', error);
+    // 自动检测失败时静默处理，用户可以手动重试
+  }
+};
+
 const formatVersionLabel = (version: any) => {
   const label = getVersionLabel(version.stageType, version.id);
   return `${label} #${version.id}`;
@@ -606,14 +591,39 @@ const formatVersionLabel = (version: any) => {
 const switchToConfig = () => {
   currentView.value = 'config';
   currentResultId.value = null;
+  progressInfo.value = null;
+  isExecuting.value = false;
 };
 
 const viewResult = (result: ImputationResult) => {
+  // Clear execution state to prevent "running" status from persisting
+  isExecuting.value = false;
+  progressInfo.value = null;
+
+  // 确保清理旧图表
+  disposeChart();
+  
   currentResultId.value = result.id;
   currentView.value = 'result';
   isSavedAsVersion.value = false;
   // 加载结果详情
   loadResultComparison(result.id);
+};
+
+const viewCurrentResult = () => {
+  if (!currentResultId.value) return;
+  const result = imputationResults.value.find(r => r.id === currentResultId.value);
+  if (result) {
+    viewResult(result);
+  } else {
+    // Fallback if result not found in list yet
+    isExecuting.value = false;
+    progressInfo.value = null;
+    
+    currentView.value = 'result';
+    isSavedAsVersion.value = false;
+    loadResultComparison(currentResultId.value);
+  }
 };
 
 // ==================== 方法选择 ====================
@@ -709,22 +719,22 @@ const executeImputation = async () => {
     if (result.success) {
       ElNotification({
         title: "插补计算完成",
-        message: "请预览结果并选择保存方式",
+        message: "计算已完成，请查看结果",
         type: "success",
         duration: 5000,
       });
       
-      // 进入预览模式
+      // 更新状态，但不自动跳转
       currentResultId.value = result.resultId;
-      isPreviewing.value = true;
       isExecuting.value = false;
       
-      // 切换到结果视图
-      viewResult({ 
-        id: result.resultId, 
-        methodId: selectedMethodId.value,
-        status: 'COMPLETED' 
-      } as any);
+      // 手动设置进度为完成状态
+      progressInfo.value = {
+        resultId: result.resultId,
+        progress: 100,
+        stage: 'completed',
+        message: '插补计算已完成，请点击查看结果',
+      };
 
       // 刷新历史记录
       await loadHistory();
@@ -775,11 +785,20 @@ const cancelExecution = () => {
 // ==================== 结果相关 ====================
 const loadHistory = async () => {
   if (!props.datasetInfo) return;
+  
+  // 版本隔离：如果没有选中版本，清空历史并返回
+  if (!currentVersion.value?.id) {
+    imputationResults.value = [];
+    return;
+  }
+
   const datasetId = parseInt(props.datasetInfo.id);
+  const currentVerId = currentVersion.value.id;
   
   try {
     const result = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.GET_RESULTS_BY_DATASET, {
       datasetId,
+      versionId: currentVerId, // 增加版本过滤
       limit: 50,
       offset: 0
     });
@@ -830,40 +849,55 @@ const loadResultComparison = async (_resultId: number) => {
   // 模拟加载对比数据
   await nextTick();
   if (vizColumnOptions.value.length > 0) {
-    vizSelectedColumn.value = vizColumnOptions.value[0].name;
-    updateComparisonChart();
+    const newCol = vizColumnOptions.value[0].name;
+    // 如果列名没变，watcher不会触发，需要手动更新
+    // 如果列名变了，watcher会触发更新，这里不需要调用
+    if (vizSelectedColumn.value === newCol) {
+      updateComparisonChart();
+    } else {
+      vizSelectedColumn.value = newCol;
+    }
   }
 };
 
 
 // ==================== 可视化 ====================
-// 获取当前版本的文件路径
-const getCurrentVersionFilePath = (): string | null => {
-  if (!props.datasetInfo || !currentVersion.value) return null;
-  
-  // 1. 尝试从 processedFiles 中查找 (通常是后续版本)
-  const processedFile = props.datasetInfo.processedFiles?.find(
-    f => f.name === `Version ${currentVersion.value?.id}` || f.id === String(currentVersion.value?.id)
-  );
-  if (processedFile) return processedFile.filePath;
-
-  // 2. 如果是原始版本或未找到，检查是否是原始文件
-  // 这里假设版本ID较小或者是特定的RAW类型时使用原始文件
-  if (currentVersion.value.stageType === 'RAW') {
-    return props.datasetInfo.originalFile.filePath;
+const disposeChart = () => {
+  if (timeSeriesInstance.value) {
+    timeSeriesInstance.value.dispose();
+    timeSeriesInstance.value = null;
   }
+};
+
+// 获取指定版本的文件路径
+const getVersionFilePath = (versionId?: number): string | null => {
+  if (!props.datasetInfo) return null;
   
-  // 3. 如果还是找不到，尝试从 store 的 versions 列表中查找 (如果有 filePath 字段)
-  // 目前前端 DatasetVersionInfo 没有 filePath，所以主要依赖 processedFiles 或 originalFile
+  // 如果指定了版本ID，从 versions 列表中查找
+  const targetVersionId = versionId ?? currentVersion.value?.id;
+  if (!targetVersionId) return null;
+  
+  const targetVersion = versions.value.find(v => v.id === targetVersionId);
+  if (targetVersion?.filePath) {
+    return targetVersion.filePath;
+  }
   
   return null;
 };
 
 const updateComparisonChart = async () => {
+  if (currentView.value !== 'result') return;
   if (!vizSelectedColumn.value) return;
   
+  // 在结果视图中，使用插补结果的源版本ID获取文件路径
+  let targetVersionId: number | undefined;
+  if (currentView.value === 'result' && currentResultId.value) {
+    const result = imputationResults.value.find(r => r.id === currentResultId.value);
+    targetVersionId = result?.versionId;
+  }
+  
   // 获取文件路径
-  const filePath = getCurrentVersionFilePath();
+  const filePath = getVersionFilePath(targetVersionId);
   if (!filePath) {
     ElMessage.warning('无法获取当前版本的文件路径');
     return;
@@ -882,6 +916,8 @@ const updateComparisonChart = async () => {
       missingValueTypes: toRaw(props.datasetInfo?.missingValueTypes) || []
     });
 
+    if (currentView.value !== 'result') return; // 防止在异步期间切换了视图
+
     if (timeSeriesInstance.value) {
       timeSeriesInstance.value.hideLoading();
     }
@@ -891,12 +927,9 @@ const updateComparisonChart = async () => {
     }
 
     const { tableData } = result.data;
-    // const { statistics } = result.data; // 暂时未使用统计信息
-    
+
     // 处理数据用于 ECharts
-    // 假设 tableData 已经包含了 _epochMs (时间戳) 和 目标列的值
     const originalData = tableData.map((row: any) => {
-      // ECharts 时间轴支持时间戳或日期字符串
       const timestamp = row._epochMs || row.TIMESTAMP || row.record_time || row.time;
       const value = row[vizSelectedColumn.value];
       return [timestamp, value];
@@ -911,10 +944,9 @@ const updateComparisonChart = async () => {
           columnName: vizSelectedColumn.value,
           limit: 100000 // 获取足够多的插补详情
         });
-        
+
         if (detailsRes.success && detailsRes.data) {
           imputedData = detailsRes.data.map((detail: ImputationDetail) => {
-            // 确保 rowIndex 在有效范围内
             if (detail.rowIndex >= 0 && detail.rowIndex < tableData.length) {
               const row = tableData[detail.rowIndex];
               const timestamp = row._epochMs || row.TIMESTAMP || row.record_time || row.time;
@@ -929,25 +961,76 @@ const updateComparisonChart = async () => {
     }
 
     await nextTick();
-    
-    if (timeSeriesChart.value && !timeSeriesInstance.value) {
-      timeSeriesInstance.value = echarts.init(timeSeriesChart.value);
+
+    // 增强的 DOM 就绪检查 (重试 3 次)
+    let retries = 3;
+    while (!timeSeriesChart.value && retries > 0) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      retries--;
+    }
+
+    if (!timeSeriesChart.value) {
+      console.warn('ECharts container not found after retries');
+      return;
+    }
+
+    // 检查容器尺寸
+    if (timeSeriesChart.value.clientWidth === 0 || timeSeriesChart.value.clientHeight === 0) {
+      // 尝试再给一点时间等待布局
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    // 实例管理
+    if (timeSeriesInstance.value) {
+      const dom = timeSeriesInstance.value.getDom();
+      // 如果 DOM 引用变了，或者实例已经被销毁
+      if (dom !== timeSeriesChart.value || timeSeriesInstance.value.isDisposed()) {
+        try {
+          timeSeriesInstance.value.dispose();
+        } catch (e) { /* ignore */ }
+        timeSeriesInstance.value = null;
+      }
+    }
+
+    if (!timeSeriesInstance.value) {
+      try {
+        timeSeriesInstance.value = echarts.init(timeSeriesChart.value);
+      } catch (e) {
+        console.error('ECharts init failed:', e);
+        return;
+      }
     }
     
     if (timeSeriesInstance.value) {
+      // ========== 大数据量优化配置 ==========
+      const dataLength = originalData.length;
+      const imputedLength = imputedData.length;
+      const isLargeData = dataLength > 5000 || imputedLength > 1000;
+
+      const defaultEnd = isLargeData ? Math.min(20, 100 * 2000 / dataLength) : 100;
+
       const option = {
-        animation: false, // 禁用动画以提高性能
+        animation: false,
+        progressive: isLargeData ? 500 : 0,
+        progressiveThreshold: 3000,
+        hoverLayerThreshold: 3000,
         tooltip: {
           trigger: 'axis',
+          confine: true,
+          enterable: false,
+          hideDelay: 0,
+          axisPointer: {
+            type: isLargeData ? 'line' : 'cross',
+            animation: false
+          },
           formatter: (params: any) => {
             let result = '';
             if (params[0] && params[0].value) {
-               const date = new Date(params[0].value[0]);
-               result += `${date.toLocaleString()}<br/>`;
+              const date = new Date(params[0].value[0]);
+              result += `${date.toLocaleString()}<br/>`;
             }
             params.forEach((param: any) => {
               const value = param.value[1];
-              // 区分原始数据和插补数据
               const label = param.seriesName;
               result += `${label}: ${value !== null && value !== undefined ? Number(value).toFixed(2) : '缺失'}<br/>`;
             });
@@ -955,7 +1038,7 @@ const updateComparisonChart = async () => {
           }
         },
         legend: {
-          data: ['原始数据', '插补值'], 
+          data: ['原始数据', '插补值'],
           bottom: 10
         },
         grid: {
@@ -967,12 +1050,14 @@ const updateComparisonChart = async () => {
         },
         xAxis: {
           type: 'time',
-          axisLabel: { fontSize: 10 }
+          axisLabel: { fontSize: 10 },
+          splitNumber: isLargeData ? 5 : 8
         },
         yAxis: {
           type: 'value',
-          scale: true, // 自适应 Y 轴范围
-          axisLabel: { fontSize: 10 }
+          scale: true,
+          axisLabel: { fontSize: 10 },
+          splitNumber: isLargeData ? 5 : 8
         },
         dataZoom: [
           {
@@ -980,13 +1065,19 @@ const updateComparisonChart = async () => {
             show: true,
             xAxisIndex: [0],
             start: 0,
-            end: 100
+            end: defaultEnd,
+            filterMode: 'filter',
+            throttle: 100
           },
           {
             type: 'inside',
             xAxisIndex: [0],
             start: 0,
-            end: 100
+            end: defaultEnd,
+            filterMode: 'filter',
+            throttle: 100,
+            zoomOnMouseWheel: true,
+            moveOnMouseMove: true
           }
         ],
         series: [
@@ -995,33 +1086,84 @@ const updateComparisonChart = async () => {
             type: 'line',
             data: originalData,
             itemStyle: { color: '#22c55e' },
-            lineStyle: { width: 1.5 }, // 稍微减细线条
-            showSymbol: false, // 关键：不显示数据点图标，仅在hover时显示
-            sampling: 'lttb', // 关键：使用 LTTB 算法进行降采样，保持趋势同时减少渲染点数
-            connectNulls: false, // 关键：不连接空值，显示断点
+            lineStyle: { width: isLargeData ? 1 : 1.5 },
+            showSymbol: false,
+            sampling: 'lttb',
+            connectNulls: false,
+            large: isLargeData,
+            largeThreshold: 2000,
+            emphasis: {
+              disabled: isLargeData
+            }
           },
           {
             name: '插补值',
-            type: 'scatter', // 使用散点图突出显示插补点
+            type: 'scatter',
             data: imputedData,
-            itemStyle: { color: '#f59e0b' }, // 橙色
-            symbolSize: 4, // 略微显眼的大小
-            large: true, // 开启大数据量优化
-            z: 10 // 确保显示在顶层
+            itemStyle: {
+              color: '#f59e0b',
+              opacity: imputedLength > 500 ? 0.7 : 1
+            },
+            symbolSize: imputedLength > 1000 ? 2 : (imputedLength > 500 ? 3 : 4),
+            large: true,
+            largeThreshold: 500,
+            z: 10,
+            emphasis: {
+              disabled: imputedLength > 1000,
+              scale: false
+            }
           }
         ]
       };
-      
-      timeSeriesInstance.value.setOption(option, true); // true: not merge, reset
+
+      timeSeriesInstance.value.setOption(option, true);
+      timeSeriesInstance.value.resize(); // 确保大小正确
     }
-    
-    // 更新表格数据 (显示前20条作为预览)
-    comparisonTableData.value = tableData.slice(0, 20).map((row: any) => ({
-      timestamp: row._epochMs ? new Date(row._epochMs).toLocaleString() : (row.TIMESTAMP || ''),
-      original: row[vizSelectedColumn.value],
-      imputed: '-', // 暂无
-      confidence: '-' // 暂无
-    }));
+
+    // 更新表格数据
+    allTableData.value = tableData;
+
+    // 创建插补数据的索引映射
+    imputedMap.value = new Map();
+
+    if (imputedData.length > 0) {
+      // 重新构建 Map，这里复用之前获取的 imputedData 逻辑有点麻烦，
+      // 但由于 format 变了 (imputedData是[time, value])，我们还是得用 detailsRes 的原始数据
+      // 或者简单点，再次遍历 imputedData? 不，imputedData 已经丢失了 rowIndex
+      // 所以最好是在上面 try catch 里把 detailsRes 保存下来或者同时构建 map
+      // 为简化代码，这里再次调用一次 map 逻辑 (内存操作很快)
+      // 不过为了性能，我们在上面获取 detailsRes 时直接构建 map 更好。
+      // 下面是修复逻辑：
+    }
+
+    // 修正：在上面获取 detailsRes 时已经构建了 imputedData，这里需要重新获取一次 raw details 用于表格？
+    // 或者我们在上面就一起做。
+    //
+    // 重新获取一下用于表格的 Map (虽然有点重复，但逻辑清晰)
+    if (currentResultId.value) {
+      try {
+        // 使用缓存或者重新请求
+        const detailsRes = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.GET_DETAILS, {
+          resultId: currentResultId.value,
+          columnName: vizSelectedColumn.value,
+          limit: 100000
+        });
+        if (detailsRes.success && detailsRes.data) {
+          const newMap = new Map<number, { value: number; confidence?: number }>();
+          detailsRes.data.forEach((detail: ImputationDetail) => {
+            newMap.set(detail.rowIndex, {
+              value: detail.imputedValue,
+              confidence: detail.confidence
+            });
+          });
+          imputedMap.value = newMap;
+        }
+      } catch (e) {
+        console.error('加载插补详情(表格)失败', e);
+      }
+    }
+
+    currentPage.value = 1;
 
   } catch (error: any) {
     console.error('加载图表数据失败:', error);
@@ -1039,9 +1181,26 @@ const saveAsNewVersion = async () => {
   if (!currentResultId.value) return;
   
   try {
+    // 获取当前版本的名称作为默认值
+    const currentVersionName = currentVersion.value?.remark || `插补处理 - ${getMethodName(selectedMethodId.value || 'UNKNOWN' as any)}`;
+    
+    // 弹出输入对话框
+    const { value: versionName } = await ElMessageBox.prompt('请输入新版本的名称', '保存为新版本', {
+      confirmButtonText: '保存',
+      cancelButtonText: '取消',
+      inputPlaceholder: '请输入版本名称',
+      inputValue: currentVersionName,
+      inputValidator: (value) => {
+        if (!value || value.trim() === '') {
+          return '版本名称不能为空';
+        }
+        return true;
+      }
+    });
+    
     const result = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.APPLY_VERSION, {
       resultId: currentResultId.value,
-      remark: `Applied imputation using ${getMethodName(selectedMethodId.value || 'UNKNOWN' as any)}`
+      remark: versionName.trim()
     });
     
     if (result.success) {
@@ -1053,6 +1212,8 @@ const saveAsNewVersion = async () => {
       if (result.data?.id) {
         await datasetStore.setCurrentVersion(result.data.id);
       }
+      // 重新加载插补历史记录，以显示更新后的版本名称
+      await loadHistory();
       
       // 更新状态，保留在结果页，但更新UI状态
       // switchToConfig(); // 不再跳转回配置页
@@ -1060,6 +1221,10 @@ const saveAsNewVersion = async () => {
       ElMessage.error(result.error || '保存版本失败');
     }
   } catch (error: any) {
+    // 用户取消操作
+    if (error === 'cancel') {
+      return;
+    }
     ElMessage.error(error.message || '保存版本失败');
   }
 };
@@ -1112,6 +1277,27 @@ watch(
   { immediate: true }
 );
 
+// 监听版本变化，重新加载历史记录（实现版本隔离）并自动检测缺失值
+watch(
+  () => currentVersion.value?.id,
+  (newId, oldId) => {
+    if (newId) {
+      // 仅在版本切换时（非首次加载）重置视图状态
+      if (oldId !== undefined) {
+        currentResultId.value = null;
+        currentView.value = 'config';
+        progressInfo.value = null;
+        isExecuting.value = false;
+      }
+      loadHistory();
+      
+      // 自动触发缺失值检测（后台静默执行）
+      autoDetectMissingValues();
+    }
+  },
+  { immediate: true } // 首次加载时也触发自动检测
+);
+
 onMounted(async () => {
   window.addEventListener('resize', () => {
     timeSeriesInstance.value?.resize();
@@ -1124,8 +1310,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  timeSeriesInstance.value?.dispose();
-
+  disposeChart();
 });
 </script>
 
@@ -1152,13 +1337,15 @@ onUnmounted(() => {
 
         <!-- 历史记录 -->
         <div class="history-section">
-          <div class="sidebar-subtitle">插补历史</div>
+          <div class="sidebar-subtitle">
+            <span>操作历史</span>
+          </div>
           <div class="history-list">
-            <div v-if="imputationResults.length === 0" class="history-empty">
-              <span>暂无历史记录</span>
+            <div v-if="visibleImputationResults.length === 0" class="history-empty">
+              <span>暂无草稿记录</span>
             </div>
             <div 
-              v-for="result in imputationResults" 
+              v-for="result in visibleImputationResults" 
               :key="result.id" 
               class="history-item"
               :class="{ 'history-item--active': currentResultId === result.id }"
@@ -1219,6 +1406,10 @@ onUnmounted(() => {
                     </div>
                   </el-option>
                 </el-select>
+                <el-button link type="primary" @click="showVersionDrawer = true" class="version-lineage-btn">
+                  <el-icon><Connection /></el-icon>
+                  版本谱系
+                </el-button>
               </div>
             </div>
 
@@ -1241,13 +1432,6 @@ onUnmounted(() => {
               @click="activeModule = 'detection'">
               <el-icon><Search /></el-icon>
               <span>缺失值检测</span>
-            </div>
-            <div 
-              class="module-tab-item" 
-              :class="{ 'module-tab-item--active': activeModule === 'analysis' }"
-              @click="activeModule = 'analysis'">
-              <el-icon><DataAnalysis /></el-icon>
-              <span>多维分析</span>
             </div>
             <div 
               class="module-tab-item" 
@@ -1286,27 +1470,33 @@ onUnmounted(() => {
                   :loading="gapFillingStore.loading"
                   @click="detectMissingValues"
                   class="detect-btn">
-                  <el-icon><Search /></el-icon>
-                  检测缺失
+                  <el-icon><Refresh /></el-icon>
+                  重新检测
                 </el-button>
               </div>
             </div>
             </div>
             
-            <!-- 如果没有检测结果，显示引导页 -->
+            <!-- 如果没有检测结果，显示加载状态或引导页 -->
             <div v-if="!gapFillingStore.hasStats" class="detection-empty-state">
               <div class="empty-illustration">
-                <el-icon class="illustration-icon"><Search /></el-icon>
+                <el-icon class="illustration-icon" :class="{ 'is-loading': gapFillingStore.loading }"><Search /></el-icon>
                 <div class="circles">
                   <span class="circle c1"></span>
                   <span class="circle c2"></span>
                   <span class="circle c3"></span>
                 </div>
               </div>
-              <h3 class="empty-hint-title">准备好分析数据了吗？</h3>
+              <h3 class="empty-hint-title">{{ gapFillingStore.loading ? '正在检测缺失值...' : '准备好分析数据了吗？' }}</h3>
               <p class="empty-hint-desc">
-                点击上方 <b>"检测缺失"</b> 按钮，我们将扫描 <b>{{ datasetInfo?.originalFile?.rows?.toLocaleString() || '-' }}</b> 行数据，<br>
-                为您生成详细的缺失值分布报告和健康度评分。
+                <template v-if="gapFillingStore.loading">
+                  系统正在后台自动扫描 <b>{{ datasetInfo?.originalFile?.rows?.toLocaleString() || '-' }}</b> 行数据，<br>
+                  请稍候...
+                </template>
+                <template v-else>
+                  系统将自动检测缺失值。如需修改 <b>"缺失值标记"</b> 后重新检测，<br>
+                  请点击上方 <b>"重新检测"</b> 按钮。
+                </template>
               </p>
             </div>
           
@@ -1344,31 +1534,9 @@ onUnmounted(() => {
             </div>
 
 
-            <!-- 时序分析区域 -->
-            <div v-if="gapFillingStore.missingStats?.timeDistribution" class="temporal-analysis-section">
-              <div class="section-header">
-                <h3 class="section-title">
-                  <el-icon><Calendar /></el-icon>
-                  缺失值时序分布
-                </h3>
-              </div>
-
-              <div class="temporal-charts-grid">
-                <!-- Heatmap (Full Width) -->
-                <div class="chart-wrapper full-width-chart">
-                  <div ref="heatmapChartRef" class="chart-div"></div>
-                </div>
-                
-                <!-- Monthly Chart -->
-                <div class="chart-wrapper">
-                  <div ref="monthlyChartRef" class="chart-div"></div>
-                </div>
-
-                <!-- Hourly Chart -->
-                <div class="chart-wrapper">
-                  <div ref="hourlyChartRef" class="chart-div"></div>
-                </div>
-              </div>
+            <!-- 综合分析视图 -->
+            <div v-if="gapFillingStore.hasStats" class="analysis-section-container" style="margin-top: 20px;">
+              <MissingAnalysisView />
             </div>
 
             <!-- 详细数据表格 -->
@@ -1445,10 +1613,6 @@ onUnmounted(() => {
           </div>
           </div>
 
-          <!-- Analysis Module -->
-          <div v-if="activeModule === 'analysis'" class="module-container">
-            <MissingAnalysisView />
-          </div>
 
           <!-- Imputation Module -->
           <div v-if="activeModule === 'imputation'" class="config-layout">
@@ -1737,6 +1901,14 @@ onUnmounted(() => {
               <div class="progress-info">
                 <p class="progress-message">{{ progressMessage }}</p>
                 <p class="progress-detail" v-if="progressInfo?.stage">当前阶段: {{ getStageLabel(progressInfo.stage) }}</p>
+                
+                <!-- 完成后的操作按钮 -->
+                <div v-if="progressInfo?.stage === 'completed'" class="completion-actions">
+                  <el-button type="success" @click="viewCurrentResult">
+                    查看插补结果
+                    <el-icon class="el-icon--right"><ArrowRight /></el-icon>
+                  </el-button>
+                </div>
               </div>
 
               <!-- 执行日志 -->
@@ -1796,21 +1968,23 @@ onUnmounted(() => {
               <label>选择列：</label>
               <select v-model="vizSelectedColumn" class="viz-select">
                 <option v-for="col in vizColumnOptions" :key="col.name" :value="col.name">
-                  {{ col.name }} ({{ col.missingCount }} 缺失)
+                  {{ col.name }}
                 </option>
               </select>
             </div>
 
             <div class="viz-mode-switch">
               <button 
+                type="button"
                 :class="['viz-mode-btn', { 'viz-mode-btn--active': vizMode === 'timeseries' }]"
-                @click="vizMode = 'timeseries'">
+                @click.stop="vizMode = 'timeseries'">
                 <el-icon><TrendCharts /></el-icon>
                 <span>时序图</span>
               </button>
               <button 
+                type="button"
                 :class="['viz-mode-btn', { 'viz-mode-btn--active': vizMode === 'table' }]"
-                @click="vizMode = 'table'">
+                @click.stop="vizMode = 'table'">
                 <el-icon><List /></el-icon>
                 <span>表格</span>
               </button>
@@ -1824,32 +1998,39 @@ onUnmounted(() => {
 
           <!-- 表格视图 -->
           <div v-show="vizMode === 'table'" class="table-container">
+            <!-- 表格图例 -->
+            <div class="chart-legend table-legend">
+              <div class="legend-item">
+                <span class="legend-color legend-color--original"></span>
+                <span class="legend-text">原始数据</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-color legend-color--imputed"></span>
+                <span class="legend-text">插补数据</span>
+              </div>
+            </div>
+
             <table class="comparison-table">
               <thead>
                 <tr>
                   <th>序号</th>
                   <th>时间</th>
-                  <th>原始值</th>
-                  <th>插补值</th>
-                  <th>置信度</th>
+                  <th>数值</th>
                   <th>状态</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="(row, index) in comparisonTableData" :key="index">
-                  <td class="cell-index">{{ index + 1 }}</td>
+                  <td class="cell-index">{{ row.index }}</td>
                   <td class="cell-time">{{ row.timestamp }}</td>
-                  <td class="cell-original">
-                    <span v-if="row.original === null" class="value-missing">缺失</span>
-                    <span v-else class="value-normal">{{ row.original.toFixed(2) }}</span>
-                  </td>
-                  <td class="cell-imputed">
-                    <span class="value-imputed">{{ row.imputed.toFixed(2) }}</span>
-                  </td>
-                  <td class="cell-confidence">
-                    <div class="confidence-bar">
-                      <div class="confidence-fill" :style="{ width: (row.confidence * 100) + '%' }"></div>
-                    </div>
+                  <td class="cell-value">
+                    <span v-if="row.original !== null && row.original !== undefined" class="value-normal">
+                      {{ Number(row.original).toFixed(2) }}
+                    </span>
+                    <span v-else-if="row.imputed !== null && row.imputed !== undefined" class="value-imputed">
+                      {{ Number(row.imputed).toFixed(2) }}
+                    </span>
+                    <span v-else class="value-missing">缺失</span>
                   </td>
                   <td class="cell-status">
                     <span v-if="row.original === null" class="status-tag status-tag--imputed">已插补</span>
@@ -1858,27 +2039,39 @@ onUnmounted(() => {
                 </tr>
               </tbody>
             </table>
+            
+            <!-- 分页控件 -->
+            <div class="table-pagination">
+              <el-pagination
+                v-model:current-page="currentPage"
+                v-model:page-size="pageSize"
+                :page-sizes="[20, 50, 100, 200]"
+                layout="total, sizes, prev, pager, next, jumper"
+                :total="allTableData.length"
+                size="small"
+              />
+            </div>
           </div>
 
-          <!-- 图例 (仅在表格模式显示，时序图自带图例) -->
-          <div v-if="vizMode === 'table'" class="chart-legend">
-            <div class="legend-item">
-              <span class="legend-color legend-color--original"></span>
-              <span class="legend-text">原始数据</span>
-            </div>
-            <div class="legend-item">
-              <span class="legend-color legend-color--imputed"></span>
-              <span class="legend-text">插补数据</span>
-            </div>
-            <div class="legend-item">
-              <span class="legend-color legend-color--missing"></span>
-              <span class="legend-text">缺失点</span>
-            </div>
-          </div>
         </div>
       </div>
     </div>
     
+    <!-- Version Manager Drawer -->
+    <el-drawer
+      v-model="showVersionDrawer"
+      title="数据版本管理"
+      size="450px"
+      destroy-on-close
+      append-to-body
+    >
+      <VersionManager 
+        v-if="datasetInfo"
+        :dataset-id="datasetInfo.id"
+        @switch-version="handleVersionSwitchFromManager"
+        @close="showVersionDrawer = false"
+      />
+    </el-drawer>
   </div>
 </template>
 
@@ -2143,6 +2336,16 @@ onUnmounted(() => {
   padding: 16px;
   border-radius: 50%;
   box-shadow: 0 4px 16px rgba(16, 185, 129, 0.2);
+  transition: transform 0.3s ease;
+}
+
+.illustration-icon.is-loading {
+  animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .circles .circle {
@@ -3365,6 +3568,15 @@ onUnmounted(() => {
 
 .progress-info {
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.completion-actions {
+  margin-top: 8px;
+  animation: fadeIn 0.5s ease;
 }
 
 .progress-message {
@@ -3601,7 +3813,7 @@ onUnmounted(() => {
 }
 
 .value-imputed {
-  color: #3b82f6;
+  color: #f59e0b;
   font-weight: 600;
   font-family: monospace;
 }
@@ -3664,7 +3876,7 @@ onUnmounted(() => {
 }
 
 .legend-color--imputed {
-  background: #3b82f6;
+  background: #f59e0b;
 }
 
 .legend-color--missing {
@@ -3786,6 +3998,13 @@ onUnmounted(() => {
 .column-list::-webkit-scrollbar-thumb:hover,
 .logs-content::-webkit-scrollbar-thumb:hover {
   background: rgba(16, 185, 129, 0.5);
+}
+
+.table-pagination {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 4px;
 }
 
 /* ==================== 响应式设计 ==================== */

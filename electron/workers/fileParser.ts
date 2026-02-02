@@ -290,6 +290,11 @@ function parseCSV(content: any, maxRows = 20, missingValueTypes: string[] = [], 
               columnStatistics[col] = colStats;
             }
           });
+
+          // 如果有时间列，计算时间分布
+          if (timeColumn && fullResults.meta.fields.includes(timeColumn)) {
+            timeDistribution = calculateTimeDistribution(fullResults.data, timeColumn, fullResults.meta.fields, missingValueTypes);
+          }
         }
 
         if (maxRows !== -1) {
@@ -309,6 +314,7 @@ function parseCSV(content: any, maxRows = 20, missingValueTypes: string[] = [], 
       columnMissingStatus,
       columnStatistics,
       completeRecords,
+      timeDistribution
     };
   } catch (error: any) {
     throw new Error(`CSV解析错误: ${error.message}`);

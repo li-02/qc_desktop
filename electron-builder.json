@@ -9,6 +9,13 @@
       "public/frontend/dist/**/*",
       "node_modules/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "python",
+        "to": "python",
+        "filter": ["**/*.py", "**/*.pypots", "requirements.txt"]
+      }
+    ],
     "mac": {
       "category": "public.app-category.utilities"
     },

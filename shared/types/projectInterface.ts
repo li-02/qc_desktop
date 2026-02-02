@@ -194,6 +194,7 @@ export interface DatasetVersionInfo {
   datasetId: number;
   parentVersionId: number | null;
   stageType: string;
+  filePath: string;
   createdAt: number;
   remark: string;
 }

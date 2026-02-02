@@ -3,7 +3,7 @@ import { computed, ref } from "vue";
 // 第三步 上传文件
 import type { UploadInstance } from "element-plus";
 import { ElMessage } from "element-plus";
-import { UploadFilled, TrendCharts, Odometer, Sunny, Pouring, Lightning, Document, Plus, Setting } from "@element-plus/icons-vue";
+import { UploadFilled, TrendCharts, Odometer, Sunny, Pouring, Lightning, Document, Plus, Setting, Refresh } from "@element-plus/icons-vue";
 // import type {ElectronWindow} from "@shared/types/window";
 import type { TableColumns } from "@pureadmin/table";
 import PureTable from "@pureadmin/table";
@@ -280,6 +280,9 @@ const submitImportOption = async () => {
     return;
   }
 
+  // 设置 loading 状态，防止重复提交
+  loading.value = true;
+  
   try {
     const pureData = {
       projectId: projectStore.currentProject!.id,
@@ -301,6 +304,10 @@ const submitImportOption = async () => {
         sourceTimezone: getSystemTimezone(),
       },
     };
+    
+    // 让 UI 更新 loading 状态后再执行导入
+    await new Promise(resolve => setTimeout(resolve, 0));
+    
     const result = await datasetStore.importData(pureData.importOption);
     if (result) {
       ElMessage.success("数据导入成功");
@@ -311,6 +318,8 @@ const submitImportOption = async () => {
   } catch (error) {
     console.error("数据导入失败:", error);
     ElMessage.error("数据导入失败，请稍后重试");
+  } finally {
+    loading.value = false;
   }
 };
 
@@ -348,39 +357,48 @@ const processFile = async (file: File, fileType: string) => {
   tableData.value = [];
   columns.value = [];
   totalRowCount.value = 0;
+  
   try {
-    const reader = new FileReader();
-    reader.onload = async e => {
-      const fileContent = e.target?.result;
-      if (!fileContent) {
-        throw new Error("读取文件失败");
+    // 使用 Promise 包装 FileReader，避免回调嵌套
+    const fileContent = await new Promise<string | ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        if (e.target?.result) {
+          resolve(e.target.result);
+        } else {
+          reject(new Error("读取文件失败"));
+        }
+      };
+      reader.onerror = () => reject(new Error("读取文件失败"));
+      
+      if (fileType === "csv") {
+        reader.readAsText(file);
+      } else {
+        reader.readAsArrayBuffer(file);
       }
-      const type = fileType === "csv" ? "csv" : "excel";
-      const result = await window.electronAPI.invoke(API_ROUTES.FILES.PARSE_PREVIEW, {
-        fileType: type,
-        fileContent: fileContent,
-        maxRows: 20,
-      });
-      if (!result.success) {
-        throw new Error(result.error || "解析文件失败");
-      }
-      columns.value = result.data.columns;
-      tableData.value = result.data.tableData;
-      totalRowCount.value = result.data.totalRows;
+    });
 
-      fileProcessing.value = false;
-    };
-    reader.onerror = () => {
-      throw new Error("读取文件失败");
-    };
-    if (fileType === "csv") {
-      reader.readAsText(file);
-    } else {
-      reader.readAsArrayBuffer(file);
+    // 使用 nextTick 让 UI 更新后再调用 IPC
+    await new Promise(resolve => setTimeout(resolve, 0));
+    
+    const type = fileType === "csv" ? "csv" : "excel";
+    const result = await window.electronAPI.invoke(API_ROUTES.FILES.PARSE_PREVIEW, {
+      fileType: type,
+      fileContent: fileContent,
+      maxRows: 20,
+    });
+    
+    if (!result.success) {
+      throw new Error(result.error || "解析文件失败");
     }
+    
+    columns.value = result.data.columns;
+    tableData.value = result.data.tableData;
+    totalRowCount.value = result.data.totalRows;
   } catch (err: any) {
     console.log("处理文件时出错:", err);
     ElMessage.error(err.message || "处理文件时出错");
+  } finally {
     fileProcessing.value = false;
   }
 };
@@ -529,6 +547,13 @@ defineExpose({
             </div>
           </div>
         </el-upload>
+        <!-- 文件处理中的加载提示 -->
+        <div v-if="fileProcessing" class="file-processing-overlay">
+          <div class="processing-content">
+            <el-icon class="processing-icon is-loading"><Refresh /></el-icon>
+            <span>正在解析文件...</span>
+          </div>
+        </div>
       </div>
 
       <div v-if="currentStep === 2" class="fade-in">
@@ -1142,6 +1167,46 @@ defineExpose({
   font-weight: 700;
   color: #065f46;
   letter-spacing: 0.5px;
+}
+
+/* File Processing Overlay */
+.file-processing-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  border-radius: 12px;
+}
+
+.processing-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #10b981;
+}
+
+.processing-icon {
+  font-size: 32px;
+}
+
+.processing-icon.is-loading {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.step-container {
+  position: relative;
 }
 
 /* Scrollbar Customization */

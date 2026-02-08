@@ -7,7 +7,7 @@
 /** 插补方法ID */
 export type ImputationMethodId = 
   | 'MEAN' | 'MEDIAN' | 'MODE' | 'FORWARD_FILL' | 'BACKWARD_FILL'
-  | 'LINEAR' | 'SPLINE' | 'POLYNOMIAL' | 'SEASONAL'
+  | 'LINEAR' | 'SPLINE' | 'POLYNOMIAL' | 'SEASONAL' | 'MDS_REDDYPROC'
   | 'ARIMA' | 'SARIMA' | 'ETS'
   | 'KNN' | 'RANDOM_FOREST' | 'GRADIENT_BOOSTING' | 'MICE' | 'MISSFOREST'
   | 'TIMEMIXER_PP' | 'LSTM' | 'GRU' | 'TRANSFORMER' | 'VAE' | 'GAIN';
@@ -53,7 +53,7 @@ export interface ImputationMethodParam {
   methodId: ImputationMethodId;
   paramKey: string;
   paramName: string;
-  paramType: 'number' | 'select' | 'boolean' | 'range';
+  paramType: 'number' | 'select' | 'boolean' | 'range' | 'string';
   defaultValue: string | null;
   minValue?: number;
   maxValue?: number;

@@ -48,6 +48,13 @@ const processSteps = ref([
     color: "purple",
     route: "/missing-value-imputation",
   },
+  {
+    iconName: "TrendCharts",
+    title: "通量分割",
+    desc: "进行通量数据分割处理",
+    color: "green",
+    route: "/flux-partitioning",
+  },
 ]);
 
 // Helper formatters
@@ -160,6 +167,7 @@ const showGuide = () => {
                       <Histogram v-if="step.iconName === 'Histogram'" />
                       <WarningFilled v-else-if="step.iconName === 'WarnTriangleFilled'" />
                       <SuccessFilled v-else-if="step.iconName === 'HelpFilled'" />
+                      <TrendCharts v-else-if="step.iconName === 'TrendCharts'" />
                     </el-icon>
                   </div>
                   <div class="step-content">
@@ -481,6 +489,10 @@ const showGuide = () => {
 
 .step-icon-purple {
   background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+}
+
+.step-icon-green {
+  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
 }
 
 .step-icon {

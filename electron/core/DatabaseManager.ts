@@ -360,7 +360,7 @@ export class DatabaseManager {
         method_id TEXT NOT NULL,               -- 所属方法ID
         param_key TEXT NOT NULL,               -- 参数键名
         param_name TEXT NOT NULL,              -- 参数显示名称
-        param_type TEXT NOT NULL CHECK(param_type IN ('number', 'select', 'boolean', 'range')),  -- 参数类型
+        param_type TEXT NOT NULL CHECK(param_type IN ('number', 'select', 'boolean', 'range', 'string')),  -- 参数类型
         default_value TEXT,                    -- 默认值
         min_value REAL,                        -- 数值类型最小值
         max_value REAL,                        -- 数值类型最大值
@@ -598,6 +598,18 @@ export class DatabaseManager {
         icon: '📈'
       },
       {
+        method_id: 'MDS_REDDYPROC',
+        method_name: 'REddyProc MDS',
+        category: 'statistical',
+        description: '边际分布采样法，基于气象条件相似性的通量数据专业插补方法，适用于涡度协方差数据',
+        requires_python: 1,
+        estimated_time: 'medium',
+        accuracy: 'high',
+        priority: 85,
+        applicable_data_types: JSON.stringify(['numeric']),
+        icon: '🌿'
+      },
+      {
         method_id: 'SPLINE',
         method_name: '样条插值',
         category: 'statistical',
@@ -833,6 +845,20 @@ export class DatabaseManager {
       ]), tooltip: '季节性组件的类型', is_required: false, is_advanced: false, param_order: 2 },
       { method_id: 'ETS', param_key: 'seasonal_periods', param_name: '季节性周期', param_type: 'number', default_value: '24', min_value: 2, max_value: 365, step_value: 1, tooltip: '季节性周期长度', is_required: false, is_advanced: false, param_order: 3 },
 
+      // REddyProc MDS 参数 - 位置信息
+      { method_id: 'MDS_REDDYPROC', param_key: 'lat_deg', param_name: '纬度 (°)', param_type: 'number', default_value: '39.0', min_value: -90, max_value: 90, step_value: 0.01, tooltip: '站点纬度，范围 -90 到 90', is_required: true, is_advanced: false, param_order: 1 },
+      { method_id: 'MDS_REDDYPROC', param_key: 'long_deg', param_name: '经度 (°)', param_type: 'number', default_value: '116.0', min_value: -180, max_value: 180, step_value: 0.01, tooltip: '站点经度，范围 -180 到 180', is_required: true, is_advanced: false, param_order: 2 },
+      { method_id: 'MDS_REDDYPROC', param_key: 'timezone_hour', param_name: '时区 (小时)', param_type: 'number', default_value: '8', min_value: -12, max_value: 14, step_value: 1, tooltip: '站点时区，相对于UTC的小时偏移', is_required: true, is_advanced: false, param_order: 3 },
+      // REddyProc MDS 参数 - 气象变量列映射
+      { method_id: 'MDS_REDDYPROC', param_key: 'rg_col', param_name: '全球辐射列 (Rg)', param_type: 'string', default_value: 'Rg', tooltip: '全球辐射列名，单位 W/m²', is_required: true, is_advanced: false, param_order: 4 },
+      { method_id: 'MDS_REDDYPROC', param_key: 'tair_col', param_name: '气温列 (Tair)', param_type: 'string', default_value: 'Tair', tooltip: '气温列名，单位 °C', is_required: true, is_advanced: false, param_order: 5 },
+      { method_id: 'MDS_REDDYPROC', param_key: 'vpd_col', param_name: 'VPD列', param_type: 'string', default_value: 'VPD', tooltip: '饱和水汽压差列名，单位 hPa。若无VPD列，可留空并提供相对湿度列', is_required: false, is_advanced: false, param_order: 6 },
+      { method_id: 'MDS_REDDYPROC', param_key: 'rh_col', param_name: '相对湿度列 (rH)', param_type: 'string', default_value: '', tooltip: '相对湿度列名，单位 %。用于计算VPD（当VPD列为空时）', is_required: false, is_advanced: false, param_order: 7 },
+      // REddyProc MDS 参数 - 高级选项
+      { method_id: 'MDS_REDDYPROC', param_key: 'ustar_col', param_name: '摩擦速度列 (Ustar)', param_type: 'string', default_value: '', tooltip: '摩擦速度列名，单位 m/s。用于u*过滤（可选）', is_required: false, is_advanced: true, param_order: 8 },
+      { method_id: 'MDS_REDDYPROC', param_key: 'fill_all', param_name: '填充所有值', param_type: 'boolean', default_value: 'false', tooltip: '是否为所有数据点（包括有效值）计算不确定性。默认仅填充缺失值', is_required: false, is_advanced: true, param_order: 9 },
+      { method_id: 'MDS_REDDYPROC', param_key: 'ustar_filtering', param_name: '启用u*过滤', param_type: 'boolean', default_value: 'false', tooltip: '是否在插补前进行u*过滤（需要提供Ustar列）', is_required: false, is_advanced: true, param_order: 10 },
+
       // TimeMixer++ 参数
       { method_id: 'TIMEMIXER_PP', param_key: 'model_path', param_name: '模型文件路径', param_type: 'string', default_value: '', tooltip: '训练好的模型文件路径 (.pypots 文件)，留空则使用数据集关联的模型', is_required: false, is_advanced: false, param_order: 1 },
       { method_id: 'TIMEMIXER_PP', param_key: 'seq_len', param_name: '序列长度', param_type: 'number', default_value: '96', min_value: 24, max_value: 512, step_value: 24, tooltip: '滑动窗口长度，必须与训练时一致', is_required: true, is_advanced: false, param_order: 2 },
@@ -847,6 +873,21 @@ export class DatabaseManager {
       { method_id: 'TIMEMIXER_PP', param_key: 'down_window', param_name: '下采样窗口', param_type: 'number', default_value: '2', min_value: 2, max_value: 8, step_value: 1, tooltip: '下采样窗口大小', is_required: false, is_advanced: true, param_order: 11 },
       { method_id: 'TIMEMIXER_PP', param_key: 'use_gpu', param_name: '使用GPU', param_type: 'boolean', default_value: 'true', tooltip: '是否使用GPU加速（如可用）', is_required: false, is_advanced: false, param_order: 12 }
     ];
+
+    // 清理已有的重复参数数据（保留每组的第一条记录）
+    this.db.exec(`
+      DELETE FROM conf_imputation_method_params 
+      WHERE id NOT IN (
+        SELECT MIN(id) FROM conf_imputation_method_params 
+        GROUP BY method_id, param_key
+      );
+    `);
+
+    // 清理后创建唯一索引（防止后续重复插入）
+    this.db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_method_param_unique 
+      ON conf_imputation_method_params(method_id, param_key);
+    `);
 
     const insertParamStmt = this.db.prepare(`
       INSERT OR IGNORE INTO conf_imputation_method_params

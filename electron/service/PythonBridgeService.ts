@@ -289,6 +289,246 @@ export class PythonBridgeService {
   }
 
   /**
+   * 执行时序模型插补任务 (ARIMA/SARIMA/ETS)
+   */
+  async runTimeSeriesImputation(params: {
+    method: 'ARIMA' | 'SARIMA' | 'ETS';
+    inputFile: string;
+    outputFile: string;
+    targetColumn: string;
+    timeColumn?: string;
+    // ARIMA/SARIMA 参数
+    autoSelect?: boolean;
+    p?: number;
+    d?: number;
+    q?: number;
+    // SARIMA 季节性参数
+    P?: number;
+    D?: number;
+    Q?: number;
+    s?: number;
+    // ETS 参数
+    trend?: 'add' | 'mul' | 'none';
+    seasonal?: 'add' | 'mul' | 'none';
+    seasonalPeriods?: number;
+  }, progressCallback?: ProgressCallback): Promise<PythonTaskResult> {
+    if (!this.pythonPath) {
+      await this.detectPython();
+    }
+    if (!this.pythonPath) {
+      return { success: false, error: 'Python 环境未找到' };
+    }
+
+    // 构建脚本路径
+    const scriptPath = path.join(this.pythonDir, 'timeseries_imputation.py');
+    if (!fs.existsSync(scriptPath)) {
+      return { success: false, error: `脚本文件不存在: ${scriptPath}` };
+    }
+
+    // 构建命令行参数
+    const args: string[] = [
+      scriptPath,
+      '--method', params.method,
+      '--file', params.inputFile,
+      '--target', params.targetColumn,
+      '--output', params.outputFile,
+    ];
+
+    if (params.timeColumn) args.push('--time-col', params.timeColumn);
+    
+    // ARIMA/SARIMA 参数
+    if (params.autoSelect !== undefined) args.push('--auto-select', params.autoSelect.toString());
+    if (params.p !== undefined) args.push('--p', params.p.toString());
+    if (params.d !== undefined) args.push('--d', params.d.toString());
+    if (params.q !== undefined) args.push('--q', params.q.toString());
+    
+    // SARIMA 季节性参数
+    if (params.method === 'SARIMA') {
+      if (params.P !== undefined) args.push('--P', params.P.toString());
+      if (params.D !== undefined) args.push('--D', params.D.toString());
+      if (params.Q !== undefined) args.push('--Q', params.Q.toString());
+      if (params.s !== undefined) args.push('--s', params.s.toString());
+    }
+    
+    // ETS 参数
+    if (params.method === 'ETS') {
+      if (params.trend) args.push('--trend', params.trend);
+      if (params.seasonal) args.push('--seasonal', params.seasonal);
+      if (params.seasonalPeriods !== undefined) args.push('--seasonal-periods', params.seasonalPeriods.toString());
+    }
+
+    const taskId = `timeseries_${params.method}_${Date.now()}`;
+
+    return new Promise((resolve) => {
+      progressCallback?.({ stage: 'starting', progress: 0, message: '正在启动 Python 进程...' });
+
+      const proc = spawn(this.pythonPath!, args, {
+        cwd: this.pythonDir,
+        env: { ...process.env, PYTHONUNBUFFERED: '1' },
+      });
+
+      this.runningProcesses.set(taskId, proc);
+
+      let stdout = '';
+      let stderr = '';
+
+      proc.stdout.on('data', (data) => {
+        const text = data.toString();
+        stdout += text;
+
+        // 解析进度信息
+        if (text.includes('[1/3]')) {
+          progressCallback?.({ stage: 'loading', progress: 10, message: '正在加载数据...' });
+        } else if (text.includes('[2/3]')) {
+          progressCallback?.({ stage: 'imputing', progress: 30, message: `正在执行 ${params.method} 插补...` });
+        } else if (text.includes('[3/3]')) {
+          progressCallback?.({ stage: 'saving', progress: 80, message: '正在保存结果...' });
+        } else if (text.includes('插补完成')) {
+          progressCallback?.({ stage: 'completed', progress: 100, message: '插补完成' });
+        } else if (text.includes('自动选择参数')) {
+          progressCallback?.({ stage: 'imputing', progress: 50, message: text.trim() });
+        }
+      });
+
+      proc.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      proc.on('close', (code) => {
+        this.runningProcesses.delete(taskId);
+        resolve({
+          success: code === 0,
+          exitCode: code ?? undefined,
+          stdout,
+          stderr,
+          error: code !== 0 ? stderr || '执行失败' : undefined,
+        });
+      });
+
+      proc.on('error', (err) => {
+        this.runningProcesses.delete(taskId);
+        resolve({ success: false, error: err.message });
+      });
+    });
+  }
+
+  /**
+   * 执行 REddyProc MDS 插补任务
+   */
+  async runREddyProcImputation(params: {
+    inputFile: string;
+    outputFile: string;
+    targetColumn: string;
+    timeColumn?: string;
+    // 位置信息
+    latDeg: number;
+    longDeg: number;
+    timezoneHour: number;
+    // 气象变量列映射
+    rgCol: string;
+    tairCol: string;
+    vpdCol?: string;
+    rhCol?: string;
+    // 高级选项
+    ustarCol?: string;
+    fillAll?: boolean;
+    ustarFiltering?: boolean;
+  }, progressCallback?: ProgressCallback): Promise<PythonTaskResult> {
+    if (!this.pythonPath) {
+      await this.detectPython();
+    }
+    if (!this.pythonPath) {
+      return { success: false, error: 'Python 环境未找到' };
+    }
+
+    // 构建脚本路径 (使用rpy2调用R的REddyProc包)
+    const scriptPath = path.join(this.pythonDir, 'reddyproc_r_bridge.py');
+    if (!fs.existsSync(scriptPath)) {
+      return { success: false, error: `脚本文件不存在: ${scriptPath}` };
+    }
+
+    // 构建命令行参数
+    const args: string[] = [
+      scriptPath,
+      '--file', params.inputFile,
+      '--target', params.targetColumn,
+      '--output', params.outputFile,
+      '--lat', params.latDeg.toString(),
+      '--long', params.longDeg.toString(),
+      '--tz', params.timezoneHour.toString(),
+      '--rg-col', params.rgCol,
+      '--tair-col', params.tairCol,
+    ];
+
+    if (params.timeColumn) args.push('--time-col', params.timeColumn);
+    if (params.vpdCol) args.push('--vpd-col', params.vpdCol);
+    if (params.rhCol) args.push('--rh-col', params.rhCol);
+    if (params.ustarCol) args.push('--ustar-col', params.ustarCol);
+    if (params.fillAll) args.push('--fill-all', 'true');
+    if (params.ustarFiltering) args.push('--ustar-filtering', 'true');
+
+    const taskId = `reddyproc_mds_${Date.now()}`;
+
+    return new Promise((resolve) => {
+      progressCallback?.({ stage: 'starting', progress: 0, message: '正在启动 REddyProc (R) 插补...' });
+
+      const proc = spawn(this.pythonPath!, args, {
+        cwd: this.pythonDir,
+        env: { ...process.env, PYTHONUNBUFFERED: '1' },
+      });
+
+      this.runningProcesses.set(taskId, proc);
+
+      let stdout = '';
+      let stderr = '';
+
+      proc.stdout.on('data', (data) => {
+        const text = data.toString();
+        stdout += text;
+
+        // 解析进度信息 (rpy2 R桥接脚本)
+        if (text.includes('[1/5]')) {
+          progressCallback?.({ stage: 'checking', progress: 5, message: '正在检查R环境...' });
+        } else if (text.includes('[2/5]')) {
+          progressCallback?.({ stage: 'loading', progress: 15, message: '正在加载数据...' });
+        } else if (text.includes('[3/5]')) {
+          progressCallback?.({ stage: 'preparing', progress: 25, message: '正在准备数据格式...' });
+        } else if (text.includes('[4/5]')) {
+          progressCallback?.({ stage: 'imputing', progress: 40, message: '正在执行REddyProc MDS插补...' });
+        } else if (text.includes('[5/5]')) {
+          progressCallback?.({ stage: 'saving', progress: 85, message: '正在保存结果...' });
+        } else if (text.includes('插补完成')) {
+          progressCallback?.({ stage: 'completed', progress: 100, message: 'REddyProc MDS插补完成' });
+        } else if (text.includes('执行MDS插补')) {
+          progressCallback?.({ stage: 'imputing', progress: 50, message: '正在执行REddyProc sMDSGapFill...' });
+        } else if (text.includes('导出结果')) {
+          progressCallback?.({ stage: 'exporting', progress: 75, message: '正在导出REddyProc结果...' });
+        }
+      });
+
+      proc.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      proc.on('close', (code) => {
+        this.runningProcesses.delete(taskId);
+        resolve({
+          success: code === 0,
+          exitCode: code ?? undefined,
+          stdout,
+          stderr,
+          error: code !== 0 ? stderr || '执行失败' : undefined,
+        });
+      });
+
+      proc.on('error', (err) => {
+        this.runningProcesses.delete(taskId);
+        resolve({ success: false, error: err.message });
+      });
+    });
+  }
+
+  /**
    * 获取 Python 脚本目录
    */
   getPythonDir(): string {

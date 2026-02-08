@@ -14,6 +14,11 @@
         "from": "python",
         "to": "python",
         "filter": ["**/*.py", "**/*.pypots", "requirements.txt"]
+      },
+      {
+        "from": "R-Portable",
+        "to": "R",
+        "filter": ["**/*"]
       }
     ],
     "mac": {

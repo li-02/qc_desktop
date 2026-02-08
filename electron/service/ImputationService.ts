@@ -174,6 +174,49 @@ export class ImputationService {
         imputedData = result.imputedData;
         details = result.details;
         columnStats = result.columnStats;
+      } else if (this.isREddyProcMethod(request.methodId)) {
+        // REddyProc MDS 方法
+        const result = await this.performREddyProcImputation(
+          resultId,
+          data,
+          targetColumns,
+          request.params || {},
+          { file_path: version.file_path, dataset_id: request.datasetId },
+          (progress, message, currentColumn) => {
+            this.emitProgress(resultId, {
+              resultId,
+              stage: 'imputing',
+              progress: 20 + progress * 0.6,
+              message,
+              currentColumn,
+            });
+          }
+        );
+        imputedData = result.imputedData;
+        details = result.details;
+        columnStats = result.columnStats;
+      } else if (this.isTimeSeriesMethod(request.methodId)) {
+        // 时序模型方法 (ARIMA/SARIMA/ETS)
+        const result = await this.performTimeSeriesImputation(
+          resultId,
+          data,
+          targetColumns,
+          request.methodId,
+          request.params || {},
+          { file_path: version.file_path, dataset_id: request.datasetId },
+          (progress, message, currentColumn) => {
+            this.emitProgress(resultId, {
+              resultId,
+              stage: 'imputing',
+              progress: 20 + progress * 0.6,
+              message,
+              currentColumn,
+            });
+          }
+        );
+        imputedData = result.imputedData;
+        details = result.details;
+        columnStats = result.columnStats;
       } else {
         // 基础方法
         const result = await this.performImputation(
@@ -459,6 +502,403 @@ export class ImputationService {
    */
   private isDeepLearningMethod(methodId: ImputationMethodId): boolean {
     return ['TIMEMIXER_PP', 'LSTM', 'GRU', 'TRANSFORMER', 'VAE', 'GAIN'].includes(methodId);
+  }
+
+  /**
+   * 检查是否为时序模型方法
+   */
+  private isTimeSeriesMethod(methodId: ImputationMethodId): boolean {
+    return ['ARIMA', 'SARIMA', 'ETS'].includes(methodId);
+  }
+
+  /**
+   * 检查是否为REddyProc方法
+   */
+  private isREddyProcMethod(methodId: ImputationMethodId): boolean {
+    return methodId === 'MDS_REDDYPROC';
+  }
+
+  /**
+   * 执行时序模型插补 (ARIMA/SARIMA/ETS)
+   */
+  private async performTimeSeriesImputation(
+    resultId: number,
+    data: Record<string, any>[],
+    targetColumns: string[],
+    methodId: ImputationMethodId,
+    params: Record<string, any>,
+    version: { file_path: string; dataset_id: number },
+    onProgress: (progress: number, message: string, currentColumn?: string) => void
+  ): Promise<{
+    imputedData: Record<string, any>[];
+    details: Array<{
+      resultId: number;
+      columnName: string;
+      rowIndex: number;
+      originalValue: number | null;
+      imputedValue: number;
+      confidence?: number;
+      imputationMethod: string;
+    }>;
+    columnStats: Array<{
+      resultId: number;
+      columnName: string;
+      missingCount: number;
+      imputedCount: number;
+      imputationRate: number;
+      meanBefore?: number;
+      meanAfter?: number;
+      stdBefore?: number;
+      stdAfter?: number;
+      minImputed?: number;
+      maxImputed?: number;
+    }>;
+  }> {
+    const pythonBridge = PythonBridgeService.getInstance();
+    const details: Array<any> = [];
+    const columnStats: Array<any> = [];
+
+    // 检查 Python 环境
+    onProgress(5, '正在检查 Python 环境...');
+    const pythonStatus = await pythonBridge.detectPython();
+    if (!pythonStatus.available) {
+      throw new Error('Python 环境未找到，请先安装 Python 3.8+');
+    }
+
+    // 获取数据集时间列配置
+    const dataset = this.db.prepare('SELECT time_column FROM sys_dataset WHERE id = ?').get(version.dataset_id) as { time_column?: string } | undefined;
+    const timeColumn = dataset?.time_column || 'record_time';
+
+    // 为每个目标列执行插补
+    for (let colIndex = 0; colIndex < targetColumns.length; colIndex++) {
+      const columnName = targetColumns[colIndex];
+      const progress = 10 + (colIndex / targetColumns.length) * 80;
+      onProgress(progress, `正在插补列: ${columnName}`, columnName);
+
+      // 记录原始缺失值位置
+      const missingIndices: number[] = [];
+      const validValues: number[] = [];
+      data.forEach((row, idx) => {
+        const val = row[columnName];
+        if (val === null || val === undefined || val === '' || Number.isNaN(Number(val))) {
+          missingIndices.push(idx);
+        } else {
+          validValues.push(Number(val));
+        }
+      });
+
+      if (missingIndices.length === 0) {
+        columnStats.push({
+          resultId,
+          columnName,
+          missingCount: 0,
+          imputedCount: 0,
+          imputationRate: 0,
+        });
+        continue;
+      }
+
+      // 计算插补前统计
+      const meanBefore = this.calculateMean(validValues);
+      const stdBefore = this.calculateStd(validValues, meanBefore);
+
+      // 创建临时输入输出文件
+      const tempDir = path.dirname(version.file_path);
+      const tempInputFile = path.join(tempDir, `temp_ts_input_${resultId}_${colIndex}.csv`);
+      const tempOutputFile = path.join(tempDir, `temp_ts_output_${resultId}_${colIndex}.csv`);
+
+      try {
+        // 写入临时输入文件
+        const csvContent = Papa.unparse(data);
+        fs.writeFileSync(tempInputFile, csvContent, 'utf-8');
+
+        // 构建时序模型参数
+        const tsParams: any = {
+          method: methodId as 'ARIMA' | 'SARIMA' | 'ETS',
+          inputFile: tempInputFile,
+          outputFile: tempOutputFile,
+          targetColumn: columnName,
+          timeColumn: timeColumn,
+        };
+
+        // ARIMA/SARIMA 参数
+        if (methodId === 'ARIMA' || methodId === 'SARIMA') {
+          tsParams.autoSelect = params.autoSelect !== false;
+          if (params.p !== undefined) tsParams.p = params.p;
+          if (params.d !== undefined) tsParams.d = params.d;
+          if (params.q !== undefined) tsParams.q = params.q;
+        }
+
+        // SARIMA 季节性参数
+        if (methodId === 'SARIMA') {
+          if (params.P !== undefined) tsParams.P = params.P;
+          if (params.D !== undefined) tsParams.D = params.D;
+          if (params.Q !== undefined) tsParams.Q = params.Q;
+          if (params.s !== undefined) tsParams.s = params.s;
+        }
+
+        // ETS 参数
+        if (methodId === 'ETS') {
+          if (params.trend) tsParams.trend = params.trend;
+          if (params.seasonal) tsParams.seasonal = params.seasonal;
+          if (params.seasonal_periods !== undefined) tsParams.seasonalPeriods = params.seasonal_periods;
+        }
+
+        // 调用 Python 脚本
+        const result = await pythonBridge.runTimeSeriesImputation(tsParams, (pythonProgress) => {
+          const adjustedProgress = progress + (pythonProgress.progress / 100) * (80 / targetColumns.length);
+          onProgress(adjustedProgress, pythonProgress.message, columnName);
+        });
+
+        if (!result.success) {
+          throw new Error(`${methodId} 插补失败: ${result.error}`);
+        }
+
+        // 读取插补结果
+        if (!fs.existsSync(tempOutputFile)) {
+          throw new Error('插补结果文件未生成');
+        }
+
+        const imputedDataRaw = await this.readDataFile(tempOutputFile);
+        const imputedOnlyValues: number[] = [];
+
+        // 更新数据和记录详情
+        for (const idx of missingIndices) {
+          const imputedValue = Number(imputedDataRaw[idx]?.[columnName]);
+          if (!Number.isNaN(imputedValue)) {
+            imputedOnlyValues.push(imputedValue);
+            data[idx][columnName] = imputedValue;
+            details.push({
+              resultId,
+              columnName,
+              rowIndex: idx,
+              originalValue: null,
+              imputedValue,
+              confidence: 0.85, // 时序模型置信度
+              imputationMethod: methodId,
+            });
+          }
+        }
+
+        // 计算插补后统计
+        const allValuesAfter = [...validValues, ...imputedOnlyValues];
+        const meanAfter = this.calculateMean(allValuesAfter);
+        const stdAfter = this.calculateStd(allValuesAfter, meanAfter);
+
+        columnStats.push({
+          resultId,
+          columnName,
+          missingCount: missingIndices.length,
+          imputedCount: imputedOnlyValues.length,
+          imputationRate: imputedOnlyValues.length / missingIndices.length,
+          meanBefore,
+          meanAfter,
+          stdBefore,
+          stdAfter,
+          minImputed: imputedOnlyValues.length > 0 ? Math.min(...imputedOnlyValues) : undefined,
+          maxImputed: imputedOnlyValues.length > 0 ? Math.max(...imputedOnlyValues) : undefined,
+        });
+      } finally {
+        // 清理临时文件
+        if (fs.existsSync(tempInputFile)) fs.unlinkSync(tempInputFile);
+        if (fs.existsSync(tempOutputFile)) fs.unlinkSync(tempOutputFile);
+      }
+    }
+
+    onProgress(100, '插补完成');
+    return { imputedData: data, details, columnStats };
+  }
+
+  /**
+   * 执行 REddyProc MDS 插补
+   */
+  private async performREddyProcImputation(
+    resultId: number,
+    data: Record<string, any>[],
+    targetColumns: string[],
+    params: Record<string, any>,
+    version: { file_path: string; dataset_id: number },
+    onProgress: (progress: number, message: string, currentColumn?: string) => void
+  ): Promise<{
+    imputedData: Record<string, any>[];
+    details: Array<{
+      resultId: number;
+      columnName: string;
+      rowIndex: number;
+      originalValue: number | null;
+      imputedValue: number;
+      confidence?: number;
+      imputationMethod: string;
+    }>;
+    columnStats: Array<{
+      resultId: number;
+      columnName: string;
+      missingCount: number;
+      imputedCount: number;
+      imputationRate: number;
+      meanBefore?: number;
+      meanAfter?: number;
+      stdBefore?: number;
+      stdAfter?: number;
+      minImputed?: number;
+      maxImputed?: number;
+    }>;
+  }> {
+    const pythonBridge = PythonBridgeService.getInstance();
+    const details: Array<any> = [];
+    const columnStats: Array<any> = [];
+
+    // 检查 Python/R 环境 (REddyProc需要rpy2和R)
+    onProgress(5, '正在检查 Python/R 环境...');
+    const pythonStatus = await pythonBridge.detectPython();
+    if (!pythonStatus.available) {
+      throw new Error('Python 环境未找到。REddyProc方法需要: Python 3.8+, R 4.0+, rpy2==3.5.16, REddyProc R包');
+    }
+
+    // 获取数据集时间列配置
+    const dataset = this.db.prepare('SELECT time_column FROM sys_dataset WHERE id = ?').get(version.dataset_id) as { time_column?: string } | undefined;
+    const timeColumn = dataset?.time_column || 'TIMESTAMP';
+
+    // 验证必需的参数
+    if (!params.lat_deg || !params.long_deg || params.timezone_hour === undefined) {
+      throw new Error('REddyProc MDS 方法需要提供站点位置信息（纬度、经度、时区）');
+    }
+    if (!params.rg_col || !params.tair_col) {
+      throw new Error('REddyProc MDS 方法需要提供气象变量列映射（Rg、Tair）');
+    }
+
+    // 验证气象变量列是否存在
+    const availableColumns = Object.keys(data[0] || {});
+    const requiredCols = [params.rg_col, params.tair_col];
+    if (params.vpd_col) requiredCols.push(params.vpd_col);
+    if (params.rh_col) requiredCols.push(params.rh_col);
+    
+    const missingCols = requiredCols.filter(col => col && !availableColumns.includes(col));
+    if (missingCols.length > 0) {
+      throw new Error(`数据缺少必需的气象变量列: ${missingCols.join(', ')}`);
+    }
+
+    // 为每个目标列执行插补
+    for (let colIndex = 0; colIndex < targetColumns.length; colIndex++) {
+      const columnName = targetColumns[colIndex];
+      const progress = 10 + (colIndex / targetColumns.length) * 80;
+      onProgress(progress, `正在插补列: ${columnName}`, columnName);
+
+      // 记录原始缺失值位置
+      const missingIndices: number[] = [];
+      const validValues: number[] = [];
+      data.forEach((row, idx) => {
+        const val = row[columnName];
+        if (val === null || val === undefined || val === '' || Number.isNaN(Number(val))) {
+          missingIndices.push(idx);
+        } else {
+          validValues.push(Number(val));
+        }
+      });
+
+      if (missingIndices.length === 0) {
+        columnStats.push({
+          resultId,
+          columnName,
+          missingCount: 0,
+          imputedCount: 0,
+          imputationRate: 0,
+        });
+        continue;
+      }
+
+      // 计算插补前统计
+      const meanBefore = this.calculateMean(validValues);
+      const stdBefore = this.calculateStd(validValues, meanBefore);
+
+      // 创建临时输入输出文件
+      const tempDir = path.dirname(version.file_path);
+      const tempInputFile = path.join(tempDir, `temp_mds_input_${resultId}_${colIndex}.csv`);
+      const tempOutputFile = path.join(tempDir, `temp_mds_output_${resultId}_${colIndex}.csv`);
+
+      try {
+        // 写入临时输入文件
+        const csvContent = Papa.unparse(data);
+        fs.writeFileSync(tempInputFile, csvContent, 'utf-8');
+
+        // 调用 REddyProc MDS Python 脚本
+        const result = await pythonBridge.runREddyProcImputation({
+          inputFile: tempInputFile,
+          outputFile: tempOutputFile,
+          targetColumn: columnName,
+          timeColumn: timeColumn,
+          latDeg: params.lat_deg,
+          longDeg: params.long_deg,
+          timezoneHour: params.timezone_hour,
+          rgCol: params.rg_col,
+          tairCol: params.tair_col,
+          vpdCol: params.vpd_col || '',
+          rhCol: params.rh_col || '',
+          ustarCol: params.ustar_col || '',
+          fillAll: params.fill_all || false,
+          ustarFiltering: params.ustar_filtering || false,
+        }, (pythonProgress) => {
+          const adjustedProgress = progress + (pythonProgress.progress / 100) * (80 / targetColumns.length);
+          onProgress(adjustedProgress, pythonProgress.message, columnName);
+        });
+
+        if (!result.success) {
+          throw new Error(`REddyProc MDS 插补失败: ${result.error}`);
+        }
+
+        // 读取插补结果
+        if (!fs.existsSync(tempOutputFile)) {
+          throw new Error('插补结果文件未生成');
+        }
+
+        const imputedDataRaw = await this.readDataFile(tempOutputFile);
+        const imputedOnlyValues: number[] = [];
+
+        // 更新数据和记录详情
+        for (const idx of missingIndices) {
+          const imputedValue = Number(imputedDataRaw[idx]?.[columnName]);
+          if (!Number.isNaN(imputedValue)) {
+            imputedOnlyValues.push(imputedValue);
+            data[idx][columnName] = imputedValue;
+            details.push({
+              resultId,
+              columnName,
+              rowIndex: idx,
+              originalValue: null,
+              imputedValue,
+              confidence: 0.85, // MDS方法置信度
+              imputationMethod: 'MDS_REDDYPROC',
+            });
+          }
+        }
+
+        // 计算插补后统计
+        const allValuesAfter = [...validValues, ...imputedOnlyValues];
+        const meanAfter = this.calculateMean(allValuesAfter);
+        const stdAfter = this.calculateStd(allValuesAfter, meanAfter);
+
+        columnStats.push({
+          resultId,
+          columnName,
+          missingCount: missingIndices.length,
+          imputedCount: imputedOnlyValues.length,
+          imputationRate: imputedOnlyValues.length / missingIndices.length,
+          meanBefore,
+          meanAfter,
+          stdBefore,
+          stdAfter,
+          minImputed: imputedOnlyValues.length > 0 ? Math.min(...imputedOnlyValues) : undefined,
+          maxImputed: imputedOnlyValues.length > 0 ? Math.max(...imputedOnlyValues) : undefined,
+        });
+      } finally {
+        // 清理临时文件
+        if (fs.existsSync(tempInputFile)) fs.unlinkSync(tempInputFile);
+        if (fs.existsSync(tempOutputFile)) fs.unlinkSync(tempOutputFile);
+      }
+    }
+
+    onProgress(100, 'MDS插补完成');
+    return { imputedData: data, details, columnStats };
   }
 
   /**
@@ -926,21 +1366,204 @@ export class ImputationService {
   }
 
   /**
-   * 样条插值（简化版：使用线性插值）
+   * 样条插值（三次自然样条）
+   * 使用三次样条曲线对缺失值进行插值，保证曲线平滑且二阶导数连续
    */
   private imputeSpline(data: (number | null)[], degree: number): (number | null)[] {
-    // 简化实现：使用线性插值
-    // 完整的样条插值需要更复杂的算法
-    return this.imputeLinear(data);
+    const result = [...data];
+    
+    // 提取有效数据点
+    const validPoints: { index: number; value: number }[] = [];
+    data.forEach((v, i) => {
+      if (v !== null) {
+        validPoints.push({ index: i, value: v });
+      }
+    });
+
+    // 至少需要2个点才能进行样条插值
+    if (validPoints.length < 2) {
+      if (validPoints.length === 1) {
+        return data.map(v => v === null ? validPoints[0].value : v);
+      }
+      return result;
+    }
+
+    // 如果只有2个点，退化为线性插值
+    if (validPoints.length === 2) {
+      return this.imputeLinear(data);
+    }
+
+    const n = validPoints.length;
+    const x = validPoints.map(p => p.index);
+    const y = validPoints.map(p => p.value);
+
+    // 计算三次样条系数
+    const splineCoeffs = this.computeCubicSplineCoefficients(x, y);
+
+    // 对每个缺失值进行插值
+    for (let i = 0; i < result.length; i++) {
+      if (result[i] === null) {
+        result[i] = this.evaluateCubicSpline(i, x, y, splineCoeffs);
+      }
+    }
+
+    return result;
   }
 
   /**
-   * 多项式插值（简化版：使用线性插值）
+   * 计算三次自然样条的系数
+   * 返回每个区间的二阶导数值 M
+   */
+  private computeCubicSplineCoefficients(x: number[], y: number[]): number[] {
+    const n = x.length;
+    
+    // h[i] = x[i+1] - x[i]
+    const h: number[] = [];
+    for (let i = 0; i < n - 1; i++) {
+      h.push(x[i + 1] - x[i]);
+    }
+
+    // 构建三对角矩阵方程 AM = d
+    // 自然样条边界条件: M[0] = M[n-1] = 0
+    const alpha: number[] = new Array(n).fill(0);
+    for (let i = 1; i < n - 1; i++) {
+      alpha[i] = (3 / h[i]) * (y[i + 1] - y[i]) - (3 / h[i - 1]) * (y[i] - y[i - 1]);
+    }
+
+    // 追赶法求解三对角方程组
+    const l: number[] = new Array(n).fill(1);
+    const mu: number[] = new Array(n).fill(0);
+    const z: number[] = new Array(n).fill(0);
+
+    for (let i = 1; i < n - 1; i++) {
+      l[i] = 2 * (x[i + 1] - x[i - 1]) - h[i - 1] * mu[i - 1];
+      mu[i] = h[i] / l[i];
+      z[i] = (alpha[i] - h[i - 1] * z[i - 1]) / l[i];
+    }
+
+    // 回代求解 M (二阶导数)
+    const M: number[] = new Array(n).fill(0);
+    for (let j = n - 2; j >= 1; j--) {
+      M[j] = z[j] - mu[j] * M[j + 1];
+    }
+
+    return M;
+  }
+
+  /**
+   * 使用三次样条计算给定位置的插值
+   */
+  private evaluateCubicSpline(
+    xi: number,
+    x: number[],
+    y: number[],
+    M: number[]
+  ): number {
+    const n = x.length;
+
+    // 找到 xi 所在的区间 [x[j], x[j+1]]
+    let j = 0;
+    if (xi <= x[0]) {
+      j = 0;
+    } else if (xi >= x[n - 1]) {
+      j = n - 2;
+    } else {
+      for (let i = 0; i < n - 1; i++) {
+        if (xi >= x[i] && xi <= x[i + 1]) {
+          j = i;
+          break;
+        }
+      }
+    }
+
+    const h = x[j + 1] - x[j];
+    const t = xi - x[j];
+    const t1 = x[j + 1] - xi;
+
+    // 三次样条插值公式
+    const a = M[j] * Math.pow(t1, 3) / (6 * h);
+    const b = M[j + 1] * Math.pow(t, 3) / (6 * h);
+    const c = (y[j] / h - M[j] * h / 6) * t1;
+    const d = (y[j + 1] / h - M[j + 1] * h / 6) * t;
+
+    return a + b + c + d;
+  }
+
+  /**
+   * 多项式插值（局部拉格朗日插值）
+   * 使用指定度数的多项式对缺失值进行插值
+   * 采用局部窗口方式避免高阶多项式的龙格现象
    */
   private imputePolynomial(data: (number | null)[], degree: number): (number | null)[] {
-    // 简化实现：使用线性插值
-    // 完整的多项式插值需要更复杂的算法
-    return this.imputeLinear(data);
+    const result = [...data];
+    
+    // 提取有效数据点
+    const validPoints: { index: number; value: number }[] = [];
+    data.forEach((v, i) => {
+      if (v !== null) {
+        validPoints.push({ index: i, value: v });
+      }
+    });
+
+    // 至少需要 degree+1 个点才能进行 degree 阶多项式插值
+    const minPoints = degree + 1;
+    if (validPoints.length < minPoints) {
+      // 点数不足，退化为线性插值
+      return this.imputeLinear(data);
+    }
+
+    // 对每个缺失值进行插值
+    for (let i = 0; i < result.length; i++) {
+      if (result[i] === null) {
+        // 选择最近的 minPoints 个点进行局部多项式插值
+        const nearestPoints = this.selectNearestPoints(i, validPoints, minPoints);
+        result[i] = this.lagrangeInterpolate(i, nearestPoints);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * 选择距离目标索引最近的 n 个有效点
+   */
+  private selectNearestPoints(
+    targetIndex: number,
+    validPoints: { index: number; value: number }[],
+    n: number
+  ): { index: number; value: number }[] {
+    // 按距离排序
+    const sorted = [...validPoints].sort((a, b) => 
+      Math.abs(a.index - targetIndex) - Math.abs(b.index - targetIndex)
+    );
+    
+    // 取最近的 n 个点，然后按索引排序以保持顺序
+    return sorted.slice(0, n).sort((a, b) => a.index - b.index);
+  }
+
+  /**
+   * 拉格朗日多项式插值
+   */
+  private lagrangeInterpolate(
+    xi: number,
+    points: { index: number; value: number }[]
+  ): number {
+    let result = 0;
+    const n = points.length;
+
+    for (let i = 0; i < n; i++) {
+      let term = points[i].value;
+      
+      for (let j = 0; j < n; j++) {
+        if (i !== j) {
+          term *= (xi - points[j].index) / (points[i].index - points[j].index);
+        }
+      }
+      
+      result += term;
+    }
+
+    return result;
   }
 
   // ==================== 工具方法 ====================

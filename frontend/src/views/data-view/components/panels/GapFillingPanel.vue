@@ -663,6 +663,7 @@ const initMethodParams = async (method: ImputationMethod) => {
           paramValues.value[param.paramKey] = param.defaultValue === 'true';
           break;
         case 'select':
+        case 'string':
           paramValues.value[param.paramKey] = param.defaultValue;
           break;
         default:
@@ -1791,6 +1792,14 @@ onUnmounted(() => {
                       :step="param.stepValue || 1"
                       show-input
                       size="small" />
+
+                    <!-- 文本输入 (用于列名等字符串参数) -->
+                    <el-input
+                      v-else-if="param.paramType === 'string'"
+                      v-model="paramValues[param.paramKey]"
+                      :placeholder="param.tooltip || '请输入'"
+                      size="small"
+                      class="param-input-text" />
                   </div>
 
                   <!-- 无参数提示 -->
@@ -1851,6 +1860,14 @@ onUnmounted(() => {
                           :step="param.stepValue || 1"
                           show-input
                           size="small" />
+
+                        <!-- 文本输入 (用于列名等字符串参数) -->
+                        <el-input
+                          v-else-if="param.paramType === 'string'"
+                          v-model="paramValues[param.paramKey]"
+                          :placeholder="param.tooltip || '请输入'"
+                          size="small"
+                          class="param-input-text" />
                       </div>
                     </el-collapse-item>
                   </el-collapse>
@@ -3317,6 +3334,18 @@ onUnmounted(() => {
   outline: none;
   border-color: #10b981;
   box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.param-input-text {
+  width: 100%;
+}
+
+.param-input-text :deep(.el-input__wrapper) {
+  border-radius: 6px;
+}
+
+.param-input-text :deep(.el-input__inner) {
+  font-size: 12px;
 }
 
 .no-params {

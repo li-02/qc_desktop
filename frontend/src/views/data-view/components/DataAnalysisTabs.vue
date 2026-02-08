@@ -63,6 +63,13 @@ const tabs = computed(() => [
     description: "检测和填补数据中的缺失值",
   },
   {
+    id: "flux-partitioning",
+    name: "通量分割",
+    icon: "📊",
+    disabled: !props.datasetInfo,
+    description: "进行通量数据分割处理",
+  },
+  {
     id: "cleaning",
     name: "数据清洗",
     icon: "🧹",

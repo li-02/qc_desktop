@@ -9,7 +9,7 @@ import {
   ServiceResponse,
   DataQualityInfo,
   DatasetVersionInfo,
-  VersionStatsInfo
+  VersionStatsInfo,
 } from "@shared/types/projectInterface";
 import { Dataset, DatasetVersion, StatVersionDetail, ColumnSetting } from "@shared/types/database";
 import { Worker } from "worker_threads";
@@ -21,7 +21,11 @@ export class DatasetService {
   private projectRepository: ProjectDBRepository;
   private settingsRepository: SettingsRepository;
 
-  constructor(datasetRepository: DatasetDBRepository, projectRepository: ProjectDBRepository, settingsRepository: SettingsRepository) {
+  constructor(
+    datasetRepository: DatasetDBRepository,
+    projectRepository: ProjectDBRepository,
+    settingsRepository: SettingsRepository
+  ) {
     this.datasetRepository = datasetRepository;
     this.projectRepository = projectRepository;
     this.settingsRepository = settingsRepository;
@@ -46,13 +50,15 @@ export class DatasetService {
     return isNaN(fallback) ? NaN : fallback;
   }
 
-  async importDataset(request: ImportDatasetRequest): Promise<ServiceResponse<{
-    datasetId: string;
-    datasetName: string;
-    path: string;
-  }>> {
+  async importDataset(request: ImportDatasetRequest): Promise<
+    ServiceResponse<{
+      datasetId: string;
+      datasetName: string;
+      path: string;
+    }>
+  > {
     // 解析时区设置
-    const sourceTimezone = request.sourceTimezone || 'auto';
+    const sourceTimezone = request.sourceTimezone || "auto";
     try {
       const validationResult = await this.validateImportRequest(request);
       if (!validationResult.success) {
@@ -94,13 +100,18 @@ export class DatasetService {
       // 识别时间列
       const timeColumn = this.findTimestampColumn(request.columns);
 
+      // [DEBUG] 诊断 missingValueTypes 保存值
+      const missingValueTypesJson = JSON.stringify(request.missingValueTypes || []);
+      console.log("[importDataset] request.missingValueTypes =", JSON.stringify(request.missingValueTypes));
+      console.log("[importDataset] saving missing_value_types =", missingValueTypesJson);
+
       const datasetIdResult = this.datasetRepository.createDataset({
         site_id: projectId,
         dataset_name: request.datasetName,
         source_file_path: savedFilePath,
-        missing_value_types: JSON.stringify(request.missingValueTypes || []),
+        missing_value_types: missingValueTypesJson,
         time_column: timeColumn || undefined,
-        description: ""
+        description: "",
       });
 
       if (!datasetIdResult.success) {
@@ -111,9 +122,9 @@ export class DatasetService {
       const versionIdResult = this.datasetRepository.createDatasetVersion({
         dataset_id: datasetId,
         parent_version_id: null as any,
-        stage_type: 'RAW',
+        stage_type: "RAW",
         file_path: savedFilePath,
-        remark: '原始导入'
+        remark: "原始导入",
       });
 
       if (!versionIdResult.success) {
@@ -133,21 +144,24 @@ export class DatasetService {
           column_stats_json: JSON.stringify({
             columnMissingStatus: dq.columnMissingStatus,
             missingValueStats: dq.missingValueStats,
-            columnStatistics: dq.columnStatistics
-          })
+            columnStatistics: dq.columnStatistics,
+          }),
         });
       }
 
       // 为列设置正确的 data_type，时间列设置为 datetime
-      const columnSettings = request.columns.map((col, index) => ({
-        dataset_id: datasetId,
-        column_name: col,
-        column_index: index,
-        is_active: 1,
-        data_type: col === timeColumn ? 'datetime' : 'text',
-        min_threshold: null,
-        max_threshold: null
-      } as any));
+      const columnSettings = request.columns.map(
+        (col, index) =>
+          ({
+            dataset_id: datasetId,
+            column_name: col,
+            column_index: index,
+            is_active: 1,
+            data_type: col === timeColumn ? "datetime" : "text",
+            min_threshold: null,
+            max_threshold: null,
+          }) as any
+      );
       const saveSettingsResult = this.datasetRepository.saveColumnSettings(columnSettings);
       if (!saveSettingsResult.success) {
         throw new Error(`保存列设置失败: ${saveSettingsResult.error}`);
@@ -158,10 +172,9 @@ export class DatasetService {
         data: {
           datasetId: datasetId.toString(),
           datasetName: request.datasetName,
-          path: savedFilePath
-        }
+          path: savedFilePath,
+        },
       };
-
     } catch (error: any) {
       return { success: false, error: `导入数据集失败: ${error.message}` };
     }
@@ -213,6 +226,13 @@ export class DatasetService {
       if (!datasetResult.success) return { success: false, error: datasetResult.error };
       const dataset = datasetResult.data!;
 
+      // [DEBUG] 诊断缺失值标记问题
+      console.log(
+        `[getDatasetInfo] datasetId=${dId}, raw missing_value_types=`,
+        JSON.stringify(dataset.missing_value_types),
+        `type=${typeof dataset.missing_value_types}`
+      );
+
       const versionsResult = this.datasetRepository.getVersionsByDatasetId(dId);
       const versions = versionsResult.success ? versionsResult.data! : [];
 
@@ -228,9 +248,14 @@ export class DatasetService {
             completeRecords: stat.total_rows - stat.total_missing_count, // Approximate
             missingValueStats: {}, // Need to parse from json if available
             totalMissingCount: stat.total_missing_count,
-            qualityPercentage: stat.total_rows > 0 ? ((stat.total_rows * stat.total_cols - stat.total_missing_count) / (stat.total_rows * stat.total_cols)) * 100 : 0,
+            qualityPercentage:
+              stat.total_rows > 0
+                ? ((stat.total_rows * stat.total_cols - stat.total_missing_count) /
+                    (stat.total_rows * stat.total_cols)) *
+                  100
+                : 0,
             analyzedAt: this.parseSQLiteTimestampAsUTC(stat.calculated_at),
-            columnMissingStatus: {}
+            columnMissingStatus: {},
           };
           if (stat.column_stats_json) {
             try {
@@ -243,7 +268,7 @@ export class DatasetService {
                 // Fallback for old format where it was just the missing status map
                 dataQuality.columnMissingStatus = colStats;
               }
-            } catch (e) { }
+            } catch (e) {}
           }
         }
       }
@@ -269,7 +294,9 @@ export class DatasetService {
           filePath: dataset.source_file_path || "",
           size: "0 KB", // Need to check file stats
           rows: dataQuality?.totalRecords || 0,
-          columns: this.datasetRepository.getColumnSettings(dId).success ? this.datasetRepository.getColumnSettings(dId).data!.map(c => c.column_name) : [],
+          columns: this.datasetRepository.getColumnSettings(dId).success
+            ? this.datasetRepository.getColumnSettings(dId).data!.map(c => c.column_name)
+            : [],
           dataQuality: dataQuality || {
             totalRecords: 0,
             completeRecords: 0,
@@ -277,8 +304,8 @@ export class DatasetService {
             totalMissingCount: 0,
             qualityPercentage: 0,
             analyzedAt: 0,
-            columnMissingStatus: {}
-          }
+            columnMissingStatus: {},
+          },
         },
         processedFiles: versions.map(v => ({
           id: v.id.toString(),
@@ -289,8 +316,8 @@ export class DatasetService {
           processingMethod: v.remark || "",
           rows: 0, // Need stats
           columns: [],
-          size: "0 KB"
-        }))
+          size: "0 KB",
+        })),
       };
 
       return { success: true, data: datasetInfo };
@@ -314,7 +341,7 @@ export class DatasetService {
         stageType: v.stage_type,
         filePath: v.file_path,
         createdAt: this.parseSQLiteTimestampAsUTC(v.created_at),
-        remark: v.remark || ""
+        remark: v.remark || "",
       }));
 
       return { success: true, data: versions };
@@ -341,8 +368,8 @@ export class DatasetService {
           totalMissingCount: stat.total_missing_count,
           totalOutlierCount: stat.total_outlier_count,
           columnStats: stat.column_stats_json ? JSON.parse(stat.column_stats_json) : {},
-          calculatedAt: this.parseSQLiteTimestampAsUTC(stat.calculated_at)
-        }
+          calculatedAt: this.parseSQLiteTimestampAsUTC(stat.calculated_at),
+        },
       };
     } catch (error: any) {
       return { success: false, error: `获取版本统计信息失败: ${error.message}` };
@@ -353,22 +380,24 @@ export class DatasetService {
     datasetId: string,
     versionId: string,
     missingMarkers: string[]
-  ): Promise<ServiceResponse<{
-    totalRows: number;
-    totalMissingValues: number;
-    overallMissingRate: number;
-    columnStats: Array<{
-      columnName: string;
-      missingCount: number;
-      totalCount: number;
-      missingRate: number;
-    }>;
-    timeDistribution?: {
-      monthly: Record<string, number>;
-      hourly: Record<string, number>;
-      heatmap: Record<string, number>;
-    };
-  }>> {
+  ): Promise<
+    ServiceResponse<{
+      totalRows: number;
+      totalMissingValues: number;
+      overallMissingRate: number;
+      columnStats: Array<{
+        columnName: string;
+        missingCount: number;
+        totalCount: number;
+        missingRate: number;
+      }>;
+      timeDistribution?: {
+        monthly: Record<string, number>;
+        hourly: Record<string, number>;
+        heatmap: Record<string, number>;
+      };
+    }>
+  > {
     try {
       const dId = parseInt(datasetId);
       const vId = parseInt(versionId);
@@ -413,18 +442,15 @@ export class DatasetService {
           totalMissingValues: data.totalMissingCount,
           overallMissingRate: data.overallMissingRate,
           columnStats: data.columnStats,
-          timeDistribution: data.timeDistribution
-        }
+          timeDistribution: data.timeDistribution,
+        },
       };
     } catch (error: any) {
       return { success: false, error: `获取版本缺失值统计失败: ${error.message}` };
     }
   }
 
-  async exportDatasetVersion(
-    versionId: string,
-    targetPath: string
-  ): Promise<ServiceResponse<void>> {
+  async exportDatasetVersion(versionId: string, targetPath: string): Promise<ServiceResponse<void>> {
     try {
       const vId = parseInt(versionId);
       if (isNaN(vId)) return { success: false, error: "无效的版本ID" };
@@ -517,7 +543,7 @@ export class DatasetService {
       totalMissingCount: 0,
       qualityPercentage: 0,
       analyzedAt: 0,
-      columnMissingStatus: {}
+      columnMissingStatus: {},
     };
 
     if (latestVersion) {
@@ -538,7 +564,7 @@ export class DatasetService {
             } else {
               columnMissingStatus = parsed;
             }
-          } catch (e) { }
+          } catch (e) {}
         }
 
         dataQuality = {
@@ -546,10 +572,11 @@ export class DatasetService {
           completeRecords: stat.total_rows - stat.total_missing_count,
           missingValueStats: missingValueStats,
           totalMissingCount: stat.total_missing_count,
-          qualityPercentage: stat.total_rows > 0 ? ((stat.total_rows - stat.total_missing_count) / stat.total_rows) * 100 : 100,
+          qualityPercentage:
+            stat.total_rows > 0 ? ((stat.total_rows - stat.total_missing_count) / stat.total_rows) * 100 : 100,
           analyzedAt: this.parseSQLiteTimestampAsUTC(stat.calculated_at),
           columnMissingStatus: columnMissingStatus,
-          columnStatistics: columnStatistics
+          columnStatistics: columnStatistics,
         };
       }
     }
@@ -575,10 +602,12 @@ export class DatasetService {
         filePath: d.source_file_path || "",
         size: "0",
         rows: dataQuality.totalRecords,
-        columns: this.datasetRepository.getColumnSettings(d.id).success ? this.datasetRepository.getColumnSettings(d.id).data!.map(c => c.column_name) : [],
-        dataQuality: dataQuality
+        columns: this.datasetRepository.getColumnSettings(d.id).success
+          ? this.datasetRepository.getColumnSettings(d.id).data!.map(c => c.column_name)
+          : [],
+        dataQuality: dataQuality,
       },
-      processedFiles: []
+      processedFiles: [],
     };
   }
 
@@ -622,7 +651,7 @@ export class DatasetService {
     }
 
     // 如果没有精确匹配，尝试包含时间相关关键词的列
-    const timeKeywords = ['time', 'date', 'timestamp'];
+    const timeKeywords = ["time", "date", "timestamp"];
     for (const col of columns) {
       const lowerCol = col.toLowerCase();
       if (timeKeywords.some(keyword => lowerCol.includes(keyword))) {
@@ -683,8 +712,8 @@ export class DatasetService {
         qualityPercentage:
           parseResult.totalRows > 0
             ? ((parseResult.totalRows - Math.floor(parseResult.totalMissingCount / parseResult.columns.length)) /
-              parseResult.totalRows) *
-            100
+                parseResult.totalRows) *
+              100
             : 100,
         analyzedAt: Date.now(),
         columnMissingStatus: parseResult.columnMissingStatus || {},
@@ -707,22 +736,24 @@ export class DatasetService {
     filePath: string,
     missingMarkers: string[],
     timeColumn?: string
-  ): Promise<ServiceResponse<{
-    totalRows: number;
-    totalMissingCount: number;
-    overallMissingRate: number;
-    columnStats: Array<{
-      columnName: string;
-      missingCount: number;
-      totalCount: number;
-      missingRate: number;
-    }>;
-    timeDistribution?: {
-      monthly: Record<string, number>;
-      hourly: Record<string, number>;
-      heatmap: Record<string, number>;
-    };
-  }>> {
+  ): Promise<
+    ServiceResponse<{
+      totalRows: number;
+      totalMissingCount: number;
+      overallMissingRate: number;
+      columnStats: Array<{
+        columnName: string;
+        missingCount: number;
+        totalCount: number;
+        missingRate: number;
+      }>;
+      timeDistribution?: {
+        monthly: Record<string, number>;
+        hourly: Record<string, number>;
+        heatmap: Record<string, number>;
+      };
+    }>
+  > {
     try {
       // 读取文件内容
       const fileExtension = path.extname(filePath).toLowerCase();
@@ -760,7 +791,7 @@ export class DatasetService {
           maxRows: -1, // 分析所有行
           missingValueTypes: missingMarkers,
           analyzeMissingOnly: true, // 只分析缺失值，不需要完整的数据
-          timeColumn: timeColumn
+          timeColumn: timeColumn,
         });
       });
 
@@ -774,12 +805,12 @@ export class DatasetService {
       // 计算每列的统计信息，并过滤掉时间列
       const columnStats = columns
         .filter((col: any) => {
-          const colName = typeof col === 'string' ? col : col.prop;
+          const colName = typeof col === "string" ? col : col.prop;
           return !timeColumn || colName !== timeColumn;
         })
         .map((col: any) => {
           // worker返回的columns是 {prop, label} 格式的对象数组，或者在某些情况下可能是字符串数组
-          const columnName = typeof col === 'string' ? col : col.prop;
+          const columnName = typeof col === "string" ? col : col.prop;
           const missingCount = columnMissingStatus[columnName] || 0;
           const missingRate = totalRows > 0 ? (missingCount / totalRows) * 100 : 0;
 
@@ -787,7 +818,7 @@ export class DatasetService {
             columnName,
             missingCount,
             totalCount: totalRows,
-            missingRate
+            missingRate,
           };
         });
 
@@ -803,8 +834,8 @@ export class DatasetService {
           totalMissingCount,
           overallMissingRate,
           columnStats,
-          timeDistribution
-        }
+          timeDistribution,
+        },
       };
     } catch (error: any) {
       return {
@@ -827,7 +858,7 @@ export class DatasetService {
     try {
       // 使用前端检测到的用户系统时区
       const timezone = sourceTimezone;
-      console.log('后端接收到的原始数据时区:', timezone);
+      console.log("后端接收到的原始数据时区:", timezone);
 
       // 读取原始文件内容
       let fileContent: string | Buffer;
@@ -878,7 +909,11 @@ export class DatasetService {
       const processedData = parseResult.tableData.map((row: any) => {
         const processedRow = { ...row };
 
-        if (processedRow[timeColumn] !== null && processedRow[timeColumn] !== undefined && processedRow[timeColumn] !== '') {
+        if (
+          processedRow[timeColumn] !== null &&
+          processedRow[timeColumn] !== undefined &&
+          processedRow[timeColumn] !== ""
+        ) {
           const originalValue = processedRow[timeColumn];
 
           // 检查是否已经有明确的时区信息（如包含Z、+08:00等）
@@ -888,13 +923,13 @@ export class DatasetService {
             // 如果已经有时区信息，直接解析并转换为北京时间
             const epochMs = normalizeTimestamp(originalValue, timezone);
             if (epochMs !== null) {
-              processedRow[timeColumn] = formatTimestamp(epochMs, 'UTC+8', 'datetime') + ':00';
+              processedRow[timeColumn] = formatTimestamp(epochMs, "UTC+8", "datetime") + ":00";
             }
           } else {
             // 如果没有时区信息，根据当前系统时区解析，然后转换为北京时间
             const epochMs = normalizeTimestamp(originalValue, timezone);
             if (epochMs !== null) {
-              processedRow[timeColumn] = formatTimestamp(epochMs, 'UTC+8', 'datetime') + ':00';
+              processedRow[timeColumn] = formatTimestamp(epochMs, "UTC+8", "datetime") + ":00";
             }
           }
         }
@@ -907,30 +942,31 @@ export class DatasetService {
         // 生成CSV内容
         const headers = columns;
         const csvContent = [
-          headers.join(','),
+          headers.join(","),
           ...processedData.map((row: any) =>
-            headers.map(col => {
-              const value = row[col];
-              // 如果包含逗号或引号，需要用引号包围并转义
-              if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
-                return `"${value.replace(/"/g, '""')}"`;
-              }
-              return String(value ?? '');
-            }).join(',')
-          )
-        ].join('\n');
+            headers
+              .map(col => {
+                const value = row[col];
+                // 如果包含逗号或引号，需要用引号包围并转义
+                if (typeof value === "string" && (value.includes(",") || value.includes('"') || value.includes("\n"))) {
+                  return `"${value.replace(/"/g, '""')}"`;
+                }
+                return String(value ?? "");
+              })
+              .join(",")
+          ),
+        ].join("\n");
 
-        fs.writeFileSync(targetFilePath, csvContent, 'utf-8');
+        fs.writeFileSync(targetFilePath, csvContent, "utf-8");
       } else {
         // 对于Excel文件，目前先复制原始文件（后续可以扩展Excel处理逻辑）
-        console.warn('Excel文件时间转换暂未实现，直接复制原始文件');
+        console.warn("Excel文件时间转换暂未实现，直接复制原始文件");
         fs.copyFileSync(sourceFilePath, targetFilePath);
       }
 
       return targetFilePath;
-
     } catch (error: any) {
-      console.error('时间数据预处理失败:', error);
+      console.error("时间数据预处理失败:", error);
       // 处理失败时，直接复制原始文件
       fs.copyFileSync(sourceFilePath, targetFilePath);
       return targetFilePath;

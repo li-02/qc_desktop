@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
-import { formatLocalWithTZ } from '@/utils/timeUtils';
+import { formatLocalWithTZ } from "@/utils/timeUtils";
+import { translateRemark, getStageLabel } from "@/utils/versionUtils";
 import { ElMessage } from "element-plus";
 import { Loading, Refresh, Search, Connection } from "@element-plus/icons-vue";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import DataVisualizationChart from "../charts/DataVisualizationChart.vue";
-import VersionManager from '../VersionManager.vue';
+import VersionManager from "../VersionManager.vue";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
 import type { OutlierResult } from "@shared/types/database";
 
@@ -17,9 +18,9 @@ const datasetInfo = computed(() => datasetStore.currentDataset);
 // UI 状态
 const showVersionDrawer = ref(false);
 const refreshing = ref(false);
-const columnSearchText = ref('');
-const selectedColumn = ref('');
-const chartType = ref<'scatter' | 'heatmap'>('scatter');
+const columnSearchText = ref("");
+const selectedColumn = ref("");
+const chartType = ref<"scatter" | "heatmap">("scatter");
 const chartLoading = ref(false);
 const csvData = ref<any>(null);
 const columnStatistics = ref<any>(null);
@@ -30,21 +31,21 @@ const correlationMatrix = ref<{ name: string; values: number[] }[]>([]);
 // 异常检测结果
 const outlierResults = ref<OutlierResult[]>([]);
 const latestOutlierResult = computed(() => {
-  const completed = outlierResults.value.filter(r => r.status === 'COMPLETED');
+  const completed = outlierResults.value.filter(r => r.status === "COMPLETED");
   return completed.length > 0 ? completed[0] : null;
 });
 const totalOutlierCount = computed(() => latestOutlierResult.value?.outlier_count || 0);
 const outlierRate = computed(() => {
   if (!latestOutlierResult.value) return 0;
   const rate = (latestOutlierResult.value as any).outlier_rate;
-  return typeof rate === 'number' ? rate : 0;
+  return typeof rate === "number" ? rate : 0;
 });
 const versions = computed(() => datasetStore.versions);
 const currentVersion = computed({
   get: () => datasetStore.currentVersion?.id,
-  set: (val) => {
+  set: val => {
     if (val) datasetStore.setCurrentVersion(val);
-  }
+  },
 });
 const currentVersionStats = computed(() => datasetStore.currentVersionStats);
 
@@ -85,8 +86,8 @@ const columns = computed(() => {
     // Old format (direct map) or fallback
     // Check if values are numbers (old format)
     const values = Object.values(statsObj);
-    if (values.length > 0 && typeof values[0] === 'number') {
-       return statsObj;
+    if (values.length > 0 && typeof values[0] === "number") {
+      return statsObj;
     }
   }
   return {};
@@ -96,23 +97,23 @@ const columns = computed(() => {
 const numericColumns = computed(() => {
   const statsObj = currentVersionStats.value?.columnStats;
   if (statsObj) {
-     // If we have detailed stats, use them to identify numeric columns
-     if (statsObj.columnStatistics) {
-         return Object.keys(statsObj.columnStatistics).map(name => ({ name, type: 'numeric' }));
-     }
-     // Fallback to all columns if we only have missing status
-     if (statsObj.columnMissingStatus) {
-         return Object.keys(statsObj.columnMissingStatus).map(name => ({ name, type: 'numeric' }));
-     }
+    // If we have detailed stats, use them to identify numeric columns
+    if (statsObj.columnStatistics) {
+      return Object.keys(statsObj.columnStatistics).map(name => ({ name, type: "numeric" }));
+    }
+    // Fallback to all columns if we only have missing status
+    if (statsObj.columnMissingStatus) {
+      return Object.keys(statsObj.columnMissingStatus).map(name => ({ name, type: "numeric" }));
+    }
   }
-  return datasetInfo.value?.originalFile?.columns?.map(name => ({ name, type: 'numeric' })) || [];
+  return datasetInfo.value?.originalFile?.columns?.map(name => ({ name, type: "numeric" })) || [];
 });
 
 const dataQualityClass = computed(() => {
   const p = dataQualityPercentage.value;
-  if (p >= 95) return 'excellent';
-  if (p >= 85) return 'good';
-  return 'poor';
+  if (p >= 95) return "excellent";
+  if (p >= 85) return "good";
+  return "poor";
 });
 
 // Methods
@@ -120,30 +121,30 @@ const handleVersionSwitch = async (versionId: number) => {
   if (versionId === datasetStore.currentVersion?.id) return;
   await datasetStore.setCurrentVersion(versionId);
   showVersionDrawer.value = false;
-  ElMessage.success('已切换数据版本');
+  ElMessage.success("已切换数据版本");
 };
 
 const getCorrelationColor = (value: number) => {
   const absValue = Math.abs(value);
-  if (absValue >= 0.7) return 'strong';
-  if (absValue >= 0.4) return 'moderate';
-  if (absValue >= 0.2) return 'weak';
-  return 'none';
+  if (absValue >= 0.7) return "strong";
+  if (absValue >= 0.4) return "moderate";
+  if (absValue >= 0.2) return "weak";
+  return "none";
 };
 
 const getColumnStats = (columnName: string) => {
   // 1. 优先使用后端预计算的统计信息
   const statsObj = currentVersionStats.value?.columnStats;
   if (statsObj && statsObj.columnStatistics && statsObj.columnStatistics[columnName]) {
-      const s = statsObj.columnStatistics[columnName];
-      return {
-          mean: typeof s.mean === 'number' ? s.mean.toFixed(2) : s.mean,
-          std: typeof s.std === 'number' ? s.std.toFixed(2) : s.std,
-          min: typeof s.min === 'number' ? s.min.toFixed(2) : s.min,
-          max: typeof s.max === 'number' ? s.max.toFixed(2) : s.max,
-          minTimestamp: '', // 后端暂未计算时间戳
-          maxTimestamp: ''
-      };
+    const s = statsObj.columnStatistics[columnName];
+    return {
+      mean: typeof s.mean === "number" ? s.mean.toFixed(2) : s.mean,
+      std: typeof s.std === "number" ? s.std.toFixed(2) : s.std,
+      min: typeof s.min === "number" ? s.min.toFixed(2) : s.min,
+      max: typeof s.max === "number" ? s.max.toFixed(2) : s.max,
+      minTimestamp: "", // 后端暂未计算时间戳
+      maxTimestamp: "",
+    };
   }
 
   // 2. 如果有从后端返回的实时统计信息（CSV读取），使用它
@@ -153,8 +154,8 @@ const getColumnStats = (columnName: string) => {
       std: columnStatistics.value.std.toFixed(2),
       min: columnStatistics.value.min.toFixed(2),
       max: columnStatistics.value.max.toFixed(2),
-      minTimestamp: columnStatistics.value.minTimestamp || '',
-      maxTimestamp: columnStatistics.value.maxTimestamp || '',
+      minTimestamp: columnStatistics.value.minTimestamp || "",
+      maxTimestamp: columnStatistics.value.maxTimestamp || "",
     };
   }
 
@@ -170,7 +171,7 @@ const getColumnStats = (columnName: string) => {
 };
 
 const formatTimestamp = (timestamp: string | number) => {
-  if (!timestamp) return '';
+  if (!timestamp) return "";
   try {
     const date = new Date(timestamp);
     if (isNaN(date.getTime())) {
@@ -178,7 +179,7 @@ const formatTimestamp = (timestamp: string | number) => {
     }
     return formatLocalWithTZ(date.getTime());
   } catch (error) {
-    console.error('时间格式化错误:', error);
+    console.error("时间格式化错误:", error);
     return String(timestamp);
   }
 };
@@ -298,7 +299,7 @@ const loadOutlierResults = async () => {
 // 监听数据集变化，加载异常结果
 watch(
   () => datasetInfo.value?.id,
-  (newId) => {
+  newId => {
     if (newId) {
       loadOutlierResults();
     } else {
@@ -338,16 +339,19 @@ onMounted(() => {
         <div class="stats-section">
           <div class="section-header">
             <div class="section-title">📊 数据统计摘要</div>
-            <div class="header-controls" style="display: flex; align-items: center;">
-              <el-select v-model="currentVersion" placeholder="选择版本" size="small" style="width: 200px; margin-right: 10px;">
+            <div class="header-controls" style="display: flex; align-items: center">
+              <el-select
+                v-model="currentVersion"
+                placeholder="选择版本"
+                size="small"
+                style="width: 200px; margin-right: 10px">
                 <el-option
                   v-for="v in versions"
                   :key="v.id"
-                  :label="`${v.stageType} (${formatLocalWithTZ(v.createdAt)})`"
-                  :value="v.id"
-                />
+                  :label="`${translateRemark(v.remark) || getStageLabel(v.stageType)} #${v.id}`"
+                  :value="v.id" />
               </el-select>
-              <button class="action-btn" @click="showVersionDrawer = true" title="版本谱系" style="margin-right: 8px;">
+              <button class="action-btn" @click="showVersionDrawer = true" title="版本谱系" style="margin-right: 8px">
                 <el-icon class="action-icon"><Connection /></el-icon>
               </button>
               <button class="action-btn refresh-btn" @click="$emit('refresh')" :disabled="refreshing" title="刷新数据">
@@ -355,7 +359,12 @@ onMounted(() => {
                   <Refresh />
                 </el-icon>
               </button>
-              <button class="action-btn refresh-btn" @click="$emit('refresh')" :disabled="refreshing" title="刷新数据" style="margin-right: 8px;">
+              <button
+                class="action-btn refresh-btn"
+                @click="$emit('refresh')"
+                :disabled="refreshing"
+                title="刷新数据"
+                style="margin-right: 8px">
                 <el-icon class="action-icon"><Connection /></el-icon>
               </button>
             </div>
@@ -498,7 +507,7 @@ onMounted(() => {
               检测到大数据集 ({{ csvData.tableData.length.toLocaleString() }} 个点)，已自动启用性能优化采样
             </div>
           </div> -->
-          
+
           <DataVisualizationChart
             :selected-column="selectedColumn"
             :chart-type="chartType as 'histogram' | 'scatter' | 'cdf' | 'heatmap'"
@@ -589,22 +598,15 @@ onMounted(() => {
         </div>
       </div>
 
-    <!-- Version Manager Drawer -->
-    <el-drawer
-      v-model="showVersionDrawer"
-      title="数据版本管理"
-      size="450px"
-      destroy-on-close
-      append-to-body
-    >
-      <VersionManager 
-        v-if="datasetInfo"
-        :dataset-id="datasetInfo.id"
-        @switch-version="handleVersionSwitch"
-        @close="showVersionDrawer = false"
-      />
-    </el-drawer>
-  </template>
+      <!-- Version Manager Drawer -->
+      <el-drawer v-model="showVersionDrawer" title="数据版本管理" size="450px" destroy-on-close append-to-body>
+        <VersionManager
+          v-if="datasetInfo"
+          :dataset-id="datasetInfo.id"
+          @switch-version="handleVersionSwitch"
+          @close="showVersionDrawer = false" />
+      </el-drawer>
+    </template>
 
     <!-- 无数据状态 -->
     <div v-else class="no-data-container">
@@ -1110,8 +1112,14 @@ onMounted(() => {
 }
 
 @keyframes flash {
-  0%, 50% { opacity: 1; }
-  25%, 75% { opacity: 0.7; }
+  0%,
+  50% {
+    opacity: 1;
+  }
+  25%,
+  75% {
+    opacity: 0.7;
+  }
 }
 
 /* 统计摘要 */

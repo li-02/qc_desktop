@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, toRaw, shallowRef } from "vue";
 import { ElMessage, ElNotification, ElMessageBox } from "element-plus";
-import { 
+import {
   Plus,
   Delete,
-  Refresh, 
-  Setting, 
-  TrendCharts, 
+  Refresh,
+  Setting,
+  TrendCharts,
   Check,
   List,
   Star,
@@ -16,12 +16,12 @@ import {
   Search,
   Edit,
   ArrowRight,
-  Connection
+  Connection,
 } from "@element-plus/icons-vue";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import type { OutlierResult } from "@shared/types/database";
-import type { 
-  ImputationMethodParam, 
+import type {
+  ImputationMethodParam,
   ExecuteImputationRequest,
   ImputationMethodId,
   ImputationCategory,
@@ -29,14 +29,15 @@ import type {
   ImputationMethod,
   ImputationResult,
   ImputationProgressEvent,
-  ImputationDetail
+  ImputationDetail,
 } from "@shared/types/imputation";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import { useGapFillingStore } from "@/stores/useGapFillingStore";
+import { translateRemark } from "@/utils/versionUtils";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
-import * as echarts from 'echarts';
-import MissingAnalysisView from '../gapfilling/MissingAnalysisView.vue';
+import * as echarts from "echarts";
+import MissingAnalysisView from "../gapfilling/MissingAnalysisView.vue";
 
 // ==================== Props & Emits ====================
 interface ColumnInfo {
@@ -61,13 +62,13 @@ const emit = defineEmits<{
 }>();
 
 // ==================== 视图模式 ====================
-type ViewMode = 'config' | 'result';
-const currentView = ref<ViewMode>('config');
-const activeModule = ref<'detection' | 'analysis' | 'imputation'>('detection');
+type ViewMode = "config" | "result";
+const currentView = ref<ViewMode>("config");
+const activeModule = ref<"detection" | "analysis" | "imputation">("detection");
 
 // 监听视图模式变化，离开结果页时销毁图表
-watch(currentView, (newVal) => {
-  if (newVal !== 'result') {
+watch(currentView, newVal => {
+  if (newVal !== "result") {
     disposeChart();
   }
 });
@@ -102,25 +103,25 @@ const visibleImputationResults = computed(() => {
     return imputationResults.value;
   }
   // 默认隐藏已应用的记录，只显示草稿/失败/进行中的记录
-  return imputationResults.value.filter(r => r.status !== 'APPLIED');
+  return imputationResults.value.filter(r => r.status !== "APPLIED");
 });
 
 // ==================== 方法选择状态 ====================
 const categories = [
-  { value: 'basic', label: '基础方法', icon: '📊' },
-  { value: 'statistical', label: '统计方法', icon: '📈' },
-  { value: 'timeseries', label: '时序模型', icon: '⏱️' },
-  { value: 'ml', label: '机器学习', icon: '🤖' },
-  { value: 'dl', label: '深度学习', icon: '🧠' },
+  { value: "basic", label: "基础方法", icon: "📊" },
+  { value: "statistical", label: "统计方法", icon: "📈" },
+  { value: "timeseries", label: "时序模型", icon: "⏱️" },
+  { value: "ml", label: "机器学习", icon: "🤖" },
+  { value: "dl", label: "深度学习", icon: "🧠" },
 ];
 
-const activeCategory = ref<ImputationCategory>('basic');
+const activeCategory = ref<ImputationCategory>("basic");
 const selectedMethodId = ref<ImputationMethodId | null>(null);
 
 // 从数据库获取的插补方法
 const imputationMethods = ref<ImputationMethod[]>([]);
 // 硬编码的推荐方法ID
-const recommendedMethodIds = ref<ImputationMethodId[]>(['LINEAR', 'ARIMA', 'KNN']);
+const recommendedMethodIds = ref<ImputationMethodId[]>(["LINEAR", "ARIMA", "KNN"]);
 
 // 方法参数缓存
 const methodParamsCache = ref<Record<string, ImputationMethodParam[]>>({});
@@ -132,11 +133,11 @@ const loadImputationMethods = async () => {
     if (result.success) {
       imputationMethods.value = result.data;
     } else {
-      ElMessage.error('加载插补方法失败: ' + (result.error || '未知错误'));
+      ElMessage.error("加载插补方法失败: " + (result.error || "未知错误"));
     }
   } catch (error: any) {
-    console.error('加载插补方法失败:', error);
-    ElMessage.error('加载插补方法失败: ' + error.message);
+    console.error("加载插补方法失败:", error);
+    ElMessage.error("加载插补方法失败: " + error.message);
   }
 };
 
@@ -152,12 +153,12 @@ const loadMethodParams = async (methodId: string): Promise<ImputationMethodParam
       methodParamsCache.value[methodId] = result.data;
       return result.data;
     } else {
-      ElMessage.error('加载方法参数失败: ' + (result.error || '未知错误'));
+      ElMessage.error("加载方法参数失败: " + (result.error || "未知错误"));
       return [];
     }
   } catch (error: any) {
-    console.error('加载方法参数失败:', error);
-    ElMessage.error('加载方法参数失败: ' + error.message);
+    console.error("加载方法参数失败:", error);
+    ElMessage.error("加载方法参数失败: " + error.message);
     return [];
   }
 };
@@ -170,16 +171,16 @@ const getParamOptions = (param: ImputationMethodParam): { label: string; value: 
     const options = JSON.parse(param.options);
     return options.map((opt: any) => ({
       label: opt.label,
-      value: typeof opt.value === 'number' ? opt.value : opt.value
+      value: typeof opt.value === "number" ? opt.value : opt.value,
     }));
   } catch (error) {
-    console.error('解析参数选项失败:', error);
+    console.error("解析参数选项失败:", error);
     return [];
   }
 };
 
 // ==================== 参数配置状态 ====================
-const columnSelectionMode = ref<'all' | 'manual'>('all');
+const columnSelectionMode = ref<"all" | "manual">("all");
 const selectedColumns = ref<string[]>([]);
 const paramValues = ref<Record<string, any>>({});
 
@@ -189,8 +190,8 @@ const progressInfo = ref<ImputationProgressEvent | null>(null);
 const executionLogs = ref<{ id: number; time: string; level: string; message: string }[]>([]);
 
 // ==================== 可视化状态 ====================
-const vizSelectedColumn = ref<string>('');
-const vizMode = ref<'timeseries' | 'table'>('timeseries');
+const vizSelectedColumn = ref<string>("");
+const vizMode = ref<"timeseries" | "table">("timeseries");
 const timeSeriesChart = ref<HTMLDivElement | null>(null);
 const timeSeriesInstance = shallowRef<echarts.ECharts | null>(null);
 const allTableData = shallowRef<any[]>([]); // 存储所有表格数据
@@ -200,25 +201,23 @@ const pageSize = ref(20);
 const comparisonTableData = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value;
   const end = start + pageSize.value;
-  
+
   return allTableData.value.slice(start, end).map((row: any, index: number) => {
     // 全局索引
     const globalIndex = start + index;
     const imputedInfo = imputedMap.value.get(globalIndex);
-    
+
     return {
       index: globalIndex + 1, // 序号
-      timestamp: row._epochMs ? new Date(row._epochMs).toLocaleString() : (row.TIMESTAMP || ''),
+      timestamp: row._epochMs ? new Date(row._epochMs).toLocaleString() : row.TIMESTAMP || "",
       original: row[vizSelectedColumn.value],
       imputed: imputedInfo?.value ?? null,
-      confidence: imputedInfo?.confidence ?? null // 保留数据以便逻辑处理，虽然界面不显示
+      confidence: imputedInfo?.confidence ?? null, // 保留数据以便逻辑处理，虽然界面不显示
     };
   });
 });
 
-
 const isSavedAsVersion = ref(false);
-
 
 // ==================== Computed ====================
 const filteredMethods = computed<ImputationMethod[]>(() => {
@@ -231,12 +230,13 @@ const selectedMethod = computed<ImputationMethod | null>(() => {
 
 const availableColumns = computed<ColumnInfo[]>(() => {
   if (!props.datasetInfo?.originalFile?.columns) return [];
-  
+
   // 1. 优先使用 GapFillingStore 的实时检测结果 (最准确)
-  if (gapFillingStore.missingStats && 
-      gapFillingStore.missingStats.datasetId === Number(props.datasetInfo.id) &&
-      gapFillingStore.missingStats.versionId === currentVersion.value?.id) {
-    
+  if (
+    gapFillingStore.missingStats &&
+    gapFillingStore.missingStats.datasetId === Number(props.datasetInfo.id) &&
+    gapFillingStore.missingStats.versionId === currentVersion.value?.id
+  ) {
     const statsMap = new Map(gapFillingStore.missingStats.columnStats.map(c => [c.columnName, c.missingCount]));
     const timeColumn = props.datasetInfo.timeColumn;
 
@@ -256,13 +256,13 @@ const availableColumns = computed<ColumnInfo[]>(() => {
   // 2. 其次使用当前版本的统计信息
   const stats = currentVersionStats.value;
   let missingStatus: Record<string, number> = {};
-  
+
   if (stats?.columnStats) {
     if (stats.columnStats.columnMissingStatus) {
-       missingStatus = stats.columnStats.columnMissingStatus;
+      missingStatus = stats.columnStats.columnMissingStatus;
     } else {
-       // 兼容旧格式
-       missingStatus = stats.columnStats;
+      // 兼容旧格式
+      missingStatus = stats.columnStats;
     }
   } else {
     // 3. 回退到原始文件统计
@@ -283,8 +283,8 @@ const availableColumns = computed<ColumnInfo[]>(() => {
 });
 
 // 监听 vizMode 变化，切换回时序图时重置大小
-watch(vizMode, (newVal) => {
-  if (newVal === 'timeseries') {
+watch(vizMode, newVal => {
+  if (newVal === "timeseries") {
     nextTick(() => {
       timeSeriesInstance.value?.resize();
     });
@@ -306,14 +306,14 @@ const canExecute = computed(() => {
   if (!selectedMethodId.value) return false;
   if (!props.datasetInfo) return false;
   if (!currentVersion.value) return false; // 必须有选中的版本
-  if (columnSelectionMode.value === 'manual' && selectedColumns.value.length === 0) return false;
+  if (columnSelectionMode.value === "manual" && selectedColumns.value.length === 0) return false;
   return true;
 });
 
 const progress = computed(() => {
   return progressInfo.value?.progress || 0;
 });
-const progressMessage = computed(() => progressInfo.value?.message || '');
+const progressMessage = computed(() => progressInfo.value?.message || "");
 
 // 当前方法的参数配置
 const currentMethodParams = computed(() => {
@@ -344,12 +344,11 @@ const handleVersionSwitchFromManager = async (versionId: number) => {
   showVersionDrawer.value = false;
 };
 
-
 // ==================== Methods ====================
 // 获取缺失率 (传入缺失数以避免重复计算)
 const getMissingRate = (columnName: string, count?: number): number => {
   const missingCount = count !== undefined ? count : getMissingCount(columnName);
-  
+
   // 优先使用当前版本的总行数
   const totalRows = currentVersionStats.value?.totalRows || props.datasetInfo?.originalFile?.rows || 1;
   return (missingCount / totalRows) * 100;
@@ -359,10 +358,10 @@ const getMissingRate = (columnName: string, count?: number): number => {
 const getMissingCount = (columnName: string): number => {
   const stats = currentVersionStats.value;
   if (stats?.columnStats) {
-     if (stats.columnStats.columnMissingStatus) {
-        return stats.columnStats.columnMissingStatus[columnName] || 0;
-     }
-     return stats.columnStats[columnName] || 0;
+    if (stats.columnStats.columnMissingStatus) {
+      return stats.columnStats.columnMissingStatus[columnName] || 0;
+    }
+    return stats.columnStats[columnName] || 0;
   }
   return props.datasetInfo?.originalFile?.dataQuality?.columnMissingStatus?.[columnName] || 0;
 };
@@ -383,9 +382,9 @@ const isRecommended = (methodId: ImputationMethodId): boolean => {
   return recommendedMethodIds.value.includes(methodId);
 };
 
-const getTimeLabel = (time?: 'fast' | 'medium' | 'slow'): string => {
-  const labels = { fast: '快速', medium: '中等', slow: '较慢' };
-  return labels[time || 'medium'];
+const getTimeLabel = (time?: "fast" | "medium" | "slow"): string => {
+  const labels = { fast: "快速", medium: "中等", slow: "较慢" };
+  return labels[time || "medium"];
 };
 
 const getMethodName = (methodId: ImputationMethodId): string => {
@@ -394,37 +393,37 @@ const getMethodName = (methodId: ImputationMethodId): string => {
 
 const getStatusType = (status: ImputationResultStatus): string => {
   const types: Record<ImputationResultStatus, string> = {
-    PENDING: 'info',
-    RUNNING: 'warning',
-    COMPLETED: 'success',
-    FAILED: 'danger',
-    APPLIED: 'success',
-    REVERTED: 'info',
+    PENDING: "info",
+    RUNNING: "warning",
+    COMPLETED: "success",
+    FAILED: "danger",
+    APPLIED: "success",
+    REVERTED: "info",
   };
   return types[status];
 };
 
 const getStatusText = (status: ImputationResultStatus): string => {
   const texts: Record<ImputationResultStatus, string> = {
-    PENDING: '待执行',
-    RUNNING: '执行中',
-    COMPLETED: '已完成',
-    FAILED: '失败',
-    APPLIED: '已应用',
-    REVERTED: '已撤销',
+    PENDING: "待执行",
+    RUNNING: "执行中",
+    COMPLETED: "已完成",
+    FAILED: "失败",
+    APPLIED: "已应用",
+    REVERTED: "已撤销",
   };
   return texts[status];
 };
 
 const getStageLabel = (stage: string): string => {
   const map: Record<string, string> = {
-    preparing: '准备数据',
-    training: '模型训练',
-    imputing: '执行插补',
-    validating: '结果验证',
-    preview: '生成预览',
-    saving: '保存结果',
-    completed: '完成'
+    preparing: "准备数据",
+    training: "模型训练",
+    imputing: "执行插补",
+    validating: "结果验证",
+    preview: "生成预览",
+    saving: "保存结果",
+    completed: "完成",
   };
   return map[stage] || stage;
 };
@@ -434,55 +433,59 @@ const getVersionLabel = (stage?: string, versionId?: number) => {
   if (versionId) {
     const ver = versions.value.find(v => v.id === versionId);
     if (ver?.remark) {
-      return ver.remark;
+      return translateRemark(ver.remark);
     }
   }
-  
+
   // 回退到默认标签
-  if (stage === 'RAW') return '原始版本';
-  if (stage === 'FILTERED' && versionId) {
+  if (stage === "RAW") return "原始版本";
+  if (stage === "FILTERED" && versionId) {
     const outlierName = versionNameMap.value.get(versionId);
     if (outlierName) return outlierName;
-    return '经过过滤';
+    return "经过过滤";
   }
-  if (stage === 'QC') return '插补后';
-  return stage || '未知版本';
+  if (stage === "QC") return "插补后";
+  return stage || "未知版本";
 };
 
 const getVersionTagType = (stage?: string) => {
   switch (stage) {
-    case 'RAW': return 'info';
-    case 'FILTERED': return 'warning';
-    case 'QC': return 'success';
-    default: return 'info';
+    case "RAW":
+      return "info";
+    case "FILTERED":
+      return "warning";
+    case "QC":
+      return "success";
+    default:
+      return "info";
   }
 };
 
-import { formatLocalWithTZ } from '@/utils/timeUtils';
+import { formatLocalWithTZ } from "@/utils/timeUtils";
 
 const formatDateTime = (dateInput: string | number): string => {
   // 确保字符串时间被视为UTC (如果未包含时区信息)
   let input = dateInput;
-  if (typeof input === 'string' && !input.endsWith('Z') && !input.includes('+') && !input.includes('T')) {
+  if (typeof input === "string" && !input.endsWith("Z") && !input.includes("+") && !input.includes("T")) {
     // 简单的 "YYYY-MM-DD HH:mm:ss" 格式，通常是数据库存储的 UTC 时间
-    input = input.replace(' ', 'T') + 'Z';
-  } else if (typeof input === 'string' && !input.endsWith('Z') && !input.includes('+')) {
+    input = input.replace(" ", "T") + "Z";
+  } else if (typeof input === "string" && !input.endsWith("Z") && !input.includes("+")) {
     // 已经是 ISO 格式但没有时区，视为 UTC
-    input = input + 'Z';
+    input = input + "Z";
   }
-  
+
   return formatLocalWithTZ(input);
 };
 
 const getHistoryTitle = (result: ImputationResult) => {
   // 1. 版本信息 - 如果已应用，显示新版本名称；否则显示源版本名称
-  let verLabel = '';
-  
+  let verLabel = "";
+
   // 优先使用新生成的版本（如果已应用）
   if (result.newVersionId) {
     const newVer = versions.value.find(v => v.id === result.newVersionId);
     if (newVer) {
-      verLabel = newVer.remark || getVersionLabel(newVer.stageType, newVer.id);
+      verLabel = translateRemark(newVer.remark) || getVersionLabel(newVer.stageType, newVer.id);
     } else {
       verLabel = `版本#${result.newVersionId}`;
     }
@@ -490,29 +493,29 @@ const getHistoryTitle = (result: ImputationResult) => {
     // 未应用时，显示源版本信息
     const ver = versions.value.find(v => v.id === result.versionId);
     if (ver) {
-      verLabel = ver.remark || getVersionLabel(ver.stageType, ver.id);
+      verLabel = translateRemark(ver.remark) || getVersionLabel(ver.stageType, ver.id);
     } else {
       verLabel = `版本#${result.versionId}`;
     }
   }
-  
+
   // 2. 方法名称
   const method = getMethodName(result.methodId);
-  
+
   // 3. 参数 (格式化展示)
-  let paramsStr = '';
+  let paramsStr = "";
   if (result.methodParams && Object.keys(result.methodParams).length > 0) {
     const validParams = Object.values(result.methodParams)
-      .filter(v => v !== null && v !== undefined && v !== '')
-      .join(', ');
+      .filter(v => v !== null && v !== undefined && v !== "")
+      .join(", ");
     if (validParams) {
       paramsStr = ` - [${validParams}]`;
     }
   }
-  
+
   // 4. 时间
   const timeStr = formatDateTime(result.executedAt);
-  
+
   return `${verLabel} - ${method}${paramsStr} - ${timeStr}`;
 };
 
@@ -521,22 +524,19 @@ const handleVersionChange = async (versionId: number) => {
   await datasetStore.setCurrentVersion(versionId);
   // 切换版本时清除之前的缺失统计
   gapFillingStore.clearStats();
-  ElMessage.success('已切换数据版本');
+  ElMessage.success("已切换数据版本");
 };
 
 // 检测缺失值 (手动触发，带提示)
 const detectMissingValues = async () => {
   if (!props.datasetInfo?.id || !currentVersion.value?.id) {
-    ElMessage.warning('请先选择数据集和版本');
+    ElMessage.warning("请先选择数据集和版本");
     return;
   }
 
   try {
     // 设置目标版本
-    gapFillingStore.setTargetVersion(
-      parseInt(props.datasetInfo.id),
-      currentVersion.value.id
-    );
+    gapFillingStore.setTargetVersion(parseInt(props.datasetInfo.id), currentVersion.value.id);
 
     // 执行缺失值检测
     const stats = await gapFillingStore.loadVersionMissingStats(
@@ -547,11 +547,11 @@ const detectMissingValues = async () => {
     if (stats) {
       ElMessage.success(`检测完成，发现 ${stats.totalMissingValues} 个缺失值`);
     } else {
-      ElMessage.error('检测失败，请重试');
+      ElMessage.error("检测失败，请重试");
     }
   } catch (error: any) {
-    console.error('检测缺失值失败:', error);
-    ElMessage.error('检测失败: ' + error.message);
+    console.error("检测缺失值失败:", error);
+    ElMessage.error("检测失败: " + error.message);
   }
 };
 
@@ -577,7 +577,7 @@ const autoDetectMissingValues = async () => {
     await gapFillingStore.loadVersionMissingStats(datasetId, versionId);
     // 自动检测完成后不显示成功消息，保持静默
   } catch (error: any) {
-    console.error('[自动检测] 缺失值检测失败:', error);
+    console.error("[自动检测] 缺失值检测失败:", error);
     // 自动检测失败时静默处理，用户可以手动重试
   }
 };
@@ -589,7 +589,7 @@ const formatVersionLabel = (version: any) => {
 
 // ==================== 视图切换 ====================
 const switchToConfig = () => {
-  currentView.value = 'config';
+  currentView.value = "config";
   currentResultId.value = null;
   progressInfo.value = null;
   isExecuting.value = false;
@@ -602,9 +602,9 @@ const viewResult = (result: ImputationResult) => {
 
   // 确保清理旧图表
   disposeChart();
-  
+
   currentResultId.value = result.id;
-  currentView.value = 'result';
+  currentView.value = "result";
   isSavedAsVersion.value = false;
   // 加载结果详情
   loadResultComparison(result.id);
@@ -619,8 +619,8 @@ const viewCurrentResult = () => {
     // Fallback if result not found in list yet
     isExecuting.value = false;
     progressInfo.value = null;
-    
-    currentView.value = 'result';
+
+    currentView.value = "result";
     isSavedAsVersion.value = false;
     loadResultComparison(currentResultId.value);
   }
@@ -630,11 +630,12 @@ const viewCurrentResult = () => {
 const selectMethod = async (method: ImputationMethod) => {
   if (!method.isAvailable) return;
 
-  const mId = method.methodId || (typeof method.id === 'string' ? (method.id as unknown as ImputationMethodId) : undefined);
+  const mId =
+    method.methodId || (typeof method.id === "string" ? (method.id as unknown as ImputationMethodId) : undefined);
   if (!mId) {
-     console.error('Method ID missing:', method);
-     ElMessage.error('方法ID缺失，无法选择');
-     return;
+    console.error("Method ID missing:", method);
+    ElMessage.error("方法ID缺失，无法选择");
+    return;
   }
 
   selectedMethodId.value = mId;
@@ -656,14 +657,14 @@ const initMethodParams = async (method: ImputationMethod) => {
     if (param.defaultValue !== null) {
       // 根据参数类型转换默认值
       switch (param.paramType) {
-        case 'number':
+        case "number":
           paramValues.value[param.paramKey] = Number(param.defaultValue);
           break;
-        case 'boolean':
-          paramValues.value[param.paramKey] = param.defaultValue === 'true';
+        case "boolean":
+          paramValues.value[param.paramKey] = param.defaultValue === "true";
           break;
-        case 'select':
-        case 'string':
+        case "select":
+        case "string":
           paramValues.value[param.paramKey] = param.defaultValue;
           break;
         default:
@@ -682,14 +683,15 @@ const executeImputation = async () => {
     progressInfo.value = {
       resultId: 0,
       progress: 0,
-      stage: 'preparing',
-      message: '准备数据...',
+      stage: "preparing",
+      message: "准备数据...",
     };
     executionLogs.value = [];
 
-    const targetCols = columnSelectionMode.value === 'all' 
-      ? availableColumns.value.map(c => c.name) // 明确传递所有列名
-      : selectedColumns.value;
+    const targetCols =
+      columnSelectionMode.value === "all"
+        ? availableColumns.value.map(c => c.name) // 明确传递所有列名
+        : selectedColumns.value;
 
     ElNotification({
       title: "开始插补",
@@ -699,20 +701,20 @@ const executeImputation = async () => {
     });
 
     if (!currentVersion.value?.id) {
-      ElMessage.error('无法获取当前数据版本ID，请尝试重新选择版本或刷新页面');
+      ElMessage.error("无法获取当前数据版本ID，请尝试重新选择版本或刷新页面");
       isExecuting.value = false;
       return;
     }
 
     const payload: ExecuteImputationRequest = {
-      datasetId: parseInt(String(props.datasetInfo?.id || '0')),
+      datasetId: parseInt(String(props.datasetInfo?.id || "0")),
       versionId: currentVersion.value.id,
       methodId: selectedMethodId.value!,
       targetColumns: toRaw(targetCols),
-      params: toRaw(paramValues.value)
+      params: toRaw(paramValues.value),
     };
-    
-    console.log('[GapFillingPanel] Debug Execution Payload:', payload);
+
+    console.log("[GapFillingPanel] Debug Execution Payload:", payload);
 
     // 调用后端 API
     const result = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.EXECUTE, payload);
@@ -724,49 +726,49 @@ const executeImputation = async () => {
         type: "success",
         duration: 5000,
       });
-      
+
       // 更新状态，但不自动跳转
       currentResultId.value = result.resultId;
       isExecuting.value = false;
-      
+
       // 手动设置进度为完成状态
       progressInfo.value = {
         resultId: result.resultId,
         progress: 100,
-        stage: 'completed',
-        message: '插补计算已完成，请点击查看结果',
+        stage: "completed",
+        message: "插补计算已完成，请点击查看结果",
       };
 
       // 刷新历史记录
       await loadHistory();
       emit("refresh");
     } else {
-      throw new Error(result.error || '执行失败');
+      throw new Error(result.error || "执行失败");
     }
-
   } catch (error: any) {
     console.error("插补处理失败:", error);
     ElMessage.error(error.message || "插补处理失败，请重试");
-    addLog('error', error.message || "插补处理失败");
+    addLog("error", error.message || "插补处理失败");
     isExecuting.value = false;
   }
 };
 
 // 监听进度事件
 const setupProgressListeners = () => {
-  window.electronAPI.on('imputation:progress', (event: any) => {
+  window.electronAPI.on("imputation:progress", (event: any) => {
     // 确保是当前任务的进度
     // 由于 executeImputation 是异步等待，我们这里直接更新 UI
     progressInfo.value = event;
-    
+
     // 添加日志
-    if (event.message && (!executionLogs.value.length || executionLogs.value[executionLogs.value.length - 1].message !== event.message)) {
-      addLog('info', event.message);
+    if (
+      event.message &&
+      (!executionLogs.value.length || executionLogs.value[executionLogs.value.length - 1].message !== event.message)
+    ) {
+      addLog("info", event.message);
     }
   });
 };
-
-
 
 const addLog = (level: string, message: string) => {
   executionLogs.value.push({
@@ -780,13 +782,13 @@ const addLog = (level: string, message: string) => {
 const cancelExecution = () => {
   isExecuting.value = false;
   progressInfo.value = null;
-  ElMessage.warning('已取消执行');
+  ElMessage.warning("已取消执行");
 };
 
 // ==================== 结果相关 ====================
 const loadHistory = async () => {
   if (!props.datasetInfo) return;
-  
+
   // 版本隔离：如果没有选中版本，清空历史并返回
   if (!currentVersion.value?.id) {
     imputationResults.value = [];
@@ -795,15 +797,15 @@ const loadHistory = async () => {
 
   const datasetId = parseInt(props.datasetInfo.id);
   const currentVerId = currentVersion.value.id;
-  
+
   try {
     const result = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.GET_RESULTS_BY_DATASET, {
       datasetId,
       versionId: currentVerId, // 增加版本过滤
       limit: 50,
-      offset: 0
+      offset: 0,
     });
-    
+
     if (result.success) {
       imputationResults.value = result.data;
     }
@@ -819,26 +821,26 @@ const deleteResult = async (resultId: number) => {
       imputationResults.value = imputationResults.value.filter(r => r.id !== resultId);
       if (currentResultId.value === resultId) {
         currentResultId.value = null;
-        currentView.value = 'config';
+        currentView.value = "config";
       }
-      ElMessage.success('已删除');
+      ElMessage.success("已删除");
     } else {
-      ElMessage.error(result.error || '删除失败');
+      ElMessage.error(result.error || "删除失败");
     }
   } catch (error: any) {
-     ElMessage.error(error.message || '删除失败');
+    ElMessage.error(error.message || "删除失败");
   }
 };
 
 const vizColumnOptions = computed(() => {
-  if (currentView.value === 'result' && currentResultId.value) {
+  if (currentView.value === "result" && currentResultId.value) {
     const result = imputationResults.value.find(r => r.id === currentResultId.value);
     if (result && result.targetColumns && result.targetColumns.length > 0) {
       return result.targetColumns.map(colName => {
         const currentStats = availableColumns.value.find(c => c.name === colName);
         return {
           name: colName,
-          missingCount: currentStats ? currentStats.missingCount : '?'
+          missingCount: currentStats ? currentStats.missingCount : "?",
         };
       });
     }
@@ -861,7 +863,6 @@ const loadResultComparison = async (_resultId: number) => {
   }
 };
 
-
 // ==================== 可视化 ====================
 const disposeChart = () => {
   if (timeSeriesInstance.value) {
@@ -873,34 +874,34 @@ const disposeChart = () => {
 // 获取指定版本的文件路径
 const getVersionFilePath = (versionId?: number): string | null => {
   if (!props.datasetInfo) return null;
-  
+
   // 如果指定了版本ID，从 versions 列表中查找
   const targetVersionId = versionId ?? currentVersion.value?.id;
   if (!targetVersionId) return null;
-  
+
   const targetVersion = versions.value.find(v => v.id === targetVersionId);
   if (targetVersion?.filePath) {
     return targetVersion.filePath;
   }
-  
+
   return null;
 };
 
 const updateComparisonChart = async () => {
-  if (currentView.value !== 'result') return;
+  if (currentView.value !== "result") return;
   if (!vizSelectedColumn.value) return;
-  
+
   // 在结果视图中，使用插补结果的源版本ID获取文件路径
   let targetVersionId: number | undefined;
-  if (currentView.value === 'result' && currentResultId.value) {
+  if (currentView.value === "result" && currentResultId.value) {
     const result = imputationResults.value.find(r => r.id === currentResultId.value);
     targetVersionId = result?.versionId;
   }
-  
+
   // 获取文件路径
   const filePath = getVersionFilePath(targetVersionId);
   if (!filePath) {
-    ElMessage.warning('无法获取当前版本的文件路径');
+    ElMessage.warning("无法获取当前版本的文件路径");
     return;
   }
 
@@ -914,17 +915,17 @@ const updateComparisonChart = async () => {
     const result = await window.electronAPI.invoke(API_ROUTES.FILES.READ_CSV_DATA, {
       filePath: filePath,
       columnName: vizSelectedColumn.value,
-      missingValueTypes: toRaw(props.datasetInfo?.missingValueTypes) || []
+      missingValueTypes: toRaw(props.datasetInfo?.missingValueTypes) || [],
     });
 
-    if (currentView.value !== 'result') return; // 防止在异步期间切换了视图
+    if (currentView.value !== "result") return; // 防止在异步期间切换了视图
 
     if (timeSeriesInstance.value) {
       timeSeriesInstance.value.hideLoading();
     }
 
     if (!result.success || !result.data) {
-      throw new Error(result.error || '读取数据失败');
+      throw new Error(result.error || "读取数据失败");
     }
 
     const { tableData } = result.data;
@@ -943,21 +944,23 @@ const updateComparisonChart = async () => {
         const detailsRes = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.GET_DETAILS, {
           resultId: currentResultId.value,
           columnName: vizSelectedColumn.value,
-          limit: 100000 // 获取足够多的插补详情
+          limit: 100000, // 获取足够多的插补详情
         });
 
         if (detailsRes.success && detailsRes.data) {
-          imputedData = detailsRes.data.map((detail: ImputationDetail) => {
-            if (detail.rowIndex >= 0 && detail.rowIndex < tableData.length) {
-              const row = tableData[detail.rowIndex];
-              const timestamp = row._epochMs || row.TIMESTAMP || row.record_time || row.time;
-              return [timestamp, detail.imputedValue];
-            }
-            return null;
-          }).filter((item: any) => item !== null);
+          imputedData = detailsRes.data
+            .map((detail: ImputationDetail) => {
+              if (detail.rowIndex >= 0 && detail.rowIndex < tableData.length) {
+                const row = tableData[detail.rowIndex];
+                const timestamp = row._epochMs || row.TIMESTAMP || row.record_time || row.time;
+                return [timestamp, detail.imputedValue];
+              }
+              return null;
+            })
+            .filter((item: any) => item !== null);
         }
       } catch (error) {
-        console.error('加载插补详情失败:', error);
+        console.error("加载插补详情失败:", error);
       }
     }
 
@@ -971,7 +974,7 @@ const updateComparisonChart = async () => {
     }
 
     if (!timeSeriesChart.value) {
-      console.warn('ECharts container not found after retries');
+      console.warn("ECharts container not found after retries");
       return;
     }
 
@@ -988,7 +991,9 @@ const updateComparisonChart = async () => {
       if (dom !== timeSeriesChart.value || timeSeriesInstance.value.isDisposed()) {
         try {
           timeSeriesInstance.value.dispose();
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          /* ignore */
+        }
         timeSeriesInstance.value = null;
       }
     }
@@ -997,18 +1002,18 @@ const updateComparisonChart = async () => {
       try {
         timeSeriesInstance.value = echarts.init(timeSeriesChart.value);
       } catch (e) {
-        console.error('ECharts init failed:', e);
+        console.error("ECharts init failed:", e);
         return;
       }
     }
-    
+
     if (timeSeriesInstance.value) {
       // ========== 大数据量优化配置 ==========
       const dataLength = originalData.length;
       const imputedLength = imputedData.length;
       const isLargeData = dataLength > 5000 || imputedLength > 1000;
 
-      const defaultEnd = isLargeData ? Math.min(20, 100 * 2000 / dataLength) : 100;
+      const defaultEnd = isLargeData ? Math.min(20, (100 * 2000) / dataLength) : 100;
 
       const option = {
         animation: false,
@@ -1016,16 +1021,16 @@ const updateComparisonChart = async () => {
         progressiveThreshold: 3000,
         hoverLayerThreshold: 3000,
         tooltip: {
-          trigger: 'axis',
+          trigger: "axis",
           confine: true,
           enterable: false,
           hideDelay: 0,
           axisPointer: {
-            type: isLargeData ? 'line' : 'cross',
-            animation: false
+            type: isLargeData ? "line" : "cross",
+            animation: false,
           },
           formatter: (params: any) => {
-            let result = '';
+            let result = "";
             if (params[0] && params[0].value) {
               const date = new Date(params[0].value[0]);
               result += `${date.toLocaleString()}<br/>`;
@@ -1033,88 +1038,88 @@ const updateComparisonChart = async () => {
             params.forEach((param: any) => {
               const value = param.value[1];
               const label = param.seriesName;
-              result += `${label}: ${value !== null && value !== undefined ? Number(value).toFixed(2) : '缺失'}<br/>`;
+              result += `${label}: ${value !== null && value !== undefined ? Number(value).toFixed(2) : "缺失"}<br/>`;
             });
             return result;
-          }
+          },
         },
         legend: {
-          data: ['原始数据', '插补值'],
-          bottom: 10
+          data: ["原始数据", "插补值"],
+          bottom: 10,
         },
         grid: {
-          left: '3%',
-          right: '4%',
-          bottom: '15%',
-          top: '5%',
-          containLabel: true
+          left: "3%",
+          right: "4%",
+          bottom: "15%",
+          top: "5%",
+          containLabel: true,
         },
         xAxis: {
-          type: 'time',
+          type: "time",
           axisLabel: { fontSize: 10 },
-          splitNumber: isLargeData ? 5 : 8
+          splitNumber: isLargeData ? 5 : 8,
         },
         yAxis: {
-          type: 'value',
+          type: "value",
           scale: true,
           axisLabel: { fontSize: 10 },
-          splitNumber: isLargeData ? 5 : 8
+          splitNumber: isLargeData ? 5 : 8,
         },
         dataZoom: [
           {
-            type: 'slider',
+            type: "slider",
             show: true,
             xAxisIndex: [0],
             start: 0,
             end: defaultEnd,
-            filterMode: 'filter',
-            throttle: 100
+            filterMode: "filter",
+            throttle: 100,
           },
           {
-            type: 'inside',
+            type: "inside",
             xAxisIndex: [0],
             start: 0,
             end: defaultEnd,
-            filterMode: 'filter',
+            filterMode: "filter",
             throttle: 100,
             zoomOnMouseWheel: true,
-            moveOnMouseMove: true
-          }
+            moveOnMouseMove: true,
+          },
         ],
         series: [
           {
-            name: '原始数据',
-            type: 'line',
+            name: "原始数据",
+            type: "line",
             data: originalData,
-            itemStyle: { color: '#22c55e' },
+            itemStyle: { color: "#22c55e" },
             lineStyle: { width: isLargeData ? 1 : 1.5 },
             showSymbol: false,
-            sampling: 'lttb',
+            sampling: "lttb",
             connectNulls: false,
             large: isLargeData,
             largeThreshold: 2000,
             emphasis: {
-              disabled: isLargeData
-            }
+              disabled: isLargeData,
+            },
           },
           {
-            name: '插补值',
-            type: 'scatter',
+            name: "插补值",
+            type: "scatter",
             data: imputedData,
             itemStyle: {
-              color: '#f59e0b',
-              opacity: imputedLength > 500 ? 0.7 : 1
+              color: "#f59e0b",
+              opacity: imputedLength > 500 ? 0.7 : 1,
             },
-            symbolSize: imputedLength > 1000 ? 2 : (imputedLength > 500 ? 3 : 4),
+            symbolSize: imputedLength > 1000 ? 2 : imputedLength > 500 ? 3 : 4,
             large: true,
             largeThreshold: 500,
             z: 10,
             emphasis: {
               disabled: imputedLength > 1000,
-              scale: false
-            }
-          }
-        ]
+              scale: false,
+            },
+          },
+        ],
       };
 
       timeSeriesInstance.value.setOption(option, true);
@@ -1147,65 +1152,64 @@ const updateComparisonChart = async () => {
         const detailsRes = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.GET_DETAILS, {
           resultId: currentResultId.value,
           columnName: vizSelectedColumn.value,
-          limit: 100000
+          limit: 100000,
         });
         if (detailsRes.success && detailsRes.data) {
           const newMap = new Map<number, { value: number; confidence?: number }>();
           detailsRes.data.forEach((detail: ImputationDetail) => {
             newMap.set(detail.rowIndex, {
               value: detail.imputedValue,
-              confidence: detail.confidence
+              confidence: detail.confidence,
             });
           });
           imputedMap.value = newMap;
         }
       } catch (e) {
-        console.error('加载插补详情(表格)失败', e);
+        console.error("加载插补详情(表格)失败", e);
       }
     }
 
     currentPage.value = 1;
-
   } catch (error: any) {
-    console.error('加载图表数据失败:', error);
-    ElMessage.error('加载图表数据失败: ' + error.message);
+    console.error("加载图表数据失败:", error);
+    ElMessage.error("加载图表数据失败: " + error.message);
     if (timeSeriesInstance.value) {
       timeSeriesInstance.value.hideLoading();
     }
   }
 };
 
-
-
 // ==================== 保存结果 ====================
 const saveAsNewVersion = async () => {
   if (!currentResultId.value) return;
-  
+
   try {
     // 获取当前版本的名称作为默认值
-    const currentVersionName = currentVersion.value?.remark || `插补处理 - ${getMethodName(selectedMethodId.value || 'UNKNOWN' as any)}`;
-    
+    const currentVersionName =
+      translateRemark(currentVersion.value?.remark) ||
+      `插补处理 - ${getMethodName(selectedMethodId.value || ("UNKNOWN" as any))}`;
+
     // 弹出输入对话框
-    const { value: versionName } = await ElMessageBox.prompt('请输入新版本的名称', '保存为新版本', {
-      confirmButtonText: '保存',
-      cancelButtonText: '取消',
-      inputPlaceholder: '请输入版本名称',
+    const { value: versionName } = await ElMessageBox.prompt("请输入新版本的名称", "保存为新版本", {
+      confirmButtonText: "保存",
+      cancelButtonText: "取消",
+      inputPlaceholder: "请输入版本名称",
       inputValue: currentVersionName,
-      inputValidator: (value) => {
-        if (!value || value.trim() === '') {
-          return '版本名称不能为空';
+      inputValidator: value => {
+        if (!value || value.trim() === "") {
+          return "版本名称不能为空";
         }
         return true;
-      }
+      },
     });
-    
+
     const result = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.APPLY_VERSION, {
       resultId: currentResultId.value,
-      remark: versionName.trim()
+      remark: versionName.trim(),
     });
-    
+
     if (result.success) {
-      ElMessage.success('已成功保存为新版本');
+      ElMessage.success("已成功保存为新版本");
       isSavedAsVersion.value = true;
       // 刷新版本列表
       await datasetStore.loadVersions(String(props.datasetInfo?.id));
@@ -1215,39 +1219,39 @@ const saveAsNewVersion = async () => {
       }
       // 重新加载插补历史记录，以显示更新后的版本名称
       await loadHistory();
-      
+
       // 更新状态，保留在结果页，但更新UI状态
       // switchToConfig(); // 不再跳转回配置页
     } else {
-      ElMessage.error(result.error || '保存版本失败');
+      ElMessage.error(result.error || "保存版本失败");
     }
   } catch (error: any) {
     // 用户取消操作
-    if (error === 'cancel') {
+    if (error === "cancel") {
       return;
     }
-    ElMessage.error(error.message || '保存版本失败');
+    ElMessage.error(error.message || "保存版本失败");
   }
 };
 
 const saveAsFile = async () => {
   if (!currentResultId.value) return;
-  
+
   try {
     const result = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.EXPORT_FILE, {
-      resultId: currentResultId.value
+      resultId: currentResultId.value,
     });
-    
+
     if (result.success) {
       ElMessage.success(`文件已导出: ${result.data}`);
     } else if (result.cancelled) {
       // 用户取消
     } else {
-      ElMessage.error(result.error || '导出失败');
+      ElMessage.error(result.error || "导出失败");
     }
   } catch (error: any) {
-    console.error('导出失败', error);
-    ElMessage.error(error.message || '导出失败');
+    console.error("导出失败", error);
+    ElMessage.error(error.message || "导出失败");
   }
 };
 
@@ -1261,7 +1265,7 @@ const loadOutlierResults = async () => {
     const results = await outlierStore.getDetectionResults(String(props.datasetInfo.id));
     outlierResults.value = results || [];
   } catch (e) {
-    console.error('加载异常检测结果失败:', e);
+    console.error("加载异常检测结果失败:", e);
     outlierResults.value = [];
   }
 };
@@ -1271,7 +1275,7 @@ watch(
   () => {
     selectedColumns.value = [];
     currentResultId.value = null;
-    currentView.value = 'config';
+    currentView.value = "config";
     loadHistory();
     loadOutlierResults();
   },
@@ -1286,12 +1290,12 @@ watch(
       // 仅在版本切换时（非首次加载）重置视图状态
       if (oldId !== undefined) {
         currentResultId.value = null;
-        currentView.value = 'config';
+        currentView.value = "config";
         progressInfo.value = null;
         isExecuting.value = false;
       }
       loadHistory();
-      
+
       // 自动触发缺失值检测（后台静默执行）
       autoDetectMissingValues();
     }
@@ -1300,9 +1304,8 @@ watch(
 );
 
 onMounted(async () => {
-  window.addEventListener('resize', () => {
+  window.addEventListener("resize", () => {
     timeSeriesInstance.value?.resize();
-
   });
   setupProgressListeners();
 
@@ -1345,9 +1348,9 @@ onUnmounted(() => {
             <div v-if="visibleImputationResults.length === 0" class="history-empty">
               <span>暂无草稿记录</span>
             </div>
-            <div 
-              v-for="result in visibleImputationResults" 
-              :key="result.id" 
+            <div
+              v-for="result in visibleImputationResults"
+              :key="result.id"
               class="history-item"
               :class="{ 'history-item--active': currentResultId === result.id }"
               @click="viewResult(result)">
@@ -1376,7 +1379,6 @@ onUnmounted(() => {
       <div class="panel-main">
         <!-- 配置视图 -->
         <div v-if="currentView === 'config'" class="config-view">
-          
           <!-- 版本信息横幅 -->
           <div class="version-info-banner" v-if="currentVersion">
             <div class="version-info-item">
@@ -1388,17 +1390,15 @@ onUnmounted(() => {
                   @update:model-value="handleVersionChange"
                   class="version-selector"
                   size="small"
-                  style="width: 320px"
-                >
-                  <el-option
-                    v-for="ver in versions"
-                    :key="ver.id"
-                    :label="formatVersionLabel(ver)"
-                    :value="ver.id"
-                  >
+                  style="width: 320px">
+                  <el-option v-for="ver in versions" :key="ver.id" :label="formatVersionLabel(ver)" :value="ver.id">
                     <div class="version-option-item">
                       <div class="version-option-left">
-                        <el-tag :type="getVersionTagType(ver.stageType)" size="small" effect="light" class="version-tag">
+                        <el-tag
+                          :type="getVersionTagType(ver.stageType)"
+                          size="small"
+                          effect="light"
+                          class="version-tag">
                           {{ getVersionLabel(ver.stageType, ver.id) }}
                         </el-tag>
                         <span class="version-option-id">#{{ ver.id }}</span>
@@ -1421,21 +1421,21 @@ onUnmounted(() => {
 
             <div class="version-info-item" v-if="currentVersion.remark">
               <span class="version-label">备注：</span>
-              <span class="version-value">{{ currentVersion.remark }}</span>
+              <span class="version-value">{{ translateRemark(currentVersion.remark) }}</span>
             </div>
           </div>
 
           <!-- 模块切换Tabs -->
           <div class="module-switch-tabs">
-            <div 
-              class="module-tab-item" 
+            <div
+              class="module-tab-item"
               :class="{ 'module-tab-item--active': activeModule === 'detection' }"
               @click="activeModule = 'detection'">
               <el-icon><Search /></el-icon>
               <span>缺失值检测</span>
             </div>
-            <div 
-              class="module-tab-item" 
+            <div
+              class="module-tab-item"
               :class="{ 'module-tab-item--active': activeModule === 'imputation' }"
               @click="activeModule = 'imputation'">
               <el-icon><Edit /></el-icon>
@@ -1460,160 +1460,164 @@ onUnmounted(() => {
                       class="marker-tag">
                       "{{ marker }}"
                     </el-tag>
-                    <el-tag v-if="datasetStore.currentDatasetMissingMarkers.length === 0" size="small" type="warning" effect="light">
+                    <el-tag
+                      v-if="datasetStore.currentDatasetMissingMarkers.length === 0"
+                      size="small"
+                      type="warning"
+                      effect="light">
                       无配置
                     </el-tag>
                   </div>
                 </div>
-              <div class="detection-controls">
-                <el-button
-                  type="primary"
-                  :loading="gapFillingStore.loading"
-                  @click="detectMissingValues"
-                  class="detect-btn">
-                  <el-icon><Refresh /></el-icon>
-                  重新检测
-                </el-button>
+                <div class="detection-controls">
+                  <el-button
+                    type="primary"
+                    :loading="gapFillingStore.loading"
+                    @click="detectMissingValues"
+                    class="detect-btn">
+                    <el-icon><Refresh /></el-icon>
+                    重新检测
+                  </el-button>
+                </div>
               </div>
             </div>
-            </div>
-            
+
             <!-- 如果没有检测结果，显示加载状态或引导页 -->
             <div v-if="!gapFillingStore.hasStats" class="detection-empty-state">
               <div class="empty-illustration">
-                <el-icon class="illustration-icon" :class="{ 'is-loading': gapFillingStore.loading }"><Search /></el-icon>
+                <el-icon class="illustration-icon" :class="{ 'is-loading': gapFillingStore.loading }"
+                  ><Search
+                /></el-icon>
                 <div class="circles">
                   <span class="circle c1"></span>
                   <span class="circle c2"></span>
                   <span class="circle c3"></span>
                 </div>
               </div>
-              <h3 class="empty-hint-title">{{ gapFillingStore.loading ? '正在检测缺失值...' : '准备好分析数据了吗？' }}</h3>
+              <h3 class="empty-hint-title">
+                {{ gapFillingStore.loading ? "正在检测缺失值..." : "准备好分析数据了吗？" }}
+              </h3>
               <p class="empty-hint-desc">
                 <template v-if="gapFillingStore.loading">
-                  系统正在后台自动扫描 <b>{{ datasetInfo?.originalFile?.rows?.toLocaleString() || '-' }}</b> 行数据，<br>
+                  系统正在后台自动扫描
+                  <b>{{ datasetInfo?.originalFile?.rows?.toLocaleString() || "-" }}</b> 行数据，<br />
                   请稍候...
                 </template>
                 <template v-else>
-                  系统将自动检测缺失值。如需修改 <b>"缺失值标记"</b> 后重新检测，<br>
+                  系统将自动检测缺失值。如需修改 <b>"缺失值标记"</b> 后重新检测，<br />
                   请点击上方 <b>"重新检测"</b> 按钮。
                 </template>
               </p>
             </div>
-          
-          <!-- 仪表盘区域 (仅在有数据时显示) -->
-          <div v-if="gapFillingStore.hasStats" class="dashboard-container">
-            
-            <!-- 顶层指标行 -->
-            <div class="dashboard-row summary-row">
 
-
-              <!-- 核心指标卡片组 -->
-              <div class="metric-cards-group">
-                <div class="metric-card glass-effect">
-                  <div class="metric-icon bg-blue-100 text-blue-600"><el-icon><List /></el-icon></div>
-                  <div class="metric-info">
-                    <div class="metric-value">{{ gapFillingStore.missingStats?.totalRows.toLocaleString() }}</div>
-                    <div class="metric-label">总行数</div>
+            <!-- 仪表盘区域 (仅在有数据时显示) -->
+            <div v-if="gapFillingStore.hasStats" class="dashboard-container">
+              <!-- 顶层指标行 -->
+              <div class="dashboard-row summary-row">
+                <!-- 核心指标卡片组 -->
+                <div class="metric-cards-group">
+                  <div class="metric-card glass-effect">
+                    <div class="metric-icon bg-blue-100 text-blue-600">
+                      <el-icon><List /></el-icon>
+                    </div>
+                    <div class="metric-info">
+                      <div class="metric-value">{{ gapFillingStore.missingStats?.totalRows.toLocaleString() }}</div>
+                      <div class="metric-label">总行数</div>
+                    </div>
                   </div>
-                </div>
-                <div class="metric-card glass-effect">
-                  <div class="metric-icon bg-purple-100 text-purple-600"><el-icon><InfoFilled /></el-icon></div>
-                  <div class="metric-info">
-                    <div class="metric-value">{{ gapFillingStore.missingStats?.totalColumns }}</div>
-                    <div class="metric-label">总列数</div>
+                  <div class="metric-card glass-effect">
+                    <div class="metric-icon bg-purple-100 text-purple-600">
+                      <el-icon><InfoFilled /></el-icon>
+                    </div>
+                    <div class="metric-info">
+                      <div class="metric-value">{{ gapFillingStore.missingStats?.totalColumns }}</div>
+                      <div class="metric-label">总列数</div>
+                    </div>
                   </div>
-                </div>
-                <div class="metric-card glass-effect">
-                  <div class="metric-icon bg-red-100 text-red-600"><el-icon><VideoPlay /></el-icon></div>
-                  <div class="metric-info">
-                    <div class="metric-value">{{ gapFillingStore.totalMissingCount.toLocaleString() }}</div>
-                    <div class="metric-label">缺失单元格</div>
+                  <div class="metric-card glass-effect">
+                    <div class="metric-icon bg-red-100 text-red-600">
+                      <el-icon><VideoPlay /></el-icon>
+                    </div>
+                    <div class="metric-info">
+                      <div class="metric-value">{{ gapFillingStore.totalMissingCount.toLocaleString() }}</div>
+                      <div class="metric-label">缺失单元格</div>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-
-            <!-- 综合分析视图 -->
-            <div v-if="gapFillingStore.hasStats" class="analysis-section-container" style="margin-top: 20px;">
-              <MissingAnalysisView />
-            </div>
-
-            <!-- 详细数据表格 -->
-            <div class="detailed-table-card glass-effect">
-              <div class="card-header-row">
-                 <h4 class="table-title">详细缺失报告</h4>
-                 <div class="table-actions">
-                   <el-button size="small" type="primary" plain @click="activeModule = 'imputation'">
-                     前往插补 <el-icon class="el-icon--right"><Edit /></el-icon>
-                   </el-button>
-                 </div>
+              <!-- 综合分析视图 -->
+              <div v-if="gapFillingStore.hasStats" class="analysis-section-container" style="margin-top: 20px">
+                <MissingAnalysisView />
               </div>
 
-              <div class="table-container">
-                <table class="column-stats-table">
-                  <thead>
-                    <tr>
-                      <th class="col-name">列名</th>
-                      <th class="col-missing">缺失数</th>
-                      <th class="col-rate">缺失率</th>
-                      <th class="col-total">总行数</th>
-                      <th class="col-preview">数据预览</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="col in gapFillingStore.missingStats?.columnStats || []"
-                      :key="col.columnName"
-                      :class="{ 'has-missing': col.missingCount > 0 }">
-                      <td class="col-name">
-                        <span class="column-name-text">{{ col.columnName }}</span>
-                      </td>
-                      <td class="col-missing">
-                        <span :class="['missing-count', { 'has-missing': col.missingCount > 0 }]">
-                          {{ col.missingCount.toLocaleString() }}
-                        </span>
-                      </td>
-                      <td class="col-rate">
-                        <div class="rate-bar-container">
-                          <div class="rate-text">{{ col.missingRate.toFixed(1) }}%</div>
-                          <div class="rate-bar-bg">
-                            <div
-                              class="rate-bar-fill"
-                              :style="{ width: Math.min(col.missingRate, 100) + '%' }">
+              <!-- 详细数据表格 -->
+              <div class="detailed-table-card glass-effect">
+                <div class="card-header-row">
+                  <h4 class="table-title">详细缺失报告</h4>
+                  <div class="table-actions">
+                    <el-button size="small" type="primary" plain @click="activeModule = 'imputation'">
+                      前往插补 <el-icon class="el-icon--right"><Edit /></el-icon>
+                    </el-button>
+                  </div>
+                </div>
+
+                <div class="table-container">
+                  <table class="column-stats-table">
+                    <thead>
+                      <tr>
+                        <th class="col-name">列名</th>
+                        <th class="col-missing">缺失数</th>
+                        <th class="col-rate">缺失率</th>
+                        <th class="col-total">总行数</th>
+                        <th class="col-preview">数据预览</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="col in gapFillingStore.missingStats?.columnStats || []"
+                        :key="col.columnName"
+                        :class="{ 'has-missing': col.missingCount > 0 }">
+                        <td class="col-name">
+                          <span class="column-name-text">{{ col.columnName }}</span>
+                        </td>
+                        <td class="col-missing">
+                          <span :class="['missing-count', { 'has-missing': col.missingCount > 0 }]">
+                            {{ col.missingCount.toLocaleString() }}
+                          </span>
+                        </td>
+                        <td class="col-rate">
+                          <div class="rate-bar-container">
+                            <div class="rate-text">{{ col.missingRate.toFixed(1) }}%</div>
+                            <div class="rate-bar-bg">
+                              <div class="rate-bar-fill" :style="{ width: Math.min(col.missingRate, 100) + '%' }"></div>
                             </div>
                           </div>
-                        </div>
-                      </td>
-                      <td class="col-total">
-                        <span class="total-count">{{ col.totalCount.toLocaleString() }}</span>
-                      </td>
-                      <td class="col-preview">
-                        <div v-if="col.sampleRows && col.sampleRows.length > 0" class="sample-preview">
-                          <div
-                            v-for="(sample, index) in col.sampleRows.slice(0, 2)"
-                            :key="index"
-                            class="sample-item">
-                            <span class="sample-row">行{{ sample.rowIndex + 1 }}:</span>
-                            <span class="sample-value" :class="{ 'missing-value': sample.isMissing }">
-                              {{ sample.value === null ? 'null' : `"${sample.value}"` }}
-                            </span>
+                        </td>
+                        <td class="col-total">
+                          <span class="total-count">{{ col.totalCount.toLocaleString() }}</span>
+                        </td>
+                        <td class="col-preview">
+                          <div v-if="col.sampleRows && col.sampleRows.length > 0" class="sample-preview">
+                            <div v-for="(sample, index) in col.sampleRows.slice(0, 2)" :key="index" class="sample-item">
+                              <span class="sample-row">行{{ sample.rowIndex + 1 }}:</span>
+                              <span class="sample-value" :class="{ 'missing-value': sample.isMissing }">
+                                {{ sample.value === null ? "null" : `"${sample.value}"` }}
+                              </span>
+                            </div>
+                            <div v-if="col.sampleRows.length > 2" class="more-samples">
+                              ...等 {{ col.sampleRows.length }} 个样本
+                            </div>
                           </div>
-                          <div v-if="col.sampleRows.length > 2" class="more-samples">
-                            ...等 {{ col.sampleRows.length }} 个样本
-                          </div>
-                        </div>
-                        <div v-else class="no-samples">无样本数据</div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                          <div v-else class="no-samples">无样本数据</div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
-          </div>
-
 
           <!-- Imputation Module -->
           <div v-if="activeModule === 'imputation'" class="config-layout">
@@ -1628,8 +1632,8 @@ onUnmounted(() => {
 
               <!-- 分类Tab -->
               <div class="category-tabs">
-                <button 
-                  v-for="cat in categories" 
+                <button
+                  v-for="cat in categories"
                   :key="cat.value"
                   :class="['category-tab', { 'category-tab--active': activeCategory === cat.value }]"
                   @click="activeCategory = cat.value as ImputationCategory">
@@ -1648,11 +1652,10 @@ onUnmounted(() => {
                     {
                       'method-card--selected': selectedMethodId === method.methodId,
                       'method-card--unavailable': !method.isAvailable,
-                      'method-card--recommended': isRecommended(method.methodId)
-                    }
+                      'method-card--recommended': isRecommended(method.methodId),
+                    },
                   ]"
                   @click="selectMethod(method)">
-
                   <!-- 推荐标签 -->
                   <div v-if="isRecommended(method.methodId)" class="recommended-badge">
                     <el-icon><Star /></el-icon>
@@ -1668,14 +1671,14 @@ onUnmounted(() => {
                       </span>
                     </div>
                   </div>
-                  
+
                   <p class="method-card-description">{{ method.description }}</p>
-                  
+
                   <div class="method-card-footer">
                     <span class="accuracy-indicator">
-                      准确度: 
+                      准确度:
                       <span :class="`accuracy--${method.accuracy}`">
-                        {{ method.accuracy === 'high' ? '高' : method.accuracy === 'medium' ? '中' : '低' }}
+                        {{ method.accuracy === "high" ? "高" : method.accuracy === "medium" ? "中" : "低" }}
                       </span>
                     </span>
                     <div v-if="selectedMethodId === method.methodId" class="selected-indicator">
@@ -1701,26 +1704,20 @@ onUnmounted(() => {
                   <h4 class="selection-title">目标列选择</h4>
                   <div class="selection-mode">
                     <label class="radio-item">
-                      <input type="radio" v-model="columnSelectionMode" value="all">
+                      <input type="radio" v-model="columnSelectionMode" value="all" />
                       <span>全部列</span>
                     </label>
                     <label class="radio-item">
-                      <input type="radio" v-model="columnSelectionMode" value="manual">
+                      <input type="radio" v-model="columnSelectionMode" value="manual" />
                       <span>手动选择</span>
                     </label>
                   </div>
                 </div>
 
                 <div v-if="columnSelectionMode === 'manual'" class="column-list">
-                  <div 
-                    v-for="column in availableColumns" 
-                    :key="column.name"
-                    class="column-item">
+                  <div v-for="column in availableColumns" :key="column.name" class="column-item">
                     <label class="checkbox-item">
-                      <input 
-                        type="checkbox" 
-                        :value="column.name"
-                        v-model="selectedColumns">
+                      <input type="checkbox" :value="column.name" v-model="selectedColumns" />
                       <div class="column-info">
                         <span class="column-name">{{ column.name }}</span>
                         <span class="column-missing">{{ column.missingCount }} 缺失</span>
@@ -1742,10 +1739,7 @@ onUnmounted(() => {
 
                 <div class="params-form">
                   <!-- 基础参数 -->
-                  <div
-                    v-for="param in basicParams"
-                    :key="param.paramKey"
-                    class="param-item">
+                  <div v-for="param in basicParams" :key="param.paramKey" class="param-item">
                     <label class="param-label">
                       {{ param.paramName }}
                       <el-tooltip v-if="param.tooltip" :content="param.tooltip" placement="top">
@@ -1810,10 +1804,7 @@ onUnmounted(() => {
                   <!-- 高级参数折叠 -->
                   <el-collapse v-if="hasAdvancedParams" class="advanced-params-collapse">
                     <el-collapse-item title="高级参数" name="advanced">
-                      <div
-                        v-for="param in advancedParams"
-                        :key="param.paramKey"
-                        class="param-item">
+                      <div v-for="param in advancedParams" :key="param.paramKey" class="param-item">
                         <label class="param-label">
                           {{ param.paramName }}
                           <el-tooltip v-if="param.tooltip" :content="param.tooltip" placement="top">
@@ -1876,14 +1867,14 @@ onUnmounted(() => {
 
               <!-- 执行按钮 -->
               <div class="action-buttons">
-                <button 
+                <button
                   class="execute-btn"
                   :class="{ 'execute-btn--loading': isExecuting }"
                   :disabled="!canExecute || isExecuting"
                   @click="executeImputation">
                   <el-icon v-if="!isExecuting"><VideoPlay /></el-icon>
                   <div v-else class="loading-spinner"></div>
-                  <span>{{ isExecuting ? '执行中...' : '开始插补' }}</span>
+                  <span>{{ isExecuting ? "执行中..." : "开始插补" }}</span>
                 </button>
               </div>
             </div>
@@ -1917,8 +1908,10 @@ onUnmounted(() => {
               <!-- 进度信息 -->
               <div class="progress-info">
                 <p class="progress-message">{{ progressMessage }}</p>
-                <p class="progress-detail" v-if="progressInfo?.stage">当前阶段: {{ getStageLabel(progressInfo.stage) }}</p>
-                
+                <p class="progress-detail" v-if="progressInfo?.stage">
+                  当前阶段: {{ getStageLabel(progressInfo.stage) }}
+                </p>
+
                 <!-- 完成后的操作按钮 -->
                 <div v-if="progressInfo?.stage === 'completed'" class="completion-actions">
                   <el-button type="success" @click="viewCurrentResult">
@@ -1954,30 +1947,30 @@ onUnmounted(() => {
           </div>
 
           <!-- 保存操作区 -->
-           <div class="save-actions" v-if="currentResultId">
-             <div class="save-actions-header">
-               <el-icon><Check /></el-icon>
-               <span>确认并保存结果</span>
-             </div>
-             <div class="save-buttons">
-               <button 
-                 class="save-btn save-btn--version" 
-                 :class="{ 'save-btn--disabled': isSavedAsVersion }"
-                 @click="saveAsNewVersion" 
-                 :disabled="isSavedAsVersion">
-                 <el-icon v-if="!isSavedAsVersion"><Plus /></el-icon>
-                 <el-icon v-else><Check /></el-icon>
-                 <span>{{ isSavedAsVersion ? '已保存为新版本' : '保存为新版本' }}</span>
-                 <span class="btn-desc" v-if="!isSavedAsVersion">保存到当前数据集版本历史</span>
-               </button>
-               
-               <button class="save-btn save-btn--file" @click="saveAsFile">
-                 <el-icon><List /></el-icon>
-                 <span>保存为文件</span>
-                 <span class="btn-desc">导出为 CSV/Excel 文件</span>
-               </button>
-             </div>
-           </div>
+          <div class="save-actions" v-if="currentResultId">
+            <div class="save-actions-header">
+              <el-icon><Check /></el-icon>
+              <span>确认并保存结果</span>
+            </div>
+            <div class="save-buttons">
+              <button
+                class="save-btn save-btn--version"
+                :class="{ 'save-btn--disabled': isSavedAsVersion }"
+                @click="saveAsNewVersion"
+                :disabled="isSavedAsVersion">
+                <el-icon v-if="!isSavedAsVersion"><Plus /></el-icon>
+                <el-icon v-else><Check /></el-icon>
+                <span>{{ isSavedAsVersion ? "已保存为新版本" : "保存为新版本" }}</span>
+                <span class="btn-desc" v-if="!isSavedAsVersion">保存到当前数据集版本历史</span>
+              </button>
+
+              <button class="save-btn save-btn--file" @click="saveAsFile">
+                <el-icon><List /></el-icon>
+                <span>保存为文件</span>
+                <span class="btn-desc">导出为 CSV/Excel 文件</span>
+              </button>
+            </div>
+          </div>
 
           <!-- 列选择器 -->
           <div class="viz-controls">
@@ -1991,14 +1984,14 @@ onUnmounted(() => {
             </div>
 
             <div class="viz-mode-switch">
-              <button 
+              <button
                 type="button"
                 :class="['viz-mode-btn', { 'viz-mode-btn--active': vizMode === 'timeseries' }]"
                 @click.stop="vizMode = 'timeseries'">
                 <el-icon><TrendCharts /></el-icon>
                 <span>时序图</span>
               </button>
-              <button 
+              <button
                 type="button"
                 :class="['viz-mode-btn', { 'viz-mode-btn--active': vizMode === 'table' }]"
                 @click.stop="vizMode = 'table'">
@@ -2056,7 +2049,7 @@ onUnmounted(() => {
                 </tr>
               </tbody>
             </table>
-            
+
             <!-- 分页控件 -->
             <div class="table-pagination">
               <el-pagination
@@ -2065,29 +2058,20 @@ onUnmounted(() => {
                 :page-sizes="[20, 50, 100, 200]"
                 layout="total, sizes, prev, pager, next, jumper"
                 :total="allTableData.length"
-                size="small"
-              />
+                size="small" />
             </div>
           </div>
-
         </div>
       </div>
     </div>
-    
+
     <!-- Version Manager Drawer -->
-    <el-drawer
-      v-model="showVersionDrawer"
-      title="数据版本管理"
-      size="450px"
-      destroy-on-close
-      append-to-body
-    >
-      <VersionManager 
+    <el-drawer v-model="showVersionDrawer" title="数据版本管理" size="450px" destroy-on-close append-to-body>
+      <VersionManager
         v-if="datasetInfo"
         :dataset-id="datasetInfo.id"
         @switch-version="handleVersionSwitchFromManager"
-        @close="showVersionDrawer = false"
-      />
+        @close="showVersionDrawer = false" />
     </el-drawer>
   </div>
 </template>
@@ -2135,8 +2119,14 @@ onUnmounted(() => {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ==================== 主容器 ==================== */
@@ -2188,7 +2178,12 @@ onUnmounted(() => {
 /* ==================== 侧边栏 ==================== */
 .panel-sidebar {
   width: 260px;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.95) 0%, rgba(249, 250, 251, 0.9) 50%, rgba(236, 253, 245, 0.9) 100%);
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(249, 250, 251, 0.9) 50%,
+    rgba(236, 253, 245, 0.9) 100%
+  );
   border-right: 1px solid rgba(229, 231, 235, 0.6);
   display: flex;
   flex-direction: column;
@@ -2224,7 +2219,6 @@ onUnmounted(() => {
   transform: translateY(-1px);
 }
 
-
 /* ==================== 检测仪表盘样式 ==================== */
 .dashboard-container {
   display: flex;
@@ -2241,8 +2235,6 @@ onUnmounted(() => {
   height: 140px;
 }
 
-
-
 .metric-cards-group {
   flex: 1;
   display: grid;
@@ -2257,7 +2249,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 16px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   transition: transform 0.2s;
 }
 
@@ -2300,7 +2292,7 @@ onUnmounted(() => {
   background: white;
   border-radius: 12px;
   padding: 16px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   overflow: hidden;
 }
 
@@ -2313,7 +2305,7 @@ onUnmounted(() => {
   background: white;
   border-radius: 12px;
   padding: 20px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 .card-header-row {
@@ -2361,8 +2353,12 @@ onUnmounted(() => {
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .circles .circle {
@@ -2373,13 +2369,31 @@ onUnmounted(() => {
   animation: ripple 2s infinite;
 }
 
-.circles .c1 { width: 60px; height: 60px; animation-delay: 0s; }
-.circles .c2 { width: 80px; height: 80px; animation-delay: 0.5s; }
-.circles .c3 { width: 100px; height: 100px; animation-delay: 1s; }
+.circles .c1 {
+  width: 60px;
+  height: 60px;
+  animation-delay: 0s;
+}
+.circles .c2 {
+  width: 80px;
+  height: 80px;
+  animation-delay: 0.5s;
+}
+.circles .c3 {
+  width: 100px;
+  height: 100px;
+  animation-delay: 1s;
+}
 
 @keyframes ripple {
-  0% { transform: scale(0.8); opacity: 0.5; }
-  100% { transform: scale(1.5); opacity: 0; }
+  0% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
 }
 
 .empty-hint-title {
@@ -2394,7 +2408,6 @@ onUnmounted(() => {
   color: #6b7280;
   line-height: 1.6;
 }
-
 
 .sidebar-subtitle {
   font-size: 12px;
@@ -3398,7 +3411,9 @@ onUnmounted(() => {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ==================== 进度区 ==================== */
@@ -3519,12 +3534,7 @@ onUnmounted(() => {
   left: 0;
   bottom: 0;
   width: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.4) 50%,
-    transparent 100%
-  );
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.4) 50%, transparent 100%);
   transform: translateX(-100%);
   animation: shimmer 1.5s infinite;
 }
@@ -3554,9 +3564,15 @@ onUnmounted(() => {
 }
 
 @keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-  70% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(59, 130, 246, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+  }
 }
 
 .progress-detail {
@@ -3974,8 +3990,6 @@ onUnmounted(() => {
   color: #9ca3af;
 }
 
-
-
 .legend-text {
   font-size: 12px;
   color: #6b7280;
@@ -4041,7 +4055,7 @@ onUnmounted(() => {
   .config-layout {
     grid-template-columns: 1fr;
   }
-  
+
   .panel-sidebar {
     width: 220px;
   }
@@ -4051,27 +4065,27 @@ onUnmounted(() => {
   .panel-layout {
     flex-direction: column;
   }
-  
+
   .panel-sidebar {
     width: 100%;
     max-height: 200px;
   }
-  
+
   .methods-grid {
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   }
-  
+
   .category-tabs {
     flex-wrap: nowrap;
     overflow-x: auto;
   }
-  
+
   .viz-controls {
     flex-direction: column;
     gap: 12px;
     align-items: stretch;
   }
-  
+
   .viz-mode-switch {
     justify-content: center;
   }

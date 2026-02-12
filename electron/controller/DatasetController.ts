@@ -48,6 +48,12 @@ export class DatasetController extends BaseController {
         throw new Error(validationError);
       }
 
+      // [DEBUG] 诊断 missingValueTypes 传入值
+      console.log(
+        "[importData] args.importOption.missingValueTypes =",
+        JSON.stringify(args.importOption.missingValueTypes)
+      );
+
       // 构造请求对象
       const request: ImportDatasetRequest = {
         projectId: args.projectId.trim(),
@@ -61,7 +67,7 @@ export class DatasetController extends BaseController {
         missingValueTypes: args.importOption.missingValueTypes.map(v => v.trim()),
         rows: Number(args.importOption.rows),
         columns: args.importOption.columns.map(col => col.trim()).filter(col => col.length > 0),
-        sourceTimezone: args.importOption.sourceTimezone || 'auto',
+        sourceTimezone: args.importOption.sourceTimezone || "auto",
       };
 
       const result = await this.datasetService.importDataset(request);
@@ -413,20 +419,23 @@ export class DatasetController extends BaseController {
   ) {
     return this.handleAsync(async () => {
       const { dialog, BrowserWindow } = require("electron");
-      
+
       if (!args.versionId || typeof args.versionId !== "string") {
         throw new Error("版本ID不能为空");
       }
 
       // Show save dialog
       const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win) {
+        throw new Error("无法获取当前窗口");
+      }
       const result = await dialog.showSaveDialog(win, {
         title: "导出数据集",
         defaultPath: args.defaultName || "dataset_export.csv",
         filters: [
           { name: "CSV Files", extensions: ["csv"] },
-          { name: "All Files", extensions: ["*"] }
-        ]
+          { name: "All Files", extensions: ["*"] },
+        ],
       });
 
       if (result.canceled || !result.filePath) {
@@ -434,10 +443,7 @@ export class DatasetController extends BaseController {
       }
 
       // Execute export
-      const exportResult = await this.datasetService.exportDatasetVersion(
-        args.versionId.trim(),
-        result.filePath
-      );
+      const exportResult = await this.datasetService.exportDatasetVersion(args.versionId.trim(), result.filePath);
 
       if (!exportResult.success) {
         throw new Error(exportResult.error || "导出数据集失败");

@@ -1,6 +1,12 @@
 import { defineStore } from "pinia";
 import { ref, computed, watch } from "vue";
-import type { DatasetBaseInfo, DatasetInfo, ImportOption, DatasetVersionInfo, VersionStatsInfo } from "@shared/types/projectInterface";
+import type {
+  DatasetBaseInfo,
+  DatasetInfo,
+  ImportOption,
+  DatasetVersionInfo,
+  VersionStatsInfo,
+} from "@shared/types/projectInterface";
 import { useProjectStore } from "./useProjectStore";
 import { ElMessage } from "element-plus";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
@@ -76,6 +82,13 @@ export const useDatasetStore = defineStore("dataset", () => {
   const setCurrentDataset = async (datasetId: string) => {
     if (projectStore.currentProject && datasetId) {
       currentDataset.value = await getCurrentDatasetInfo(projectStore.currentProject.id, datasetId);
+      // [DEBUG] 诊断缺失值标记问题
+      console.log(
+        "[setCurrentDataset] missingValueTypes=",
+        JSON.stringify(currentDataset.value?.missingValueTypes),
+        "datasetId=",
+        datasetId
+      );
       if (currentDataset.value) {
         await loadDatasetVersions(datasetId);
         if (versions.value.length > 0) {
@@ -101,7 +114,9 @@ export const useDatasetStore = defineStore("dataset", () => {
 
   const loadVersionStats = async (versionId: number) => {
     try {
-      const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.GET_VERSION_STATS, { versionId: String(versionId) });
+      const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.GET_VERSION_STATS, {
+        versionId: String(versionId),
+      });
       if (result.success) {
         currentVersionStats.value = result.data;
       } else {
@@ -198,9 +213,9 @@ export const useDatasetStore = defineStore("dataset", () => {
       loading.value = true;
       const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.EXPORT, {
         versionId: String(versionId),
-        defaultName: fileName
+        defaultName: fileName,
       });
-      
+
       if (result.success) {
         ElMessage.success("导出成功");
         return true;

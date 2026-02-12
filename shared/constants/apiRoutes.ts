@@ -92,6 +92,14 @@ export const API_ROUTES = {
     EXPORT_FILE: "imputation:exportFile",
   },
 
+  // 通量分割
+  FLUX_PARTITIONING: {
+    EXECUTE: "fluxPartitioning:execute",
+    GET_RESULTS_BY_DATASET: "fluxPartitioning:getResultsByDataset",
+    GET_RESULT: "fluxPartitioning:getResult",
+    DELETE_RESULT: "fluxPartitioning:deleteResult",
+  },
+
   // 菜单事件
   MENU: {
     OPEN_CREATE_PROJECT: "open-create-project-dialog",

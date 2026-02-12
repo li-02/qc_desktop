@@ -8,6 +8,7 @@ import { OutlierDetectionController } from "../controller/OutlierDetectionContro
 import { CorrelationAnalysisController } from "../controller/CorrelationAnalysisController";
 import { SettingsController } from "../controller/SettingsController";
 import { ImputationController } from "../controller/ImputationController";
+import { FluxPartitioningController } from "../controller/FluxPartitioningController";
 
 // 引入新的分层架构
 import { ProjectDBRepository } from "../repository/ProjectDBRepository";
@@ -44,6 +45,7 @@ export class ControllerRegistry {
   private correlationController!: CorrelationAnalysisController;
   private settingsController!: SettingsController;
   private imputationController!: ImputationController;
+  private fluxPartitioningController!: FluxPartitioningController;
 
   constructor(projectsDir: string) {
     this.initializeDependencies(projectsDir);
@@ -105,6 +107,9 @@ export class ControllerRegistry {
       this.imputationController = new ImputationController();
       console.log("✓ ImputationController 初始化完成");
 
+      this.fluxPartitioningController = new FluxPartitioningController();
+      console.log("✓ FluxPartitioningController 初始化完成");
+
       console.log("所有依赖关系初始化完成");
     } catch (error: any) {
       console.error("依赖初始化失败:", error);
@@ -124,6 +129,7 @@ export class ControllerRegistry {
       this.registerCorrelationRoutes();
       this.registerSettingsRoutes();
       this.registerImputationRoutes();
+      this.registerFluxPartitioningRoutes();
 
       console.log("所有控制器路由已注册");
       console.log("已注册路由:", IPCManager.getRegisteredRoutes());
@@ -494,6 +500,22 @@ export class ControllerRegistry {
     }
 
     console.log(`缺失值插补路由注册完成，共 ${count} 个路由`);
+  }
+
+  /**
+   * 注册通量分割相关路由
+   */
+  private registerFluxPartitioningRoutes() {
+    const routes = this.fluxPartitioningController.getRoutes();
+    let count = 0;
+
+    for (const [path, handler] of Object.entries(routes)) {
+      IPCManager.registerRoute(path, handler);
+      console.log(`✓ 注册路由: ${path}`);
+      count++;
+    }
+
+    console.log(`通量分割路由注册完成，共 ${count} 个路由`);
   }
 
   /**

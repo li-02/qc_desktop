@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
-import { useDatasetStore } from '@/stores/useDatasetStore';
-import type { DatasetVersionInfo } from '@shared/types/projectInterface';
+import { ref, computed, watch, onMounted } from "vue";
+import { useDatasetStore } from "@/stores/useDatasetStore";
+import { translateRemark } from "@/utils/versionUtils";
+import type { DatasetVersionInfo } from "@shared/types/projectInterface";
 
 const props = defineProps<{
   datasetId: string;
@@ -9,7 +10,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'select-version', versionId: number): void;
+  (e: "select-version", versionId: number): void;
 }>();
 
 const datasetStore = useDatasetStore();
@@ -27,13 +28,13 @@ interface VersionNode {
 // 加载版本列表
 const loadVersions = async () => {
   if (!props.datasetId) return;
-  
+
   loading.value = true;
   try {
     await datasetStore.loadVersions(props.datasetId);
     versions.value = datasetStore.versions;
   } catch (error) {
-    console.error('Failed to load versions:', error);
+    console.error("Failed to load versions:", error);
   } finally {
     loading.value = false;
   }
@@ -52,21 +53,23 @@ const versionTree = computed(() => {
       id: v.id,
       data: v,
       children: [],
-      depth: 0
+      depth: 0,
     });
   });
 
   // 构建层级关系
-  versions.value.sort((a, b) => a.id - b.id).forEach(v => {
-    const node = nodeMap.get(v.id)!;
-    if (v.parentVersionId && nodeMap.has(v.parentVersionId)) {
-      const parent = nodeMap.get(v.parentVersionId)!;
-      node.depth = parent.depth + 1;
-      parent.children.push(node);
-    } else {
-      roots.push(node);
-    }
-  });
+  versions.value
+    .sort((a, b) => a.id - b.id)
+    .forEach(v => {
+      const node = nodeMap.get(v.id)!;
+      if (v.parentVersionId && nodeMap.has(v.parentVersionId)) {
+        const parent = nodeMap.get(v.parentVersionId)!;
+        node.depth = parent.depth + 1;
+        parent.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
 
   return roots;
 });
@@ -74,7 +77,7 @@ const versionTree = computed(() => {
 // 扁平化树结构用于渲染
 const flattenedVersions = computed(() => {
   const result: VersionNode[] = [];
-  
+
   const traverse = (nodes: VersionNode[]) => {
     nodes.forEach(node => {
       result.push(node);
@@ -83,7 +86,7 @@ const flattenedVersions = computed(() => {
       }
     });
   };
-  
+
   traverse(versionTree.value);
   return result;
 });
@@ -94,40 +97,47 @@ const currentVersionId = computed(() => datasetStore.currentVersion?.id);
 // 获取阶段标签配置
 const getStageConfig = (stageType: string) => {
   const configs: Record<string, { label: string; color: string; bgColor: string }> = {
-    'RAW': { label: '原始', color: '#6b7280', bgColor: 'rgba(107, 114, 128, 0.1)' },
-    'FILTERED': { label: '去异常', color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.1)' },
-    'QC': { label: '已清洗', color: '#10b981', bgColor: 'rgba(16, 185, 129, 0.1)' },
+    RAW: { label: "原始", color: "#6b7280", bgColor: "rgba(107, 114, 128, 0.1)" },
+    FILTERED: { label: "去异常", color: "#f59e0b", bgColor: "rgba(245, 158, 11, 0.1)" },
+    QC: { label: "已清洗", color: "#10b981", bgColor: "rgba(16, 185, 129, 0.1)" },
   };
-  return configs[stageType] || { label: stageType, color: '#6b7280', bgColor: 'rgba(107, 114, 128, 0.1)' };
+  return configs[stageType] || { label: stageType, color: "#6b7280", bgColor: "rgba(107, 114, 128, 0.1)" };
 };
 
 // 获取版本图标
 const getVersionIcon = (stageType: string, isRoot: boolean) => {
-  if (isRoot) return '📄'; // CSV 文件图标
-  if (stageType === 'FILTERED') return '🔧'; // 处理图标
-  if (stageType === 'QC') return '✨'; // 清洗图标
-  return '📄';
+  if (isRoot) return "📄"; // CSV 文件图标
+  if (stageType === "FILTERED") return "🔧"; // 处理图标
+  if (stageType === "QC") return "✨"; // 清洗图标
+  return "📄";
 };
 
 // 处理版本点击
 const handleVersionClick = (versionId: number) => {
-  emit('select-version', versionId);
+  emit("select-version", versionId);
 };
 
 // 监听展开状态，展开时加载版本
-watch(() => props.isExpanded, (expanded) => {
-  if (expanded && versions.value.length === 0) {
-    loadVersions();
-  }
-}, { immediate: true });
+watch(
+  () => props.isExpanded,
+  expanded => {
+    if (expanded && versions.value.length === 0) {
+      loadVersions();
+    }
+  },
+  { immediate: true }
+);
 
 // 监听 datasetId 变化
-watch(() => props.datasetId, () => {
-  versions.value = [];
-  if (props.isExpanded) {
-    loadVersions();
+watch(
+  () => props.datasetId,
+  () => {
+    versions.value = [];
+    if (props.isExpanded) {
+      loadVersions();
+    }
   }
-});
+);
 
 onMounted(() => {
   if (props.isExpanded) {
@@ -150,13 +160,12 @@ onMounted(() => {
         v-for="node in flattenedVersions"
         :key="node.id"
         class="version-item"
-        :class="{ 
+        :class="{
           'is-active': currentVersionId === node.id,
-          'is-child': node.depth > 0
+          'is-child': node.depth > 0,
         }"
         :style="{ paddingLeft: `${12 + node.depth * 16}px` }"
-        @click.stop="handleVersionClick(node.id)"
-      >
+        @click.stop="handleVersionClick(node.id)">
         <!-- 连接线 -->
         <div v-if="node.depth > 0" class="version-connector">
           <div class="connector-line"></div>
@@ -170,17 +179,16 @@ onMounted(() => {
 
         <!-- 版本名称 -->
         <div class="version-name">
-          {{ node.data.remark || `版本 #${node.id}` }}
+          {{ translateRemark(node.data.remark) || `版本 #${node.id}` }}
         </div>
 
         <!-- 状态标签 (右侧胶囊) -->
-        <div 
+        <div
           class="version-stage-tag"
-          :style="{ 
+          :style="{
             color: getStageConfig(node.data.stageType).color,
-            backgroundColor: getStageConfig(node.data.stageType).bgColor
-          }"
-        >
+            backgroundColor: getStageConfig(node.data.stageType).bgColor,
+          }">
           {{ getStageConfig(node.data.stageType).label }}
         </div>
       </div>
@@ -219,8 +227,13 @@ onMounted(() => {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .version-list {

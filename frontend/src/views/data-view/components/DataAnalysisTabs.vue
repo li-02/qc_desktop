@@ -6,6 +6,7 @@ import DataOverviewPanel from "./panels/DataOverviewPanel.vue";
 import CorrelationAnalysisPanel from "./panels/CorrelationAnalysisPanel.vue";
 import OutlierDetectionPanel from "./panels/OutlierDetectionPanel.vue";
 import MissingValuePanel from "./panels/GapFillingPanel.vue";
+import FluxPartitioningPanel from "./panels/FluxPartitioningPanel.vue";
 
 // Props
 interface Props {
@@ -171,8 +172,6 @@ defineExpose({
           <!-- 标签文字 -->
           <span class="tab-text">{{ tab.name }}</span>
 
-
-
           <!-- 禁用状态遮罩 -->
           <div v-if="tab.disabled" class="tab-disabled-mask"></div>
         </button>
@@ -212,6 +211,13 @@ defineExpose({
             :dataset-info="datasetInfo"
             :loading="contentLoading"
             @start-imputation="handleStartMissingValueImputation" />
+        </div>
+      </div>
+
+      <!-- 通量分割 -->
+      <div v-else-if="activeTab === 'flux-partitioning'" class="tab-panel full-height-panel">
+        <div class="panel-wrapper full-height-wrapper">
+          <FluxPartitioningPanel :dataset-info="datasetInfo" :loading="contentLoading" @refresh="handleRefresh" />
         </div>
       </div>
 
@@ -405,8 +411,6 @@ defineExpose({
   font-weight: 600;
   letter-spacing: 0.025em;
 }
-
-
 
 /* 禁用遮罩 */
 .tab-disabled-mask {

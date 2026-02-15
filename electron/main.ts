@@ -71,6 +71,7 @@ function setupWindowEvents(): void {
   // 窗口准备好显示时
   appState.mainWindow.once("ready-to-show", () => {
     console.log("窗口准备就绪，显示主窗口");
+    appState.mainWindow?.maximize();
     appState.mainWindow?.show();
 
     if (process.env.NODE_ENV === "development") {

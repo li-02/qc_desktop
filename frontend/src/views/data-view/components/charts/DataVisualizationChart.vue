@@ -27,7 +27,7 @@ const isFullscreen = ref(false);
 // 数据采样配置
 const SAMPLING_CONFIG = {
   MAX_POINTS: 2000, // 最大显示点数
-  MIN_POINTS: 500,  // 最小显示点数
+  MIN_POINTS: 500, // 最小显示点数
   ZOOM_THRESHOLD: 0.1, // 缩放阈值，小于此值时显示全部数据
 };
 
@@ -106,7 +106,7 @@ const adaptiveSampleData = (
   zoomEnd: number = 100
 ): Array<{ time: string; value: number }> => {
   const zoomRange = (zoomEnd - zoomStart) / 100;
-  
+
   // 如果缩放范围很小，显示更多数据点
   let maxPoints = SAMPLING_CONFIG.MAX_POINTS;
   if (zoomRange < 0.1) {
@@ -161,7 +161,7 @@ const handleFullscreenChange = () => {
 const getCommonToolbox = () => ({
   show: true,
   right: "20px",
-  top: "60px",
+  top: "10px",
   feature: {
     // 保存为图片
     saveAsImage: {
@@ -211,7 +211,10 @@ const extractDataFromCsv = (csvData: any, columnName: string): number[] => {
 
 // 从CSV数据中提取时间序列数据
 // 优先使用后端返回的标准化时间数据（_epochMs, _formattedTime）
-const extractTimeSeriesFromCsv = (csvData: any, columnName: string): Array<{ time: string; value: number; epochMs?: number }> => {
+const extractTimeSeriesFromCsv = (
+  csvData: any,
+  columnName: string
+): Array<{ time: string; value: number; epochMs?: number }> => {
   if (!csvData || !csvData.tableData || !Array.isArray(csvData.tableData)) {
     return [];
   }
@@ -220,15 +223,17 @@ const extractTimeSeriesFromCsv = (csvData: any, columnName: string): Array<{ tim
   const hasStandardizedTime = csvData.tableData.length > 0 && csvData.tableData[0]._epochMs !== undefined;
 
   if (hasStandardizedTime) {
-    console.log('使用后端标准化的时间数据');
-    
+    console.log("使用后端标准化的时间数据");
+
     // 使用后端已标准化的数据，数据已按时间排序
-  return csvData.tableData
+    // 注意：time 字段必须使用 ECharts 可解析的格式（ISO 字符串或 epoch 毫秒），
+    // 而非 formatLocalWithTZ 的显示格式（如 "12/31 10:18 (UTC+8)"）
+    return csvData.tableData
       .map((row: any) => {
         const value = row[columnName];
-        if (value !== null && value !== undefined && !isNaN(Number(value))) {
+        if (value !== null && value !== undefined && !isNaN(Number(value)) && row._epochMs) {
           return {
-            time: row._epochMs ? formatLocalWithTZ(row._epochMs) : (row._formattedTime || row.TIMESTAMP || String(row._epochMs)),
+            time: new Date(row._epochMs).toISOString(),
             value: Number(value),
             epochMs: row._epochMs,
           };
@@ -239,17 +244,28 @@ const extractTimeSeriesFromCsv = (csvData: any, columnName: string): Array<{ tim
   }
 
   // 回退到前端识别逻辑（兼容旧数据）
-  console.log('使用前端时间列识别逻辑');
+  console.log("使用前端时间列识别逻辑");
 
   // 智能识别时间戳列
-  let timestampKey = '';
-  
+  let timestampKey = "";
+
   if (csvData.tableData.length > 0) {
     const firstRow = csvData.tableData[0];
     const keys = Object.keys(firstRow);
 
     // 1. 优先匹配常见的时间列名
-    const priorityKeys = ['TIMESTAMP', 'timestamp', 'Timestamp', 'Date', 'date', 'Time', 'time', 'record_time', 'Record_Time', 'RECORD_TIME'];
+    const priorityKeys = [
+      "TIMESTAMP",
+      "timestamp",
+      "Timestamp",
+      "Date",
+      "date",
+      "Time",
+      "time",
+      "record_time",
+      "Record_Time",
+      "RECORD_TIME",
+    ];
     for (const key of priorityKeys) {
       if (keys.includes(key)) {
         timestampKey = key;
@@ -262,37 +278,39 @@ const extractTimeSeriesFromCsv = (csvData: any, columnName: string): Array<{ tim
       for (const key of keys) {
         // 跳过当前选中的数值列
         if (key === columnName) continue;
-        
+
         const value = firstRow[key];
         // 检查是否为字符串且包含日期特征
-        if (typeof value === 'string') {
-            // 简单的日期格式检查：包含 - / : 且能被 Date 解析
-            if ((value.includes('-') || value.includes('/') || value.includes(':')) && !isNaN(Date.parse(value))) {
-                 timestampKey = key;
-                 break;
-            }
+        if (typeof value === "string") {
+          // 简单的日期格式检查：包含 - / : 且能被 Date 解析
+          if ((value.includes("-") || value.includes("/") || value.includes(":")) && !isNaN(Date.parse(value))) {
+            timestampKey = key;
+            break;
+          }
         }
       }
     }
-    
+
     // 3. 如果还是没找到，但存在 TIMESTAMP 列，回退到默认
-    if (!timestampKey && keys.includes('TIMESTAMP')) {
-        timestampKey = 'TIMESTAMP';
+    if (!timestampKey && keys.includes("TIMESTAMP")) {
+      timestampKey = "TIMESTAMP";
     }
   }
 
   if (!timestampKey) {
-      console.warn("无法识别时间列，将使用索引作为X轴");
-      return csvData.tableData.map((row: any, index: number) => {
-          const value = row[columnName];
-          if (value !== null && value !== undefined && !isNaN(Number(value))) {
-              return {
-                  time: String(index + 1),
-                  value: Number(value)
-              };
-          }
-          return null;
-      }).filter((item: any) => item !== null);
+    console.warn("无法识别时间列，将使用索引作为X轴");
+    return csvData.tableData
+      .map((row: any, index: number) => {
+        const value = row[columnName];
+        if (value !== null && value !== undefined && !isNaN(Number(value))) {
+          return {
+            time: String(index + 1),
+            value: Number(value),
+          };
+        }
+        return null;
+      })
+      .filter((item: any) => item !== null);
   }
 
   console.log(`识别到的时间列名: ${timestampKey}`);
@@ -481,7 +499,7 @@ const getHistogramOption = (data: number[]) => {
     toolbox: {
       show: true,
       right: "20px",
-      top: "60px",
+      top: "10px",
       feature: {
         // 保存为图片
         saveAsImage: {
@@ -582,9 +600,7 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
 
   // 对大数据集进行采样以提高性能
   const originalLength = timeData.length;
-  const sampledData = timeData.length > SAMPLING_CONFIG.MAX_POINTS 
-    ? sampleTimeSeriesData(timeData) 
-    : timeData;
+  const sampledData = timeData.length > SAMPLING_CONFIG.MAX_POINTS ? sampleTimeSeriesData(timeData) : timeData;
 
   // 性能优化说明：
   // 1. 智能数据采样：超过2000个点时自动采样到2000个点以内
@@ -597,7 +613,11 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
   const data = sampledData.map(d => [d.time, d.value]);
 
   // Check if data is index-based (not a date string)
-  const isIndexBased = sampledData.length > 0 && !isNaN(Number(sampledData[0].time)) && !sampledData[0].time.includes('-') && !sampledData[0].time.includes(':');
+  const isIndexBased =
+    sampledData.length > 0 &&
+    !isNaN(Number(sampledData[0].time)) &&
+    !sampledData[0].time.includes("-") &&
+    !sampledData[0].time.includes(":");
 
   let timeSpanDays = 0;
   if (!isIndexBased && sampledData.length > 1) {
@@ -612,7 +632,7 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
   let axisLabelFormatter: string | ((value: any) => string) = "{MM}-{dd}";
 
   if (isIndexBased) {
-      axisLabelFormatter = (value: any) => value;
+    axisLabelFormatter = (value: any) => value;
   } else if (timeSpanDays > 90) {
     // 大于3个月，按月分割
     axisInterval = 30 * 24 * 3600 * 1000;
@@ -630,9 +650,10 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
   return {
     title: {
       text: `${props.selectedColumn} 时间序列趋势图`,
-      subtext: originalLength > SAMPLING_CONFIG.MAX_POINTS 
-        ? `显示 ${sampledData.length} / ${originalLength} 个数据点 (已优化采样)` 
-        : `${sampledData.length} 个数据点`,
+      subtext:
+        originalLength > SAMPLING_CONFIG.MAX_POINTS
+          ? `显示 ${sampledData.length} / ${originalLength} 个数据点 (已优化采样)`
+          : `${sampledData.length} 个数据点`,
       left: "center",
       textStyle: {
         fontSize: 16,
@@ -652,8 +673,8 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
         const dataPoint = params[0];
         let timeStr = dataPoint.value[0];
         if (!isIndexBased) {
-            const date = new Date(dataPoint.value[0]);
-            timeStr = formatLocalWithTZ(date.getTime());
+          const date = new Date(dataPoint.value[0]);
+          timeStr = formatLocalWithTZ(date.getTime());
         }
         return `时间/索引: ${timeStr}<br/>${props.selectedColumn}: ${dataPoint.value[1].toFixed(3)}`;
       },
@@ -662,7 +683,7 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
     toolbox: {
       show: true,
       right: "20px",
-      top: "60px",
+      top: "10px",
       feature: {
         // 数据区域缩放
         dataZoom: {
@@ -848,7 +869,7 @@ const getCdfOption = (data: number[]) => {
     toolbox: {
       show: true,
       right: "20px",
-      top: "60px",
+      top: "10px",
       feature: {
         // 保存为图片
         saveAsImage: {
@@ -997,7 +1018,7 @@ const getHeatmapOption = (timeData: Array<{ time: string; value: number }>) => {
       const { sum, count } = aggregation[m][h];
       if (count > 0) {
         const avg = parseFloat((sum / count).toFixed(3));
-        data.push([m, h, avg]);
+        data.push([h, m, avg]);
         if (avg < minVal) minVal = avg;
         if (avg > maxVal) maxVal = avg;
       }
@@ -1008,70 +1029,72 @@ const getHeatmapOption = (timeData: Array<{ time: string; value: number }>) => {
   if (minVal === Infinity) minVal = 0;
   if (maxVal === -Infinity) maxVal = 100;
 
-  const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
-  const hours = Array.from({length: 24}, (_, i) => `${i}点`);
+  const months = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+  const hours = Array.from({ length: 24 }, (_, i) => `${i}点`);
 
   return {
     title: {
-        text: `${props.selectedColumn} 月份-小时热力图`,
-        left: 'center',
-        textStyle: {
-          fontSize: 16,
-          fontWeight: "bold",
-        },
+      text: `${props.selectedColumn} 月份-小时热力图`,
+      left: "center",
+      textStyle: {
+        fontSize: 16,
+        fontWeight: "bold",
+      },
     },
     tooltip: {
-        position: 'top',
-        formatter: function (params: any) {
-            return `${months[params.value[0]]} ${hours[params.value[1]]}<br />平均值: ${params.value[2]}`;
-        }
+      position: "top",
+      formatter: function (params: any) {
+        return `${months[params.value[1]]} ${hours[params.value[0]]}<br />平均值: ${params.value[2]}`;
+      },
     },
     toolbox: getCommonToolbox(),
     grid: {
-        height: '70%',
-        top: '10%',
-        left: '10%',
-        right: '10%'
+      height: "70%",
+      top: "10%",
+      left: "10%",
+      right: "10%",
     },
     xAxis: {
-        type: 'category',
-        data: months,
-        splitArea: {
-            show: true
-        }
+      type: "category",
+      data: hours,
+      splitArea: {
+        show: true,
+      },
     },
     yAxis: {
-        type: 'category',
-        data: hours,
-        splitArea: {
-            show: true
-        }
+      type: "category",
+      data: months,
+      splitArea: {
+        show: true,
+      },
     },
     visualMap: {
-        min: minVal,
-        max: maxVal,
-        calculable: true,
-        orient: 'horizontal',
-        left: 'center',
-        bottom: '5%',
-        inRange: {
-            color: ['#f6efa6', '#d88273', '#bf444c'] // 经典热力图配色
-        }
+      min: minVal,
+      max: maxVal,
+      calculable: true,
+      orient: "horizontal",
+      left: "center",
+      bottom: "5%",
+      inRange: {
+        color: ["#f6efa6", "#d88273", "#bf444c"], // 经典热力图配色
+      },
     },
-    series: [{
-        name: 'Heatmap',
-        type: 'heatmap',
+    series: [
+      {
+        name: "Heatmap",
+        type: "heatmap",
         data: data,
         label: {
-            show: false
+          show: false,
         },
         emphasis: {
-            itemStyle: {
-                shadowBlur: 10,
-                shadowColor: 'rgba(0, 0, 0, 0.5)'
-            }
-        }
-    }]
+          itemStyle: {
+            shadowBlur: 10,
+            shadowColor: "rgba(0, 0, 0, 0.5)",
+          },
+        },
+      },
+    ],
   };
 };
 
@@ -1185,7 +1208,7 @@ const initChart = () => {
 
   console.log("初始化新的图表实例");
   chartInstance = echarts.init(chartContainer.value, null, {
-    renderer: 'canvas', // 使用canvas渲染器，性能更好
+    renderer: "canvas", // 使用canvas渲染器，性能更好
     useDirtyRect: true, // 启用脏矩形优化
     useCoarsePointer: true, // 优化移动设备性能
   });
@@ -1234,10 +1257,10 @@ const updateChart = () => {
     }
 
     console.log("设置图表配置:", option);
-    
+
     // 根据数据量选择更新策略
     const dataLength = option.series?.[0]?.data?.length || 0;
-    
+
     if (dataLength > 3000) {
       // 大数据集时使用静默更新，减少重绘
       chartInstance.setOption(option, {
@@ -1271,13 +1294,11 @@ watch(
   (newValues, oldValues) => {
     const [newColumn, newChartType, newCsvData] = newValues;
     const [oldColumn, oldChartType, oldCsvData] = oldValues || [null, null, null];
-    
+
     // 只有在真正需要时才更新图表
-    const shouldUpdate = 
-      newColumn !== oldColumn ||
-      newChartType !== oldChartType ||
-      (newCsvData !== oldCsvData && newCsvData);
-    
+    const shouldUpdate =
+      newColumn !== oldColumn || newChartType !== oldChartType || (newCsvData !== oldCsvData && newCsvData);
+
     if (newColumn && shouldUpdate) {
       nextTick(() => {
         updateChart();
@@ -1319,13 +1340,13 @@ onBeforeUnmount(() => {
     clearTimeout(updateTimeout);
     updateTimeout = null;
   }
-  
+
   // 清理图表实例
   if (chartInstance) {
     chartInstance.dispose();
     chartInstance = null;
   }
-  
+
   // 移除事件监听器
   window.removeEventListener("resize", handleResize);
   document.removeEventListener("fullscreenchange", handleFullscreenChange);

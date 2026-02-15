@@ -50,12 +50,10 @@ const datasetCount = computed(() => projectStore.currentProject?.datasets.length
       </div>
       <div class="project-details">
         <h1 class="project-name">{{ projectName }}</h1>
-        <p class="project-meta">
-          经纬度: {{ longitude }}, {{ latitude }} &nbsp;|&nbsp; 海拔: {{ altitude }}米
-        </p>
+        <p class="project-meta">经纬度: {{ longitude }}, {{ latitude }} &nbsp;|&nbsp; 海拔: {{ altitude }}米</p>
       </div>
     </div>
-    
+
     <!-- 右侧项目下数据集个数-->
     <div class="right-section">
       <div class="stat-item">
@@ -71,85 +69,58 @@ const datasetCount = computed(() => projectStore.currentProject?.datasets.length
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 8px;
-  padding: 20px;
-  background: linear-gradient(
-    160deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(248, 250, 252, 0.9) 30%,
-    rgba(240, 253, 244, 0.85) 70%,
-    rgba(236, 253, 245, 0.9) 100%
-  );
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(229, 231, 235, 0.4);
-  border-radius: 16px;
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.06);
-  position: relative;
-  overflow: hidden;
-}
-
-.project-info-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background:
-    radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.03) 0%, transparent 50%),
-    radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.02) 0%, transparent 50%);
-  pointer-events: none;
+  margin: 8px 16px 0;
+  padding: 12px 16px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
 }
 
 .left-section {
   display: flex;
   align-items: center;
-  gap: 16px;
-  position: relative;
-  z-index: 10;
+  gap: 12px;
 }
 
 .project-icon {
-  width: 48px;
-  height: 48px;
-  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
-  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  background: #d1fae5;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
 .icon {
-  color: white;
-  font-size: 24px;
+  color: #047857;
+  font-size: 20px;
 }
 
 .project-details {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .project-name {
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 700;
-  color: #1f2937;
+  color: #1e293b;
   margin: 0;
 }
 
 .project-meta {
-  font-size: 13px;
-  color: #6b7280;
+  font-size: 12px;
+  color: #64748b;
   margin: 0;
 }
 
 .right-section {
   display: flex;
   align-items: center;
-  gap: 24px;
-  position: relative;
-  z-index: 10;
+  gap: 20px;
 }
 
 .stat-item {
@@ -157,13 +128,13 @@ const datasetCount = computed(() => projectStore.currentProject?.datasets.length
 }
 
 .stat-value {
-  font-size: 24px;
-  font-weight: 600;
-  color: #059669; /* Emerald-600 */
+  font-size: 22px;
+  font-weight: 700;
+  color: #10b981;
 }
 
 .stat-label {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: 11px;
+  color: #64748b;
 }
 </style>

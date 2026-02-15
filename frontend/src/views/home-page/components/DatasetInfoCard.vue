@@ -31,18 +31,14 @@ const handleRefresh = async () => {
 
 const handleDelete = async (dataset: any) => {
   if (!projectStore.currentProject) return;
-  
+
   try {
-    await ElMessageBox.confirm(
-      `确定要删除数据集 "${dataset.name}" 吗? 此操作不可恢复。`,
-      "删除数据集",
-      {
-        confirmButtonText: "删除",
-        cancelButtonText: "取消",
-        type: "warning",
-      }
-    );
-    
+    await ElMessageBox.confirm(`确定要删除数据集 "${dataset.name}" 吗? 此操作不可恢复。`, "删除数据集", {
+      confirmButtonText: "删除",
+      cancelButtonText: "取消",
+      type: "warning",
+    });
+
     await datasetStore.deleteDataset(projectStore.currentProject.id, dataset.id);
   } catch (error) {
     if (error !== "cancel") {
@@ -84,7 +80,7 @@ const getDatasetTypeLabel = (type: string): string => {
   return labelMap[type] || type;
 };
 
-import { formatLocalWithTZ } from '@/utils/timeUtils';
+import { formatLocalWithTZ } from "@/utils/timeUtils";
 const formatRelativeTime = (timestamp: number): string => {
   // 按用户要求：所有时间显示为本地时间 + 时区后缀
   return formatLocalWithTZ(timestamp);
@@ -152,49 +148,25 @@ const formatRelativeTime = (timestamp: number): string => {
 
 <style scoped>
 .dataset-card-container {
-  background: linear-gradient(
-    160deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(248, 250, 252, 0.9) 30%,
-    rgba(240, 253, 244, 0.85) 70%,
-    rgba(236, 253, 245, 0.9) 100%
-  );
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(229, 231, 235, 0.4);
-  border-radius: 16px;
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.06);
-  position: relative;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
   overflow: hidden;
   height: 100%;
-}
-
-.dataset-card-container::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background:
-    radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.03) 0%, transparent 50%),
-    radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.02) 0%, transparent 50%);
-  pointer-events: none;
 }
 
 .section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 20px 16px;
-  border-bottom: 1px solid rgba(229, 231, 235, 0.3);
-  position: relative;
-  z-index: 10;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .section-title {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 700;
-  color: #000000;
+  color: #1e293b;
 }
 
 .section-actions {
@@ -205,31 +177,28 @@ const formatRelativeTime = (timestamp: number): string => {
 .action-btn {
   width: 28px;
   height: 28px;
-  border: 1px solid rgba(229, 231, 235, 0.5);
-  background: rgba(255, 255, 255, 0.5);
-  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
   color: #64748b;
   font-size: 14px;
 }
 
 .action-btn:hover {
-  background: rgba(16, 185, 129, 0.2);
+  background: #ecfdf5;
+  border-color: #86efac;
   color: #059669;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
 }
 
 .dataset-list {
-  padding: 20px;
-  height: calc(100% - 72px);
+  padding: 10px 12px;
+  height: calc(100% - 48px);
   overflow-y: auto;
-  position: relative;
-  z-index: 10;
 }
 
 /* 空状态 */
@@ -245,10 +214,11 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .empty-icon {
-  width: 48px;
-  height: 48px;
-  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
-  border-radius: 12px;
+  width: 44px;
+  height: 44px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -258,103 +228,77 @@ const formatRelativeTime = (timestamp: number): string => {
 
 .empty-text {
   font-size: 13px;
+  color: #64748b;
   margin-bottom: 16px;
   line-height: 1.5;
 }
 
 .empty-action {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: #10b981;
   color: white;
   border: none;
   border-radius: 8px;
-  padding: 10px 20px;
-  font-size: 12px;
-  font-weight: 500;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .empty-action:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+  background: #059669;
 }
 
 /* 数据集列表 */
 .datasets-container {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .dataset-item {
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(229, 231, 235, 0.3);
-  border-radius: 12px;
-  padding: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
   cursor: pointer;
   transition: all 0.2s ease;
-  position: relative;
-}
-
-.dataset-item::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 3px;
-  height: 100%;
-  background: #10b981;
-  border-radius: 0 2px 2px 0;
-  transform: scaleY(0);
-  transition: transform 0.2s ease;
 }
 
 .dataset-item:hover {
-  background: rgba(255, 255, 255, 0.9);
-  border-color: rgba(16, 185, 129, 0.3);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
-}
-
-.dataset-item:hover::before {
-  transform: scaleY(1);
+  background: #ecfdf5;
+  border-color: #86efac;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .dataset-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
+  gap: 10px;
+  margin-bottom: 6px;
 }
 
 .dataset-icon-wrapper {
-  width: 40px;
-  height: 40px;
-  background: rgba(16, 185, 129, 0.05);
-  border: 1px solid rgba(16, 185, 129, 0.1);
-  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  background: #d1fae5;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   flex-shrink: 0;
+  transition: all 0.2s ease;
 }
 
 .dataset-item:hover .dataset-icon-wrapper {
-  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
-  border-color: transparent;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-  transform: scale(1.05);
+  background: #a7f3d0;
+  border-color: #6ee7b7;
 }
 
 .dataset-icon {
-  color: #10b981;
-  font-size: 20px;
-  transition: all 0.3s ease;
-}
-
-.dataset-item:hover .dataset-icon {
-  color: white;
+  color: #047857;
+  font-size: 16px;
 }
 
 .dataset-info {
@@ -365,14 +309,13 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .dataset-name {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: #1e293b;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
-  letter-spacing: -0.01em;
 }
 
 .dataset-type-badge {
@@ -382,51 +325,50 @@ const formatRelativeTime = (timestamp: number): string => {
   font-weight: 600;
   text-transform: uppercase;
   flex-shrink: 0;
-  transition: all 0.2s ease;
 }
 
 .tag-emerald {
-  background: rgba(16, 185, 129, 0.1);
+  background: #d1fae5;
   color: #065f46;
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  border: 1px solid #a7f3d0;
 }
 
 .tag-flux {
-  background: rgba(34, 197, 94, 0.1);
+  background: #dcfce7;
   color: #065f46;
-  border: 1px solid rgba(34, 197, 94, 0.2);
+  border: 1px solid #bbf7d0;
 }
 
 .tag-sapflow {
-  background: rgba(16, 185, 129, 0.1);
+  background: #d1fae5;
   color: #065f46;
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  border: 1px solid #a7f3d0;
 }
 
 .tag-aqi {
-  background: rgba(139, 92, 246, 0.1);
+  background: #ede9fe;
   color: #581c87;
-  border: 1px solid rgba(139, 92, 246, 0.2);
+  border: 1px solid #ddd6fe;
 }
 
 .tag-micrometeorology {
-  background: rgba(245, 158, 11, 0.1);
+  background: #ffedd5;
   color: #92400e;
-  border: 1px solid rgba(245, 158, 11, 0.2);
+  border: 1px solid #fed7aa;
 }
 
 .tag-default {
-  background: rgba(16, 185, 129, 0.1);
+  background: #d1fae5;
   color: #059669;
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  border: 1px solid #a7f3d0;
 }
 
 .dataset-delete-btn {
   width: 24px;
   height: 24px;
   border: none;
-  background: rgba(239, 68, 68, 0.08);
-  border-radius: 8px;
+  background: #fef2f2;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -443,12 +385,11 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .dataset-delete-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-  transform: scale(1.1);
+  background: #fecaca;
 }
 
 .dataset-meta {
-  margin-left: 44px;
+  margin-left: 46px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -456,7 +397,7 @@ const formatRelativeTime = (timestamp: number): string => {
 
 .dataset-description {
   font-size: 12px;
-  color: #6b7280;
+  color: #64748b;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -464,7 +405,7 @@ const formatRelativeTime = (timestamp: number): string => {
 
 .dataset-time {
   font-size: 10px;
-  color: #9ca3af;
+  color: #94a3b8;
 }
 
 /* 自定义滚动条样式 */
@@ -477,11 +418,11 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .dataset-list::-webkit-scrollbar-thumb {
-  background: rgba(107, 114, 128, 0.2);
+  background: rgba(203, 213, 225, 0.6);
   border-radius: 3px;
 }
 
 .dataset-list::-webkit-scrollbar-thumb:hover {
-  background: rgba(107, 114, 128, 0.3);
+  background: rgba(148, 163, 184, 0.8);
 }
 </style>

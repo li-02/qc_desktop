@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { formatLocalWithTZ } from '@/utils/timeUtils';
+import { formatLocalWithTZ } from "@/utils/timeUtils";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import {
@@ -228,9 +228,7 @@ const showGuide = () => {
           </div>
           <div class="quick-start-text">
             <h3 class="start-title">开始分析</h3>
-            <p class="start-desc">
-              选择一个数据集开始，或导入新文件。建议先查看数据视图，然后进行异常值检测。
-            </p>
+            <p class="start-desc">选择一个数据集开始，或导入新文件。建议先查看数据视图，然后进行异常值检测。</p>
             <div class="start-buttons">
               <el-button type="primary" @click="quickViewData" class="start-button-primary">
                 <el-icon class="button-icon">
@@ -284,10 +282,23 @@ const showGuide = () => {
 </template>
 
 <style scoped>
+/* ── Design Tokens ── */
+.home-container {
+  --surface: #f8fafc;
+  --surface-elevated: #ffffff;
+  --border: #e2e8f0;
+  --text: #1e293b;
+  --muted: #64748b;
+  --accent: #10b981;
+  --accent-hover: #059669;
+  --accent-soft: #ecfdf5;
+  --accent-border: #86efac;
+}
+
 /* 主容器 */
 .home-container {
   height: 100%;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
+  background: var(--surface);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -296,10 +307,10 @@ const showGuide = () => {
 /* 主内容区域 */
 .main-content {
   flex: 1;
-  padding: 24px;
+  padding: 12px 16px 16px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 12px;
   overflow-y: auto;
   min-height: 0;
 }
@@ -307,8 +318,7 @@ const showGuide = () => {
 /* 行布局 */
 .row-layout {
   display: flex;
-  gap: 24px;
-  min-height: 300px;
+  gap: 12px;
   align-items: stretch;
 }
 
@@ -343,79 +353,39 @@ const showGuide = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 0 16px 0;
-  border-bottom: 1px solid rgba(229, 231, 235, 0.3);
-  margin-bottom: 16px;
-  position: relative;
-  z-index: 10;
+  padding: 0 0 10px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
 }
 
 .section-title {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 700;
-  color: #000000;
+  color: var(--text);
   margin: 0;
 }
 
 /* 按钮样式 */
-.primary-button {
-  background-color: #059669 !important;
-  border-color: #059669 !important;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s;
-}
-
-.primary-button:hover {
-  background-color: #047857 !important;
-  border-color: #047857 !important;
-  box-shadow: 0 8px 15px -3px rgba(0, 0, 0, 0.1);
-  transform: translateY(-2px);
-}
-
 .button-icon {
-  margin-right: 8px;
+  margin-right: 6px;
 }
 
-/* 工作流样式 */
+/* ── 工作流卡片 ── */
 .workflow-card {
-  background: linear-gradient(
-    160deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(248, 250, 252, 0.9) 30%,
-    rgba(240, 253, 244, 0.85) 70%,
-    rgba(236, 253, 245, 0.9) 100%
-  );
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(229, 231, 235, 0.4);
-  border-radius: 16px;
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.06);
-  padding: 20px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
   flex: 1;
   height: 100%;
   overflow: hidden;
-  position: relative;
-}
-
-.workflow-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background:
-    radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.03) 0%, transparent 50%),
-    radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.02) 0%, transparent 50%);
-  pointer-events: none;
 }
 
 .workflow-steps {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  position: relative;
-  z-index: 10;
-  height: calc(100% - 60px);
+  gap: 8px;
+  height: calc(100% - 46px);
 }
 
 .step-item {
@@ -425,79 +395,79 @@ const showGuide = () => {
 
 .step-button {
   width: 100%;
-  height: 80px;
+  height: 60px;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(229, 231, 235, 0.4);
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
   text-align: left;
-  position: relative;
-  overflow: hidden;
-}
-
-.step-button::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
-  background: linear-gradient(to bottom, #10b981, #059669);
-  transform: scaleY(0);
-  transition: transform 0.3s ease;
 }
 
 .step-button:hover {
-  background: rgba(255, 255, 255, 0.9);
-  border-color: rgba(16, 185, 129, 0.3);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
-}
-
-.step-button:hover::before {
-  transform: scaleY(1);
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .step-icon-container {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-left: 8px;
+  flex-shrink: 0;
   transition: transform 0.2s;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
 }
 
 .step-button:hover .step-icon-container {
-  transform: scale(1.1);
+  transform: scale(1.05);
 }
 
+/* 步骤图标使用不同颜色区分功能 */
 .step-icon-blue {
-  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  background: #dbeafe;
+  border: 1px solid #bfdbfe;
+}
+
+.step-icon-blue .step-icon {
+  color: #2563eb;
 }
 
 .step-icon-orange {
-  background: linear-gradient(135deg, #fb923c 0%, #f97316 100%);
+  background: #ffedd5;
+  border: 1px solid #fed7aa;
+}
+
+.step-icon-orange .step-icon {
+  color: #ea580c;
 }
 
 .step-icon-purple {
-  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  background: #ede9fe;
+  border: 1px solid #ddd6fe;
+}
+
+.step-icon-purple .step-icon {
+  color: #7c3aed;
 }
 
 .step-icon-green {
-  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  background: #d1fae5;
+  border: 1px solid #a7f3d0;
+}
+
+.step-icon-green .step-icon {
+  color: #047857;
 }
 
 .step-icon {
   font-size: 18px;
-  color: white;
 }
 
 .step-content {
@@ -506,262 +476,75 @@ const showGuide = () => {
 
 .step-title {
   font-weight: 600;
-  color: #1f2937;
-  margin: 0 0 4px 0;
-  font-size: 16px;
+  color: var(--text);
+  margin: 0 0 2px 0;
+  font-size: 14px;
 }
 
 .step-desc {
-  font-size: 14px;
-  color: #6b7280;
+  font-size: 12px;
+  color: var(--muted);
   margin: 0;
 }
 
 .step-arrow {
-  color: #9ca3af;
-  margin-right: 12px;
+  color: #cbd5e1;
+  margin-right: 8px;
   transition: all 0.2s;
 }
 
 .step-button:hover .step-arrow {
-  color: #059669;
-  transform: translateX(4px);
+  color: var(--accent-hover);
+  transform: translateX(2px);
 }
 
 .step-separator {
   display: flex;
   justify-content: center;
-  margin: 8px 0;
+  margin: 4px 0;
 }
 
 .step-separator::after {
   content: "";
   width: 1px;
-  height: 16px;
-  background: rgba(229, 231, 235, 0.5);
+  height: 12px;
+  background: var(--border);
 }
 
-/* 统计容器样式 */
+/* ── 统计容器 ── */
 .stats-container {
-  background: linear-gradient(
-    160deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(248, 250, 252, 0.9) 30%,
-    rgba(240, 253, 244, 0.85) 70%,
-    rgba(236, 253, 245, 0.9) 100%
-  );
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(229, 231, 235, 0.4);
-  border-radius: 16px;
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.06);
-  padding: 20px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
   flex: 1;
-  height: 100%;
   overflow: hidden;
-  position: relative;
 }
 
-.stats-container::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background:
-    radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.03) 0%, transparent 50%),
-    radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.02) 0%, transparent 50%);
-  pointer-events: none;
-}
-
-/* 统计卡片样式 */
+/* 统计卡片网格 */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-  height: calc(100% - 60px);
-  position: relative;
-  z-index: 10;
+  gap: 10px;
 }
 
 .stat-card {
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(229, 231, 235, 0.4);
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
   display: flex;
   align-items: center;
-  gap: 16px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
-}
-
-.stat-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
-  background: linear-gradient(to bottom, #10b981, #059669);
-  transform: scaleY(0);
-  transition: transform 0.3s ease;
+  gap: 10px;
+  transition: all 0.2s ease;
 }
 
 .stat-card:hover {
-  background: rgba(255, 255, 255, 0.9);
-  border-color: rgba(16, 185, 129, 0.3);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
-}
-
-.stat-card:hover::before {
-  transform: scaleY(1);
+  border-color: var(--accent-border);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .stat-icon-container {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
-}
-
-.stat-icon-emerald {
-  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
-}
-
-.stat-icon-blue {
-  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
-}
-
-.stat-icon-orange {
-  background: linear-gradient(135deg, #fb923c 0%, #f97316 100%);
-}
-
-.stat-icon-purple {
-  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
-}
-
-.stat-icon {
-  font-size: 20px;
-  color: white;
-}
-
-.stat-content {
-  flex: 1;
-}
-
-.stat-title {
-  font-size: 14px;
-  color: #6b7280;
-  margin: 0 0 4px 0;
-}
-
-.tooltip-icon {
-  font-size: 12px;
-  color: #9ca3af;
-  margin-left: 8px;
-  vertical-align: middle;
-}
-
-.stat-value {
-  font-size: 24px;
-  font-weight: 700;
-  color: #1f2937;
-  margin: 0 0 4px 0;
-}
-
-.stat-change {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-/* 活动记录样式 */
-.activity-card {
-  background: linear-gradient(
-    160deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(248, 250, 252, 0.9) 30%,
-    rgba(240, 253, 244, 0.85) 70%,
-    rgba(236, 253, 245, 0.9) 100%
-  );
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(229, 231, 235, 0.4);
-  border-radius: 16px;
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.06);
-  padding: 20px;
-  flex: 1;
-  height: 100%;
-  overflow: hidden;
-  position: relative;
-}
-
-.activity-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background:
-    radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.03) 0%, transparent 50%),
-    radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.02) 0%, transparent 50%);
-  pointer-events: none;
-}
-
-.activity-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  height: calc(100% - 60px);
-  overflow-y: auto;
-  position: relative;
-  z-index: 10;
-}
-
-.activity-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(229, 231, 235, 0.4);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
-}
-
-.activity-item::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
-  background: linear-gradient(to bottom, #10b981, #059669);
-  transform: scaleY(0);
-  transition: transform 0.3s ease;
-}
-
-.activity-item:hover {
-  background: rgba(255, 255, 255, 0.9);
-  border-color: rgba(16, 185, 129, 0.3);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
-}
-
-.activity-item:hover::before {
-  transform: scaleY(1);
-}
-
-.activity-icon-container {
   width: 40px;
   height: 40px;
   border-radius: 10px;
@@ -769,91 +552,103 @@ const showGuide = () => {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
 }
 
-.activity-icon {
+.stat-icon-emerald {
+  background: #d1fae5;
+  border: 1px solid #a7f3d0;
+}
+
+.stat-icon-emerald .stat-icon {
+  color: #047857;
+}
+
+.stat-icon-blue {
+  background: #dbeafe;
+  border: 1px solid #bfdbfe;
+}
+
+.stat-icon-blue .stat-icon {
+  color: #2563eb;
+}
+
+.stat-icon-orange {
+  background: #ffedd5;
+  border: 1px solid #fed7aa;
+}
+
+.stat-icon-orange .stat-icon {
+  color: #ea580c;
+}
+
+.stat-icon-purple {
+  background: #ede9fe;
+  border: 1px solid #ddd6fe;
+}
+
+.stat-icon-purple .stat-icon {
+  color: #7c3aed;
+}
+
+.stat-icon {
   font-size: 18px;
 }
 
-.activity-content {
+.stat-content {
   flex: 1;
 }
 
-.activity-action {
-  font-weight: 600;
-  color: #1f2937;
-  font-size: 14px;
-  margin-bottom: 2px;
+.stat-title {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 4px 0;
 }
 
-.activity-target {
-  font-size: 13px;
-  color: #6b7280;
-}
-
-.activity-time {
+.tooltip-icon {
   font-size: 12px;
   color: #9ca3af;
-  flex-shrink: 0;
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
-/* 快速开始样式 */
+.stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+/* ── 快速开始卡片 ── */
 .quick-start-card {
-  background: linear-gradient(
-    160deg,
-    rgba(240, 253, 244, 0.9) 0%,
-    rgba(236, 253, 245, 0.85) 30%,
-    rgba(220, 252, 231, 0.8) 70%,
-    rgba(209, 250, 229, 0.9) 100%
-  );
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(187, 247, 208, 0.5);
-  border-radius: 16px;
-  box-shadow: 4px 0 24px rgba(16, 185, 129, 0.08);
-  padding: 24px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  padding: 14px 16px;
   flex-shrink: 0;
   margin-top: auto;
-  position: relative;
-  overflow: hidden;
-}
-
-.quick-start-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background:
-    radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.05) 0%, transparent 50%),
-    radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.03) 0%, transparent 50%);
-  pointer-events: none;
 }
 
 .quick-start-content {
   display: flex;
   align-items: flex-start;
   gap: 16px;
-  position: relative;
-  z-index: 10;
 }
 
 .quick-start-icon {
-  width: 40px;
-  height: 40px;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  background: #d1fae5;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
 .start-icon {
-  color: white;
-  font-size: 18px;
+  color: #047857;
+  font-size: 17px;
 }
 
 .quick-start-text {
@@ -862,57 +657,57 @@ const showGuide = () => {
 
 .start-title {
   font-weight: 600;
-  color: #1f2937;
-  margin: 0 0 8px 0;
-  font-size: 18px;
+  color: var(--text);
+  margin: 0 0 6px 0;
+  font-size: 15px;
 }
 
 .start-desc {
-  font-size: 14px;
-  color: #374151;
-  margin: 0 0 16px 0;
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 12px 0;
   line-height: 1.5;
 }
 
 .start-buttons {
   display: flex;
-  gap: 12px;
+  gap: 8px;
 }
 
 .start-button-primary {
-  background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
-  border: none !important;
-  color: white !important;
-  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3) !important;
+  background: var(--accent) !important;
+  border: 1px solid var(--accent) !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
   transition: all 0.2s !important;
 }
 
 .start-button-primary:hover {
-  background: linear-gradient(135deg, #047857 0%, #065f46 100%) !important;
-  transform: translateY(-2px) !important;
-  box-shadow: 0 8px 20px rgba(5, 150, 105, 0.4) !important;
+  background: var(--accent-hover) !important;
+  border-color: var(--accent-hover) !important;
 }
 
 .start-button-secondary {
-  border: 1px solid rgba(5, 150, 105, 0.5) !important;
-  color: #059669 !important;
-  background: rgba(255, 255, 255, 0.8) !important;
-  backdrop-filter: blur(10px) !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #334155 !important;
+  background: var(--surface-elevated) !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
   transition: all 0.2s !important;
 }
 
 .start-button-secondary:hover {
-  background: rgba(240, 253, 244, 0.9) !important;
-  border-color: #059669 !important;
-  transform: translateY(-2px) !important;
-  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.2) !important;
+  border-color: var(--accent-border) !important;
+  color: var(--accent-hover) !important;
+  background: var(--accent-soft) !important;
 }
 
-/* 空状态样式 */
+/* ── 空状态 ── */
 .empty-state {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #fafaf9 0%, rgba(240, 253, 244, 0.3) 50%, rgba(236, 253, 245, 0.2) 100%);
+  background: var(--surface);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -926,60 +721,58 @@ const showGuide = () => {
 }
 
 .empty-title {
-  font-size: 24px;
-  font-weight: 600;
-  color: #1f2937;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
   margin: 0 0 12px 0;
 }
 
 .empty-desc {
-  color: #6b7280;
+  color: var(--muted);
   margin: 0 0 32px 0;
   line-height: 1.6;
+  font-size: 14px;
 }
 
 .create-button {
-  padding: 12px 32px !important;
-  background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
-  border: none !important;
-  box-shadow:
-    0 10px 15px -3px rgba(0, 0, 0, 0.1),
-    0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+  padding: 10px 28px !important;
+  background: var(--accent) !important;
+  border: 1px solid var(--accent) !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
   transition: all 0.2s !important;
 }
 
 .create-button:hover {
-  background: linear-gradient(135deg, #047857 0%, #059669 100%) !important;
-  box-shadow:
-    0 20px 25px -5px rgba(0, 0, 0, 0.1),
-    0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
-  transform: scale(1.05) !important;
+  background: var(--accent-hover) !important;
+  border-color: var(--accent-hover) !important;
 }
 
 .empty-features {
-  margin-top: 48px;
-  font-size: 14px;
-  color: #6b7280;
+  margin-top: 40px;
+  font-size: 13px;
+  color: var(--muted);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 24px;
+  gap: 20px;
 }
 
 .feature-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .feature-dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
 }
 
 .feature-dot-emerald {
-  background-color: #34d399;
+  background-color: #10b981;
 }
 
 .feature-dot-green {
@@ -987,18 +780,18 @@ const showGuide = () => {
 }
 
 .feature-dot-amber {
-  background-color: #fbbf24;
+  background-color: #f59e0b;
 }
 
 /* Element Plus 组件样式覆盖 */
 :deep(.el-button--primary) {
-  background-color: #059669;
-  border-color: #059669;
+  background-color: var(--accent);
+  border-color: var(--accent);
 }
 
 :deep(.el-button--primary:hover) {
-  background-color: #047857;
-  border-color: #047857;
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 /* 自定义滚动条 */
@@ -1007,39 +800,17 @@ const showGuide = () => {
 }
 
 .main-content::-webkit-scrollbar-track {
-  background: rgba(241, 245, 249, 0.5);
+  background: transparent;
   border-radius: 3px;
 }
 
 .main-content::-webkit-scrollbar-thumb {
-  background: rgba(203, 213, 225, 0.8);
+  background: rgba(203, 213, 225, 0.6);
   border-radius: 3px;
 }
 
 .main-content::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.8);
-}
-
-/* 动画 */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.home-container {
-  animation: fadeIn 0.5s ease-out;
-}
-
-.stat-card,
-.activity-item,
-.step-button {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* 响应式设计 */
@@ -1058,8 +829,8 @@ const showGuide = () => {
   }
 
   .main-content {
-    padding: 16px;
-    gap: 16px;
+    padding: 10px 12px;
+    gap: 10px;
   }
 }
 </style>

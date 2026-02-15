@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch, onMounted, nextTick } from "vue";
 import { formatLocalWithTZ } from "@/utils/timeUtils";
 import { translateRemark, getStageLabel } from "@/utils/versionUtils";
 import { ElMessage } from "element-plus";
@@ -93,20 +93,25 @@ const columns = computed(() => {
   return {};
 });
 
-// 数值列过滤 - 基于你的实际数据列名
+// 时间列名称（从数据库中获取）
+const timeColumnName = computed(() => datasetInfo.value?.timeColumn || "");
+
+// 数值列过滤 - 排除时间列
 const numericColumns = computed(() => {
+  const timeCol = timeColumnName.value;
+  const filterTimeCol = (names: string[]) =>
+    names.filter(name => name !== timeCol).map(name => ({ name, type: "numeric" }));
+
   const statsObj = currentVersionStats.value?.columnStats;
   if (statsObj) {
-    // If we have detailed stats, use them to identify numeric columns
     if (statsObj.columnStatistics) {
-      return Object.keys(statsObj.columnStatistics).map(name => ({ name, type: "numeric" }));
+      return filterTimeCol(Object.keys(statsObj.columnStatistics));
     }
-    // Fallback to all columns if we only have missing status
     if (statsObj.columnMissingStatus) {
-      return Object.keys(statsObj.columnMissingStatus).map(name => ({ name, type: "numeric" }));
+      return filterTimeCol(Object.keys(statsObj.columnMissingStatus));
     }
   }
-  return datasetInfo.value?.originalFile?.columns?.map(name => ({ name, type: "numeric" })) || [];
+  return filterTimeCol(datasetInfo.value?.originalFile?.columns || []);
 });
 
 const dataQualityClass = computed(() => {
@@ -279,14 +284,31 @@ watch(
   { immediate: false }
 );
 
-// 监听数据集变化，清空当前数据
+// 监听数据集变化，清空当前数据并默认选中第一列
 watch(
   () => datasetInfo.value,
   () => {
     csvData.value = null;
     columnStatistics.value = null;
     selectedColumn.value = "";
+    // 延迟等待 numericColumns 计算完成后默认选中第一列
+    nextTick(() => {
+      if (numericColumns.value.length > 0 && !selectedColumn.value) {
+        selectedColumn.value = numericColumns.value[0].name;
+      }
+    });
   }
+);
+
+// 监听 numericColumns 变化，确保默认选中第一列
+watch(
+  numericColumns,
+  cols => {
+    if (cols.length > 0 && !selectedColumn.value) {
+      selectedColumn.value = cols[0].name;
+    }
+  },
+  { immediate: true }
 );
 
 // 加载异常检测结果
@@ -359,14 +381,6 @@ onMounted(() => {
                   <Refresh />
                 </el-icon>
               </button>
-              <button
-                class="action-btn refresh-btn"
-                @click="$emit('refresh')"
-                :disabled="refreshing"
-                title="刷新数据"
-                style="margin-right: 8px">
-                <el-icon class="action-icon"><Connection /></el-icon>
-              </button>
             </div>
           </div>
 
@@ -410,24 +424,6 @@ onMounted(() => {
                 <div class="stat-label">异常值</div>
                 <div v-if="outlierRate > 0" class="stat-sub">{{ outlierRate.toFixed(2) }}%</div>
               </div>
-            </div>
-          </div>
-
-          <!-- 数据质量指示器 -->
-          <div class="quality-indicator">
-            <div class="quality-header">
-              <span class="quality-label">数据质量</span>
-              <span :class="['quality-value', dataQualityClass]">{{ dataQualityPercentage.toFixed(1) }}%</span>
-            </div>
-            <div class="quality-bar">
-              <div
-                class="quality-fill"
-                :style="{ width: dataQualityPercentage + '%' }"
-                :class="{
-                  excellent: dataQualityPercentage >= 95,
-                  good: dataQualityPercentage >= 85 && dataQualityPercentage < 95,
-                  poor: dataQualityPercentage < 85,
-                }"></div>
             </div>
           </div>
         </div>
@@ -486,7 +482,7 @@ onMounted(() => {
         <div class="section-header">
           <div class="section-title">📈 数据分布可视化</div>
           <div class="viz-controls">
-            <el-select v-model="selectedColumn" placeholder="选择列" size="small" class="column-select">
+            <el-select v-model="selectedColumn" placeholder="选择指标列" size="small" class="column-select" filterable>
               <el-option v-for="col in numericColumns" :key="col.name" :label="col.name" :value="col.name" />
             </el-select>
             <el-select v-model="chartType" size="small" class="chart-select" @change="updateChartType">
@@ -510,7 +506,7 @@ onMounted(() => {
 
           <DataVisualizationChart
             :selected-column="selectedColumn"
-            :chart-type="chartType as 'histogram' | 'scatter' | 'cdf' | 'heatmap'"
+            :chart-type="chartType"
             :loading="chartLoading"
             :csv-data="csvData" />
         </div>
@@ -542,62 +538,6 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 相关性分析区域 -->
-      <div class="correlation-section">
-        <div class="section-header">
-          <div class="section-title">🔗 变量相关性分析</div>
-          <button
-            class="action-btn calculate-btn"
-            @click="calculateCorrelation"
-            :disabled="correlationLoading"
-            title="重新计算">
-            <el-icon class="action-icon" :class="{ spinning: correlationLoading }">
-              <Refresh />
-            </el-icon>
-            <span v-if="!correlationLoading">计算</span>
-          </button>
-        </div>
-
-        <div v-if="correlationLoading" class="correlation-loading">
-          <el-icon class="loading-spinner">
-            <Loading />
-          </el-icon>
-          <span class="loading-text">计算相关性中...</span>
-        </div>
-
-        <div v-else-if="correlationMatrix.length > 0" class="correlation-matrix">
-          <div class="matrix-container">
-            <table class="correlation-table">
-              <thead>
-                <tr>
-                  <th class="matrix-header"></th>
-                  <th v-for="header in correlationHeaders" :key="header" class="matrix-header">
-                    {{ header }}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(row, rowIndex) in correlationMatrix" :key="rowIndex">
-                  <td class="row-label">{{ row.name }}</td>
-                  <td v-for="(value, colIndex) in row.values" :key="colIndex" class="correlation-cell">
-                    <div :class="['correlation-value', getCorrelationColor(value)]">
-                      {{ value.toFixed(2) }}
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div v-else class="correlation-empty">
-          <div class="empty-icon">🔗</div>
-          <div class="empty-text">相关性分析功能</div>
-          <div class="empty-subtitle">请前往"相关性分析"页面进行详细的变量关系分析</div>
-          <button class="empty-action" @click="calculateCorrelation">了解更多</button>
-        </div>
-      </div>
-
       <!-- Version Manager Drawer -->
       <el-drawer v-model="showVersionDrawer" title="数据版本管理" size="450px" destroy-on-close append-to-body>
         <VersionManager
@@ -622,13 +562,13 @@ onMounted(() => {
 <style scoped>
 /* 主容器样式 */
 .overview-container {
-  padding: 20px;
+  padding: 24px;
   background: #f8fafc;
-  min-height: 100vh;
-}
-
-.overview-container > * + * {
-  margin-top: 20px;
+  min-height: 100%;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 /* 加载状态 */
@@ -636,82 +576,59 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 200px;
-  background: rgba(255, 255, 255, 0.9);
-  border-radius: 16px;
-  border: 1px solid rgba(229, 231, 235, 0.4);
+  height: 400px;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
 }
 
 .loading-content {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
 }
 
 .loading-spinner {
-  font-size: 24px;
+  font-size: 32px;
   color: #10b981;
   animation: spin 1s linear infinite;
 }
 
 .loading-text {
-  color: #6b7280;
-  font-size: 14px;
+  color: #4b5563;
+  font-size: 15px;
+  font-weight: 500;
 }
 
 /* 顶部section布局 */
 .overview-top-section {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  gap: 24px;
 }
 
 /* 通用section样式 */
 .stats-section,
-.columns-section {
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(229, 231, 235, 0.4);
-  border-radius: 16px;
-  padding: 12px;
-  transition: all 0.3s ease;
-  position: relative;
-  overflow: hidden;
-}
-
+.columns-section,
 .visualization-section,
 .correlation-section {
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(229, 231, 235, 0.4);
-  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
   padding: 20px;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   position: relative;
-  overflow: hidden;
-}
-
-.stats-section::before,
-.columns-section::before,
-.visualization-section::before,
-.correlation-section::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
-  background: linear-gradient(to bottom, #10b981, #059669);
-  border-radius: 0 2px 2px 0;
+  overflow: visible;
+  z-index: 1;
 }
 
 .stats-section:hover,
 .columns-section:hover,
 .visualization-section:hover,
 .correlation-section:hover {
-  background: rgba(255, 255, 255, 0.95);
-  border-color: rgba(16, 185, 129, 0.3);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
-  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  z-index: 10;
 }
 
 /* Section header */
@@ -719,45 +636,73 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(229, 231, 235, 0.3);
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .section-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1f2937;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
   display: flex;
   align-items: center;
-  gap: 8px;
+}
+
+.section-title::before {
+  content: "";
+  display: block;
+  width: 4px;
+  height: 16px;
+  background: #10b981;
+  border-radius: 2px;
+  margin-right: 8px;
 }
 
 /* Action buttons */
 .action-btn {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 8px 12px;
-  border: none;
-  background: rgba(16, 185, 129, 0.1);
-  color: #059669;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #64748b;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
+  height: 36px;
 }
 
 .action-btn:hover {
-  background: rgba(16, 185, 129, 0.2);
-  transform: translateY(-1px);
+  background: #ecfdf5;
+  border-color: #86efac;
+  color: #059669;
 }
 
 .action-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  transform: none;
+}
+
+/* Primary Button (e.g. Calculate) */
+.action-btn.calculate-btn {
+  background: #10b981;
+  color: white;
+  border: none;
+}
+
+.action-btn.calculate-btn:hover {
+  background: #059669;
+}
+
+.action-btn.calculate-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  color: white;
 }
 
 .action-icon {
@@ -772,78 +717,37 @@ onMounted(() => {
 .stats-cards {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .stat-card {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(229, 231, 235, 0.3);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
   border-radius: 10px;
-  padding: 10px;
+  padding: 16px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   transition: all 0.2s ease;
   position: relative;
   overflow: hidden;
 }
 
-.stat-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
-  border-radius: 0 2px 2px 0;
-  transition: transform 0.2s ease;
-  transform: scaleY(0);
-}
-
-.stat-card.primary::before {
-  background: linear-gradient(to bottom, #3b82f6, #1d4ed8);
-}
-
-.stat-card.secondary::before {
-  background: linear-gradient(to bottom, #8b5cf6, #7c3aed);
-}
-
-.stat-card.warning::before {
-  background: linear-gradient(to bottom, #f59e0b, #d97706);
-}
-
-.stat-card.success::before {
-  background: linear-gradient(to bottom, #10b981, #059669);
-}
-
-.stat-card.danger::before {
-  background: linear-gradient(to bottom, #ef4444, #dc2626);
-}
-
-.stat-card.info::before {
-  background: linear-gradient(to bottom, #6b7280, #4b5563);
-}
-
 .stat-card:hover {
-  background: rgba(255, 255, 255, 1);
-  border-color: rgba(229, 231, 235, 0.6);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.stat-card:hover::before {
-  transform: scaleY(1);
+  border-color: #86efac;
+  background: #f8fffb;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .stat-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 18px;
   color: white;
   flex-shrink: 0;
 }
@@ -878,61 +782,64 @@ onMounted(() => {
 }
 
 .stat-value {
-  font-size: 16px;
+  font-size: 22px;
   font-weight: 700;
-  color: #1f2937;
-  margin-bottom: 1px;
+  color: #111827;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 .stat-label {
-  font-size: 11px;
-  color: #6b7280;
+  font-size: 12px;
+  color: #64748b;
   font-weight: 500;
+  margin-top: 2px;
 }
 
 .stat-sub {
-  font-size: 10px;
-  color: #9ca3af;
+  font-size: 11px;
+  color: #ef4444;
   margin-top: 2px;
+  font-weight: 600;
 }
 
 /* 数据质量指示器 */
 .quality-indicator {
-  background: rgba(248, 250, 252, 0.8);
+  background: #f8fafc;
   border-radius: 10px;
-  padding: 10px;
-  border: 1px solid rgba(229, 231, 235, 0.3);
+  padding: 16px;
+  border: 1px solid #e2e8f0;
 }
 
 .quality-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .quality-label {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   color: #374151;
 }
 
 .quality-value {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
 }
 
 .quality-bar {
-  height: 6px;
-  background: rgba(229, 231, 235, 0.5);
-  border-radius: 3px;
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 4px;
   overflow: hidden;
 }
 
 .quality-fill {
   height: 100%;
-  border-radius: 3px;
-  transition: all 0.3s ease;
+  border-radius: 4px;
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .quality-fill.excellent {
@@ -952,107 +859,92 @@ onMounted(() => {
   width: 200px;
 }
 
-.column-search {
+.column-search :deep(.el-input__wrapper) {
+  background-color: #ffffff;
   border-radius: 8px;
+  box-shadow: none;
+  border: 1px solid #e2e8f0;
 }
 
-.search-icon {
-  color: #9ca3af;
+.column-search :deep(.el-input__wrapper:hover) {
+  border-color: #cbd5e1;
+}
+
+.column-search :deep(.el-input__wrapper.is-focus) {
+  border-color: #10b981;
 }
 
 .columns-list {
-  max-height: 200px;
+  max-height: 280px;
   overflow-y: auto;
   padding-right: 8px;
 }
 
 .column-item {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(229, 231, 235, 0.3);
-  border-radius: 6px;
-  padding: 8px;
-  margin-bottom: 4px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
   transition: all 0.2s ease;
   position: relative;
-}
-
-.column-item::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 3px;
-  height: 100%;
-  border-radius: 0 2px 2px 0;
-  transition: transform 0.2s ease;
-  transform: scaleY(0);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .column-item:hover {
-  background: rgba(255, 255, 255, 1);
-  border-color: rgba(229, 231, 235, 0.6);
-  transform: translateX(4px);
-}
-
-.column-item:hover::before {
-  transform: scaleY(1);
-  background: #6b7280;
-}
-
-.column-item.has-missing::before {
-  background: #f59e0b;
-}
-
-.column-item.many-missing::before {
-  background: #ef4444;
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .column-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 2px;
+  gap: 10px;
+  flex: 1;
 }
 
 .column-status {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
 .column-status.status-complete {
   background: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
 }
 
 .column-status.status-warning {
   background: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
 }
 
 .column-status.status-error {
   background: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
 }
 
 .column-name {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  color: #374151;
-  flex: 1;
+  color: #1e293b;
 }
 
 .missing-badge {
   background: rgba(239, 68, 68, 0.1);
   color: #dc2626;
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 500;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
 }
 
 .column-meta {
-  font-size: 10px;
+  font-size: 11px;
   color: #9ca3af;
-  margin-left: 12px;
 }
 
 /* 可视化控件 */
@@ -1061,188 +953,128 @@ onMounted(() => {
   gap: 12px;
 }
 
-.column-select,
+.column-select {
+  width: 220px;
+}
+
 .chart-select {
-  min-width: 120px;
+  width: 180px;
 }
 
 .chart-container {
   height: 500px;
-  background: rgba(248, 250, 252, 0.8);
-  border-radius: 12px;
-  border: 1px solid rgba(229, 231, 235, 0.3);
-  margin-bottom: 16px;
-  overflow: hidden;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 20px;
+  padding: 16px;
   position: relative;
 }
 
-/* 性能优化提示 */
-.performance-tip {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 10;
-  background: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  border-radius: 8px;
-  padding: 8px 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: #059669;
-  backdrop-filter: blur(4px);
-  transition: all 0.3s ease;
-}
-
-.performance-tip:hover {
-  background: rgba(16, 185, 129, 0.15);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
-}
-
-.tip-icon {
-  font-size: 14px;
-  animation: flash 2s infinite;
-}
-
-.tip-text {
-  font-weight: 500;
-  line-height: 1.2;
-}
-
-@keyframes flash {
-  0%,
-  50% {
-    opacity: 1;
-  }
-  25%,
-  75% {
-    opacity: 0.7;
-  }
-}
-
-/* 统计摘要 */
+/* 统计摘要 - 新样式 */
 .stats-summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
 }
 
 .summary-card {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(229, 231, 235, 0.3);
-  border-radius: 8px;
-  padding: 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 16px;
   text-align: center;
   transition: all 0.2s ease;
 }
 
 .summary-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.summary-card.with-timestamp {
-  min-height: 80px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  border-color: #86efac;
+  background: #f8fffb;
 }
 
 .summary-label {
-  font-size: 11px;
-  color: #6b7280;
-  margin-bottom: 4px;
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 6px;
   font-weight: 500;
 }
 
 .summary-value {
-  font-size: 16px;
+  font-size: 22px;
   font-weight: 700;
-  margin-bottom: 2px;
-}
-
-.summary-value.blue {
-  color: #3b82f6;
-}
-.summary-value.green {
-  color: #10b981;
-}
-.summary-value.purple {
-  color: #8b5cf6;
-}
-.summary-value.orange {
-  color: #f59e0b;
+  color: #111827;
+  letter-spacing: -0.02em;
+  font-family: "Courier New", monospace;
 }
 
 .summary-timestamp {
-  font-size: 9px;
+  font-size: 10px;
   color: #9ca3af;
-  font-weight: 400;
-  line-height: 1.2;
-  margin-top: 2px;
+  margin-top: 4px;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-block;
 }
 
 /* 相关性分析 */
 .correlation-loading {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 12px;
-  height: 150px;
-  color: #6b7280;
+  height: 200px;
+  color: #64748b;
 }
 
 .correlation-matrix {
-  background: rgba(248, 250, 252, 0.8);
-  border-radius: 12px;
-  padding: 16px;
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 20px;
   overflow-x: auto;
-}
-
-.matrix-container {
-  min-width: 100%;
+  border: 1px solid #e2e8f0;
 }
 
 .correlation-table {
   width: 100%;
   border-collapse: separate;
-  border-spacing: 4px;
+  border-spacing: 6px;
 }
 
 .matrix-header {
   text-align: center;
-  padding: 8px 4px;
-  font-size: 11px;
+  padding: 8px;
+  font-size: 12px;
   font-weight: 600;
-  color: #6b7280;
-  min-width: 60px;
+  color: #64748b;
 }
 
 .row-label {
-  padding: 8px 12px;
-  font-size: 11px;
+  padding: 8px;
+  font-size: 12px;
   font-weight: 600;
-  color: #6b7280;
-  text-align: left;
-}
-
-.correlation-cell {
-  padding: 2px;
+  color: #64748b;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .correlation-value {
-  padding: 6px 8px;
-  border-radius: 6px;
-  font-size: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  font-size: 12px;
   font-weight: 600;
   text-align: center;
   transition: all 0.2s ease;
+  cursor: default;
 }
 
 .correlation-value:hover {
   transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+  position: relative;
 }
 
 .correlation-value.strong {
@@ -1256,26 +1088,25 @@ onMounted(() => {
 }
 
 .correlation-value.weak {
-  background: #a7f3d0;
+  background: #ecfdf5;
   color: #065f46;
 }
 
 .correlation-value.none {
-  background: #f3f4f6;
-  color: #6b7280;
-}
-
-/* 空状态 */
-.empty-columns {
-  text-align: center;
-  padding: 20px 10px;
+  background: #f8fafc;
   color: #9ca3af;
 }
 
+/* 空状态 */
+.empty-columns,
 .correlation-empty,
 .no-data-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   text-align: center;
-  padding: 40px 20px;
+  padding: 40px;
   color: #9ca3af;
 }
 
@@ -1287,53 +1118,53 @@ onMounted(() => {
 
 .empty-text,
 .no-data-text {
-  font-size: 14px;
+  font-size: 20px;
+  font-weight: 700;
   margin-bottom: 8px;
-  color: #6b7280;
+  color: #1e293b;
 }
 
 .empty-subtitle,
 .no-data-subtitle {
-  font-size: 12px;
-  color: #9ca3af;
-  margin-bottom: 12px;
+  font-size: 15px;
+  color: #64748b;
+  margin-bottom: 20px;
+  max-width: 300px;
+  line-height: 1.5;
 }
 
 .empty-action {
-  background: linear-gradient(135deg, #10b981, #059669);
+  background: #10b981;
   color: white;
   border: none;
   border-radius: 8px;
-  padding: 8px 16px;
-  font-size: 12px;
-  font-weight: 500;
+  padding: 10px 20px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  margin-top: 12px;
+  height: 36px;
+  min-width: 110px;
 }
 
 .empty-action:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+  background: #059669;
 }
 
-/* 滚动条样式 */
-.columns-list::-webkit-scrollbar {
+/* 滚动条美化 */
+::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
-
-.columns-list::-webkit-scrollbar-track {
-  background: rgba(229, 231, 235, 0.3);
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.3);
   border-radius: 3px;
 }
-
-.columns-list::-webkit-scrollbar-thumb {
-  background: rgba(107, 114, 128, 0.4);
-  border-radius: 3px;
-}
-
-.columns-list::-webkit-scrollbar-thumb:hover {
-  background: rgba(107, 114, 128, 0.6);
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.5);
 }
 
 /* 动画 */
@@ -1352,15 +1183,15 @@ onMounted(() => {
     grid-template-columns: 1fr;
     gap: 20px;
   }
+
+  .stats-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 768px) {
   .overview-container {
-    padding: 12px;
-  }
-
-  .overview-top-section {
-    gap: 16px;
+    padding: 16px;
   }
 
   .stats-cards {
@@ -1369,15 +1200,11 @@ onMounted(() => {
 
   .viz-controls {
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
   }
 
   .stats-summary {
     grid-template-columns: repeat(2, 1fr);
-  }
-
-  .search-container {
-    width: 100%;
   }
 }
 </style>

@@ -6,7 +6,7 @@ import type { DatasetInfo } from "@shared/types/projectInterface";
 import type { CorrelationResult } from "@shared/types/database";
 import CorrelationAnalysisChart from "../charts/CorrelationAnalysisChart.vue";
 import { useDatasetStore } from "@/stores/useDatasetStore";
-import VersionManager from '../VersionManager.vue';
+import VersionManager from "../VersionManager.vue";
 
 interface Props {
   datasetInfo?: DatasetInfo | null;
@@ -173,7 +173,7 @@ const loadHistory = async () => {
   if (!props.datasetInfo?.id) return;
   try {
     loadingHistory.value = true;
-    const results = await (window as any).electronAPI.invoke('correlation:getHistory', props.datasetInfo.id);
+    const results = await (window as any).electronAPI.invoke("correlation:getHistory", props.datasetInfo.id);
     analysisHistory.value = results || [];
   } catch (error) {
     console.error("加载历史记录失败:", error);
@@ -185,18 +185,18 @@ const loadHistory = async () => {
 // 删除单条记录
 const deleteHistoryItem = async (id: number) => {
   try {
-    await ElMessageBox.confirm('确定要删除这条分析记录吗？', '提示', {
-      type: 'warning',
-      confirmButtonText: '确定',
-      cancelButtonText: '取消'
+    await ElMessageBox.confirm("确定要删除这条分析记录吗？", "提示", {
+      type: "warning",
+      confirmButtonText: "确定",
+      cancelButtonText: "取消",
     });
-    
-    await (window as any).electronAPI.invoke('correlation:deleteResult', id);
-    ElMessage.success('删除成功');
+
+    await (window as any).electronAPI.invoke("correlation:deleteResult", id);
+    ElMessage.success("删除成功");
     loadHistory();
   } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('删除失败');
+    if (error !== "cancel") {
+      ElMessage.error("删除失败");
     }
   }
 };
@@ -204,21 +204,21 @@ const deleteHistoryItem = async (id: number) => {
 // 批量删除
 const batchDeleteHistory = async () => {
   if (selectedHistoryIds.value.length === 0) return;
-  
+
   try {
-    await ElMessageBox.confirm(`确定要删除选中的 ${selectedHistoryIds.value.length} 条记录吗？`, '提示', {
-      type: 'warning',
-      confirmButtonText: '确定',
-      cancelButtonText: '取消'
+    await ElMessageBox.confirm(`确定要删除选中的 ${selectedHistoryIds.value.length} 条记录吗？`, "提示", {
+      type: "warning",
+      confirmButtonText: "确定",
+      cancelButtonText: "取消",
     });
-    
-    await (window as any).electronAPI.invoke('correlation:batchDeleteResults', [...selectedHistoryIds.value]);
-    ElMessage.success('批量删除成功');
+
+    await (window as any).electronAPI.invoke("correlation:batchDeleteResults", [...selectedHistoryIds.value]);
+    ElMessage.success("批量删除成功");
     selectedHistoryIds.value = [];
     loadHistory();
   } catch (error) {
-     if (error !== 'cancel') {
-      ElMessage.error('批量删除失败');
+    if (error !== "cancel") {
+      ElMessage.error("批量删除失败");
     }
   }
 };
@@ -229,7 +229,7 @@ const viewHistoryResult = (result: CorrelationResult) => {
     currentCorrelationMatrix.value = JSON.parse(result.result_matrix);
     selectedColumns.value = JSON.parse(result.columns);
     correlationMethod.value = result.method as any;
-    
+
     // 如果没有 CSV 数据（因为是历史记录），尝试加载
     if (!csvData.value) {
       loadCsvData();
@@ -266,7 +266,7 @@ const startAnalysis = async () => {
 
   try {
     analysisLoading.value = true;
-    
+
     // Call backend to analyze and save
     if (props.datasetInfo?.id) {
       // 优先使用当前版本的路径和ID
@@ -274,19 +274,19 @@ const startAnalysis = async () => {
       const versionId = currentVersion.value?.id || props.datasetInfo.id; // Fallback to datasetId if version missing? Better to require version.
 
       if (!filePath) {
-         ElMessage.error("无法获取数据文件路径");
-         return;
+        ElMessage.error("无法获取数据文件路径");
+        return;
       }
 
-      const result = await (window as any).electronAPI.invoke('correlation:analyze', {
+      const result = await (window as any).electronAPI.invoke("correlation:analyze", {
         datasetId: props.datasetInfo.id,
         versionId: versionId,
         filePath: filePath,
         columns: selectedColumns.value,
         method: correlationMethod.value,
-        missingValueTypes: []
+        missingValueTypes: [],
       });
-      
+
       if (result.success) {
         currentCorrelationMatrix.value = result.data.matrix;
         ElNotification({
@@ -307,7 +307,7 @@ const startAnalysis = async () => {
         duration: 2000,
       });
       // Mock calculation happens in chart if matrix is null
-      currentCorrelationMatrix.value = null; 
+      currentCorrelationMatrix.value = null;
     }
   } catch (error) {
     console.error(error);
@@ -363,7 +363,7 @@ const resetSettings = () => {
 // 监听数据集变化
 watch(
   () => props.datasetInfo,
-  (newVal) => {
+  newVal => {
     selectedColumns.value = [];
     csvData.value = null;
     currentCorrelationMatrix.value = null;
@@ -391,10 +391,7 @@ onMounted(() => {
       <div class="section-header">
         <div class="section-title">🔗 变量相关性分析</div>
         <div class="header-actions">
-          <el-button
-            size="small"
-            plain
-            @click="showVersionDrawer = true">
+          <el-button size="small" plain @click="showVersionDrawer = true">
             <el-icon><Connection /></el-icon> 版本谱系
           </el-button>
           <el-button
@@ -547,27 +544,23 @@ onMounted(() => {
       <div class="section-header">
         <div class="section-title">🕒 分析历史</div>
         <div class="header-actions">
-          <el-button 
+          <el-button
             v-if="selectedHistoryIds.length > 0"
-            type="danger" 
-            size="small" 
+            type="danger"
+            size="small"
             :icon="Delete"
             @click="batchDeleteHistory">
             批量删除 ({{ selectedHistoryIds.length }})
           </el-button>
         </div>
       </div>
-      
+
       <div class="history-list">
-        <div 
-          v-for="item in analysisHistory" 
-          :key="item.id" 
-          class="history-item">
+        <div v-for="item in analysisHistory" :key="item.id" class="history-item">
           <div class="history-checkbox">
-            <el-checkbox 
+            <el-checkbox
               :model-value="selectedHistoryIds.includes(item.id)"
-              @change="toggleHistorySelection(item.id)"
-            />
+              @change="toggleHistorySelection(item.id)" />
           </div>
           <div class="history-content" @click="viewHistoryResult(item)">
             <div class="history-main">
@@ -579,11 +572,7 @@ onMounted(() => {
             </div>
           </div>
           <div class="history-actions">
-            <el-button 
-              type="danger" 
-              link 
-              size="small" 
-              @click.stop="deleteHistoryItem(item.id)">
+            <el-button type="danger" link size="small" @click.stop="deleteHistoryItem(item.id)">
               <el-icon><Delete /></el-icon>
             </el-button>
           </div>
@@ -604,19 +593,12 @@ onMounted(() => {
     </div>
 
     <!-- Version Manager Drawer -->
-    <el-drawer
-      v-model="showVersionDrawer"
-      title="数据版本管理"
-      size="450px"
-      destroy-on-close
-      append-to-body
-    >
-      <VersionManager 
+    <el-drawer v-model="showVersionDrawer" title="数据版本管理" size="450px" destroy-on-close append-to-body>
+      <VersionManager
         v-if="datasetInfo"
         :dataset-id="datasetInfo.id"
         @switch-version="handleVersionSwitch"
-        @close="showVersionDrawer = false"
-      />
+        @close="showVersionDrawer = false" />
     </el-drawer>
   </div>
 </template>
@@ -633,11 +615,10 @@ onMounted(() => {
 
 /* 控制面板样式 */
 .control-section {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(229, 231, 235, 0.4);
-  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
   padding: 20px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
 
 .section-header {
@@ -646,13 +627,25 @@ onMounted(() => {
   justify-content: space-between;
   margin-bottom: 20px;
   padding-bottom: 12px;
-  border-bottom: 1px solid rgba(229, 231, 235, 0.3);
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .section-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1f2937;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+}
+
+.section-title::before {
+  content: "";
+  display: block;
+  width: 4px;
+  height: 16px;
+  background: #10b981;
+  border-radius: 2px;
+  margin-right: 8px;
 }
 
 .header-actions {
@@ -735,7 +728,7 @@ onMounted(() => {
   content: "";
   flex: 1;
   height: 1px;
-  background: rgba(229, 231, 235, 0.5);
+  background: #f3f4f6;
 }
 
 .settings-divider::before {
@@ -754,7 +747,7 @@ onMounted(() => {
   gap: 12px;
   margin-top: 24px;
   padding-top: 20px;
-  border-top: 1px solid rgba(229, 231, 235, 0.3);
+  border-top: 1px solid #e2e8f0;
 }
 
 .analysis-info {
@@ -765,11 +758,10 @@ onMounted(() => {
 
 /* 历史记录区域 */
 .history-section {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(229, 231, 235, 0.4);
-  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
   padding: 20px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
 
 .history-list {
@@ -783,19 +775,18 @@ onMounted(() => {
 .history-item {
   display: flex;
   align-items: center;
-  padding: 12px 16px;
-  background: rgba(248, 250, 252, 0.5);
-  border: 1px solid rgba(229, 231, 235, 0.5);
+  padding: 14px 16px;
+  background: #f8fafc;
+  border: 1px solid transparent;
   border-radius: 8px;
   transition: all 0.2s ease;
   cursor: pointer;
 }
 
 .history-item:hover {
-  background: rgba(255, 255, 255, 0.8);
-  border-color: rgba(16, 185, 129, 0.3);
-  transform: translateX(4px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .history-checkbox {
@@ -817,15 +808,14 @@ onMounted(() => {
 
 .history-method {
   font-weight: 600;
-  color: #1f2937;
-  font-size: 14px;
-  text-transform: capitalize;
+  color: #1e293b;
+  font-size: 13px;
 }
 
 .history-size {
   font-size: 12px;
   color: #6b7280;
-  background: rgba(229, 231, 235, 0.5);
+  background: #f3f4f6;
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -846,11 +836,10 @@ onMounted(() => {
 
 /* 图表区域样式 */
 .chart-section {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(229, 231, 235, 0.4);
-  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
   min-height: 600px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
 
 /* 响应式设计 */

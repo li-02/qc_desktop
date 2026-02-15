@@ -974,29 +974,29 @@ onBeforeUnmount(() => {
 .flux-partitioning-panel {
   display: flex;
   height: 100%;
+  width: 100%;
+  background: #f8fafc;
   overflow: hidden;
-  background: linear-gradient(135deg, rgba(250, 250, 249, 0.8) 0%, rgba(236, 253, 245, 0.3) 100%);
-  border-radius: 16px;
+  padding: 8px;
+  gap: 8px;
+  box-sizing: border-box;
 }
 
 /* ==================== 中间：操作历史侧边栏 ==================== */
 .panel-sidebar {
-  width: 260px;
-  background: linear-gradient(
-    160deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(249, 250, 251, 0.9) 50%,
-    rgba(236, 253, 245, 0.9) 100%
-  );
-  border-right: 1px solid rgba(229, 231, 235, 0.6);
+  width: 280px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .sidebar-header {
   padding: 16px;
-  border-bottom: 1px solid rgba(229, 231, 235, 0.4);
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .new-partition-btn {
@@ -1005,31 +1005,28 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 8px;
   width: 100%;
-  padding: 12px 16px;
+  height: 36px;
   font-size: 14px;
   font-weight: 600;
   color: white;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: #10b981;
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+  transition: all 0.2s ease;
 }
 
 .new-partition-btn:hover {
-  background: linear-gradient(135deg, #059669 0%, #047857 100%);
-  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
-  transform: translateY(-1px);
+  background: #059669;
 }
 
 .sidebar-subtitle {
+  padding: 16px 20px 8px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   color: #6b7280;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 12px;
+  letter-spacing: 0.05em;
 }
 
 .history-section {
@@ -1037,44 +1034,41 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 16px;
 }
 
 .history-list {
   flex: 1;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  padding: 8px 16px;
 }
 
 .history-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100px;
+  text-align: center;
+  padding: 40px 16px;
   color: #9ca3af;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .history-item {
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(229, 231, 235, 0.6);
-  border-radius: 10px;
+  padding: 14px;
+  border-radius: 8px;
   cursor: pointer;
+  margin-bottom: 8px;
+  border: 1px solid transparent;
   transition: all 0.2s ease;
+  background: #f8fafc;
 }
 
 .history-item:hover {
-  background: rgba(255, 255, 255, 0.95);
-  border-color: rgba(16, 185, 129, 0.3);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
-.history-item--active {
-  background: linear-gradient(135deg, rgba(236, 253, 245, 0.9) 0%, rgba(220, 252, 231, 0.8) 100%);
-  border-color: #10b981;
+.history-item--active,
+.history-item.active {
+  background: #f8fffb;
+  border-color: #86efac;
 }
 
 .history-item-header {
@@ -1114,7 +1108,7 @@ onBeforeUnmount(() => {
 .history-method {
   font-size: 13px;
   font-weight: 600;
-  color: #1f2937;
+  color: #1e293b;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1130,22 +1124,19 @@ onBeforeUnmount(() => {
 }
 
 /* 滚动条样式 */
-.history-list::-webkit-scrollbar {
-  width: 4px;
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
-
-.history-list::-webkit-scrollbar-track {
-  background: rgba(229, 231, 235, 0.3);
-  border-radius: 2px;
+::-webkit-scrollbar-track {
+  background: transparent;
 }
-
-.history-list::-webkit-scrollbar-thumb {
-  background: rgba(16, 185, 129, 0.3);
-  border-radius: 2px;
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.3);
+  border-radius: 3px;
 }
-
-.history-list::-webkit-scrollbar-thumb:hover {
-  background: rgba(16, 185, 129, 0.5);
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.5);
 }
 
 /* ==================== 主内容区 ==================== */
@@ -1154,8 +1145,11 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: 20px;
   overflow: hidden;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 20px;
 }
 
 /* ==================== 分割类型切换 ==================== */
@@ -1171,9 +1165,9 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 18px;
-  border-radius: 10px;
-  border: 1px solid rgba(229, 231, 235, 0.6);
-  background: rgba(255, 255, 255, 0.6);
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
@@ -1182,17 +1176,15 @@ onBeforeUnmount(() => {
 }
 
 .partition-type-tab:hover {
-  border-color: rgba(16, 185, 129, 0.3);
-  color: #374151;
-  background: rgba(255, 255, 255, 0.8);
+  border-color: #cbd5e1;
+  color: #1e293b;
 }
 
 .partition-type-tab--active {
-  background: linear-gradient(135deg, rgba(236, 253, 245, 0.9) 0%, rgba(220, 252, 231, 0.8) 100%);
-  border-color: #10b981;
+  background: #ecfdf5;
+  border-color: #86efac;
   color: #065f46;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
 }
 
 .tab-icon {
@@ -1217,16 +1209,19 @@ onBeforeUnmount(() => {
 }
 
 .header-title h2 {
-  font-size: 18px;
-  font-weight: 700;
-  color: #1f2937;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1e293b;
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .header-desc {
-  font-size: 12px;
-  color: #6b7280;
-  margin-top: 2px;
+  font-size: 13px;
+  color: #64748b;
+  margin-top: 6px;
   display: block;
 }
 
@@ -1242,24 +1237,28 @@ onBeforeUnmount(() => {
 }
 
 .primary-gradient-btn {
-  background: linear-gradient(135deg, #10b981, #059669) !important;
+  background: #10b981 !important;
   border: none !important;
+  height: 36px;
+  min-width: 110px;
+  font-weight: 600;
 }
 
 .primary-gradient-btn:hover {
-  background: linear-gradient(135deg, #059669, #047857) !important;
+  background: #059669 !important;
 }
 
 .primary-gradient-btn:disabled {
-  background: rgba(209, 213, 219, 0.8) !important;
-  color: rgba(156, 163, 175, 1) !important;
+  background: #9ca3af !important;
+  color: #ffffff !important;
+  cursor: not-allowed;
 }
 
 /* ==================== 顶部选择区域 ==================== */
 .top-selection-panel {
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(229, 231, 235, 0.6);
-  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
   padding: 12px;
   margin-bottom: 16px;
   flex-shrink: 0;
@@ -1274,7 +1273,7 @@ onBeforeUnmount(() => {
 
 .category-tabs-compact {
   display: flex;
-  background: rgba(229, 231, 235, 0.4);
+  background: #f8fafc;
   padding: 3px;
   border-radius: 8px;
 }
@@ -1308,7 +1307,7 @@ onBeforeUnmount(() => {
 .divider-vertical {
   width: 1px;
   height: 24px;
-  background: rgba(229, 231, 235, 0.8);
+  background: #e2e8f0;
 }
 
 .method-radio-group {
@@ -1326,7 +1325,7 @@ onBeforeUnmount(() => {
 /* ==================== 方法详情折叠面板 ==================== */
 .method-details-compact {
   margin-top: 12px;
-  border-top: 1px solid rgba(229, 231, 235, 0.4);
+  border-top: 1px solid #e2e8f0;
   padding-top: 4px;
 }
 
@@ -1522,8 +1521,8 @@ onBeforeUnmount(() => {
 }
 
 .config-block {
-  background: rgba(249, 250, 251, 0.6);
-  border: 1px solid rgba(229, 231, 235, 0.4);
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   border-radius: 10px;
   padding: 16px;
 }
@@ -1537,8 +1536,8 @@ onBeforeUnmount(() => {
 
 .config-block-header h3 {
   font-size: 15px;
-  font-weight: 600;
-  color: #1f2937;
+  font-weight: 700;
+  color: #1e293b;
   margin: 0;
 }
 
@@ -1575,7 +1574,7 @@ onBeforeUnmount(() => {
 .mapping-var {
   font-size: 13px;
   font-weight: 600;
-  color: #1f2937;
+  color: #1e293b;
   font-family: "Courier New", monospace;
   background: rgba(236, 253, 245, 0.5);
   padding: 2px 8px;
@@ -1672,8 +1671,8 @@ onBeforeUnmount(() => {
 }
 
 .execution-card {
-  background: linear-gradient(135deg, rgba(236, 253, 245, 0.8), rgba(220, 252, 231, 0.5));
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  background: #ecfdf5;
+  border: 1px solid #86efac;
   border-radius: 10px;
   padding: 20px;
 }
@@ -1719,15 +1718,15 @@ onBeforeUnmount(() => {
 }
 
 .result-placeholder h3 {
-  font-size: 18px;
-  font-weight: 600;
-  color: #374151;
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
   margin: 0 0 8px;
 }
 
 .result-placeholder p {
-  font-size: 13px;
-  color: #6b7280;
+  font-size: 15px;
+  color: #64748b;
   line-height: 1.6;
   max-width: 400px;
   margin: 0 auto;
@@ -1762,7 +1761,7 @@ onBeforeUnmount(() => {
 
 .result-info-value {
   font-size: 13px;
-  color: #1f2937;
+  color: #1e293b;
   font-weight: 500;
 }
 
@@ -1773,8 +1772,8 @@ onBeforeUnmount(() => {
 }
 
 .stat-card {
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(229, 231, 235, 0.5);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
   padding: 12px;
   text-align: center;
@@ -1789,9 +1788,10 @@ onBeforeUnmount(() => {
 
 .stat-value {
   display: block;
-  font-size: 16px;
+  font-size: 22px;
   font-weight: 700;
-  color: #1f2937;
+  color: #111827;
+  letter-spacing: -0.02em;
   font-family: "Courier New", monospace;
 }
 
@@ -1813,14 +1813,14 @@ onBeforeUnmount(() => {
 
 .et-placeholder h3 {
   font-size: 20px;
-  font-weight: 600;
-  color: #374151;
+  font-weight: 700;
+  color: #1e293b;
   margin: 0 0 8px;
 }
 
 .et-placeholder p {
-  font-size: 14px;
-  color: #6b7280;
+  font-size: 15px;
+  color: #64748b;
   margin: 0 0 24px;
 }
 
@@ -1836,8 +1836,8 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   padding: 10px 16px;
-  background: rgba(249, 250, 251, 0.8);
-  border: 1px solid rgba(229, 231, 235, 0.5);
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
   text-align: left;
 }
@@ -1856,7 +1856,7 @@ onBeforeUnmount(() => {
 /* ==================== 响应式 ==================== */
 @media (max-width: 1200px) {
   .panel-sidebar {
-    width: 220px;
+    width: 240px;
   }
 }
 
@@ -1870,7 +1870,7 @@ onBeforeUnmount(() => {
     min-width: 100%;
     max-height: 200px;
     border-right: none;
-    border-bottom: 1px solid rgba(229, 231, 235, 0.6);
+    border-bottom: 1px solid #e2e8f0;
   }
 }
 </style>

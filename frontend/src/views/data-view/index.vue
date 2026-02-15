@@ -114,7 +114,6 @@ watch(currentDataset, (newDataset, oldDataset) => {
     <div class="content-wrapper">
       <!-- 数据集信息卡片 -->
 
-
       <!-- 主要功能区域 -->
       <div v-if="hasDataset" class="main-content-grid">
         <!-- 数据分析选项卡 -->
@@ -167,7 +166,7 @@ watch(currentDataset, (newDataset, oldDataset) => {
   flex-direction: column;
   flex: 1; /* 填充剩余空间 */
   overflow: hidden;
-  padding: 16px; /* 添加一点内边距，根据需要调整 */
+  padding: 0;
   box-sizing: border-box;
 }
 

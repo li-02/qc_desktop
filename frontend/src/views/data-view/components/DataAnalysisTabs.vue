@@ -205,8 +205,8 @@ defineExpose({
       </div>
 
       <!-- 缺失值处理 -->
-      <div v-else-if="activeTab === 'missing'" class="tab-panel">
-        <div class="panel-wrapper">
+      <div v-else-if="activeTab === 'missing'" class="tab-panel full-height-panel">
+        <div class="panel-wrapper full-height-wrapper">
           <MissingValuePanel
             :dataset-info="datasetInfo"
             :loading="contentLoading"
@@ -260,120 +260,102 @@ defineExpose({
 /* 主容器 */
 .data-analysis-tabs {
   background: white;
-  border-radius: 12px;
-  box-shadow:
-    0 1px 3px 0 rgba(0, 0, 0, 0.1),
-    0 1px 2px 0 rgba(0, 0, 0, 0.06);
-  border: 1px solid rgba(120, 113, 108, 0.2);
+  border-radius: 0;
+  box-shadow: none;
+  border: none;
   overflow: hidden;
   height: 100%; /* 占满父容器 */
   display: flex;
   flex-direction: column;
 }
 
-/* 选项卡头部 */
+/* 选项卡头部 - 浮动工具栏风格 */
 .tabs-header {
-  flex-shrink: 0; /* 防止头部被压缩 */
-  background: linear-gradient(
-    to right,
-    rgba(250, 250, 249, 1) 0%,
-    rgba(236, 253, 245, 0.3) 50%,
-    rgba(240, 253, 244, 0.4) 100%
-  );
-  border-bottom: 1px solid rgba(120, 113, 108, 0.15);
-  padding: 8px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border-bottom: 1px solid rgba(229, 231, 235, 0.6);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    0 4px 12px rgba(0, 0, 0, 0.02);
+  padding: 9px 12px;
   position: relative;
-}
-
-.tabs-header::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-image:
-    radial-gradient(circle at 25% 25%, rgba(34, 197, 94, 0.03) 0%, transparent 25%),
-    radial-gradient(circle at 75% 75%, rgba(74, 222, 128, 0.03) 0%, transparent 25%);
-  pointer-events: none;
+  z-index: 20;
 }
 
 .tabs-nav {
   display: flex;
-  gap: 8px;
+  gap: 4px;
   position: relative;
   z-index: 1;
+  padding: 3px;
+  background: rgba(243, 244, 246, 0.6);
+  border-radius: 10px;
+  border: 1px solid rgba(229, 231, 235, 0.5);
 }
 
-/* 选项卡按钮 */
+/* 选项卡按钮 - 紧凑胶囊风格 */
 .tab-button {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 120px;
+  gap: 6px;
+  min-width: auto;
   justify-content: center;
-  padding: 14px 16px;
-  font-size: 14px;
+  padding: 12px 14px;
+  font-size: 13px;
   font-weight: 500;
-  border-radius: 12px;
-  border: 2px solid transparent;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
   cursor: pointer;
-  background: none;
+  background: transparent;
   outline: none;
+  white-space: nowrap;
 }
 
 .tab-button:hover {
-  transform: translateY(-1px);
+  transform: none;
 }
 
 /* 激活状态 */
 .tab-button--active {
-  background: linear-gradient(135deg, rgba(209, 250, 229, 1) 0%, rgba(187, 247, 208, 1) 100%);
-  color: rgba(6, 78, 59, 1);
+  background: white;
+  color: #059669;
   box-shadow:
-    0 10px 15px -3px rgba(16, 185, 129, 0.1),
-    0 4px 6px -2px rgba(16, 185, 129, 0.05);
-  border-color: rgba(167, 243, 208, 0.6);
-  transform: scale(1.02);
+    0 1px 3px rgba(0, 0, 0, 0.08),
+    0 1px 2px rgba(0, 0, 0, 0.04);
+  border-color: rgba(16, 185, 129, 0.2);
+  transform: none;
 }
 
 /* 未激活状态 */
 .tab-button--inactive {
-  background: rgba(255, 255, 255, 0.7);
-  color: rgba(87, 83, 78, 1);
+  background: transparent;
+  color: #6b7280;
 }
 
 .tab-button--inactive:hover {
-  color: rgba(4, 120, 87, 1);
-  background: linear-gradient(135deg, rgba(236, 253, 245, 1) 0%, rgba(240, 253, 244, 0.5) 100%);
-  border-color: rgba(209, 250, 229, 1);
-  box-shadow:
-    0 4px 6px -1px rgba(0, 0, 0, 0.1),
-    0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  transform: scale(1.01) translateY(-1px);
+  color: #059669;
+  background: rgba(255, 255, 255, 0.7);
+  border-color: transparent;
+  box-shadow: none;
+  transform: none;
 }
 
 /* 禁用状态 */
 .tab-button--disabled {
-  background: rgba(245, 245, 244, 0.5);
-  color: rgba(168, 162, 158, 1);
+  background: transparent;
+  color: rgba(168, 162, 158, 0.8);
   cursor: not-allowed;
-  border-color: rgba(245, 245, 244, 0.6);
+  border-color: transparent;
   position: relative;
   overflow: hidden;
 }
 
 .tab-button--disabled::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(156, 163, 175, 0.1), transparent);
-  animation: shimmer 2s infinite;
+  content: none;
 }
 
 /* 图标容器 */
@@ -382,34 +364,34 @@ defineExpose({
 }
 
 .tab-icon {
-  font-size: 18px;
+  font-size: 15px;
   line-height: 1;
   display: block;
   transition: transform 0.2s ease;
 }
 
 .tab-icon--hover:hover {
-  transform: scale(1.1);
+  transform: scale(1.05);
 }
 
 .tab-icon--active {
-  transform: scale(1.05);
-  animation: breathe 3s ease-in-out infinite;
+  transform: none;
+  animation: none;
 }
 
 .tab-icon-glow {
-  position: absolute;
-  inset: 0;
-  background: rgba(52, 211, 153, 0.2);
-  border-radius: 50%;
-  filter: blur(4px);
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  display: none;
 }
 
 /* 标签文字 */
 .tab-text {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  font-size: 13px;
+}
+
+.tab-button--active .tab-text {
   font-weight: 600;
-  letter-spacing: 0.025em;
 }
 
 /* 禁用遮罩 */
@@ -432,7 +414,7 @@ defineExpose({
 }
 
 .tab-panel {
-  padding: 24px;
+  padding: 16px 0 0 0;
   height: 100%;
   box-sizing: border-box;
   display: flex;
@@ -450,13 +432,13 @@ defineExpose({
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(4px);
   border-radius: 12px;
-  border: 1px solid rgba(120, 113, 108, 0.15);
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  padding: 4px;
+  border: none;
+  box-shadow: none;
+  padding: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 /* 占位符样式 */

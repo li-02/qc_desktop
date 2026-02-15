@@ -17,7 +17,6 @@ const datasetStore = useDatasetStore();
 const versions = ref<DatasetVersionInfo[]>([]);
 const loading = ref(false);
 
-// 版本树节点
 interface VersionNode {
   id: number;
   data: DatasetVersionInfo;
@@ -25,7 +24,6 @@ interface VersionNode {
   depth: number;
 }
 
-// 加载版本列表
 const loadVersions = async () => {
   if (!props.datasetId) return;
 
@@ -40,14 +38,12 @@ const loadVersions = async () => {
   }
 };
 
-// 构建版本树
 const versionTree = computed(() => {
   if (!versions.value.length) return [];
 
   const nodeMap = new Map<number, VersionNode>();
   const roots: VersionNode[] = [];
 
-  // 创建节点
   versions.value.forEach(v => {
     nodeMap.set(v.id, {
       id: v.id,
@@ -57,7 +53,6 @@ const versionTree = computed(() => {
     });
   });
 
-  // 构建层级关系
   versions.value
     .sort((a, b) => a.id - b.id)
     .forEach(v => {
@@ -74,10 +69,8 @@ const versionTree = computed(() => {
   return roots;
 });
 
-// 扁平化树结构用于渲染
 const flattenedVersions = computed(() => {
   const result: VersionNode[] = [];
-
   const traverse = (nodes: VersionNode[]) => {
     nodes.forEach(node => {
       result.push(node);
@@ -86,38 +79,38 @@ const flattenedVersions = computed(() => {
       }
     });
   };
-
   traverse(versionTree.value);
   return result;
 });
 
-// 当前选中的版本
 const currentVersionId = computed(() => datasetStore.currentVersion?.id);
 
-// 获取阶段标签配置
-const getStageConfig = (stageType: string) => {
-  const configs: Record<string, { label: string; color: string; bgColor: string }> = {
-    RAW: { label: "原始", color: "#6b7280", bgColor: "rgba(107, 114, 128, 0.1)" },
-    FILTERED: { label: "去异常", color: "#f59e0b", bgColor: "rgba(245, 158, 11, 0.1)" },
-    QC: { label: "已清洗", color: "#10b981", bgColor: "rgba(16, 185, 129, 0.1)" },
+const getStageColor = (stageType: string) => {
+  const colors: Record<string, string> = {
+    RAW: "#94a3b8", // Slate-400
+    FILTERED: "#06b6d4", // Cyan-500
+    QC: "#10b981", // Emerald-500
   };
-  return configs[stageType] || { label: stageType, color: "#6b7280", bgColor: "rgba(107, 114, 128, 0.1)" };
+  return colors[stageType] || "#94a3b8";
 };
 
-// 获取版本图标
-const getVersionIcon = (stageType: string, isRoot: boolean) => {
-  if (isRoot) return "📄"; // CSV 文件图标
-  if (stageType === "FILTERED") return "🔧"; // 处理图标
-  if (stageType === "QC") return "✨"; // 清洗图标
-  return "📄";
+const getStageLabel = (stageType: string) => {
+  const labels: Record<string, string> = {
+    RAW: "原始",
+    FILTERED: "过滤",
+    QC: "质控",
+  };
+  return labels[stageType] || stageType;
 };
 
-// 处理版本点击
 const handleVersionClick = (versionId: number) => {
   emit("select-version", versionId);
 };
 
-// 监听展开状态，展开时加载版本
+const formatTime = (date: string | number) => {
+  return new Date(date).toLocaleString();
+};
+
 watch(
   () => props.isExpanded,
   expanded => {
@@ -128,7 +121,6 @@ watch(
   { immediate: true }
 );
 
-// 监听 datasetId 变化
 watch(
   () => props.datasetId,
   () => {
@@ -147,189 +139,162 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="version-tree" v-if="isExpanded">
-    <!-- 加载状态 -->
+  <div class="version-tree-container" v-if="isExpanded">
+    <!-- Loading -->
     <div v-if="loading" class="version-loading">
-      <span class="loading-dot"></span>
+      <div class="loading-spinner"></div>
       <span>加载中...</span>
     </div>
 
-    <!-- 版本列表 -->
+    <!-- Tree List -->
     <div v-else-if="flattenedVersions.length > 0" class="version-list">
       <div
         v-for="node in flattenedVersions"
         :key="node.id"
-        class="version-item"
-        :class="{
-          'is-active': currentVersionId === node.id,
-          'is-child': node.depth > 0,
-        }"
-        :style="{ paddingLeft: `${12 + node.depth * 16}px` }"
-        @click.stop="handleVersionClick(node.id)">
-        <!-- 连接线 -->
-        <div v-if="node.depth > 0" class="version-connector">
-          <div class="connector-line"></div>
-          <div class="connector-branch"></div>
-        </div>
+        class="version-row"
+        :class="{ 'is-active': currentVersionId === node.id }"
+        :style="{ paddingLeft: `${node.depth * 10 + 6}px` }"
+        @click.stop="handleVersionClick(node.id)"
+        :title="`版本 #${node.id} - ${formatTime(node.data.createdAt)}`">
+        <!-- Tree guide lines for depth > 0 -->
+        <div class="tree-guide" v-if="node.depth > 0"></div>
 
-        <!-- 版本图标 -->
-        <div class="version-icon">
-          {{ getVersionIcon(node.data.stageType, node.depth === 0) }}
-        </div>
-
-        <!-- 版本名称 -->
-        <div class="version-name">
-          {{ translateRemark(node.data.remark) || `版本 #${node.id}` }}
-        </div>
-
-        <!-- 状态标签 (右侧胶囊) -->
+        <!-- Stage Icon -->
         <div
-          class="version-stage-tag"
+          class="version-icon"
           :style="{
-            color: getStageConfig(node.data.stageType).color,
-            backgroundColor: getStageConfig(node.data.stageType).bgColor,
+            color: getStageColor(node.data.stageType),
+            backgroundColor: `${getStageColor(node.data.stageType)}1A`,
           }">
-          {{ getStageConfig(node.data.stageType).label }}
+          {{ getStageLabel(node.data.stageType).charAt(0) }}
+        </div>
+
+        <!-- Name -->
+        <div class="version-name">
+          {{ translateRemark(node.data.remark) || `v${node.id}` }}
+        </div>
+
+        <div class="version-stage" :style="{ color: getStageColor(node.data.stageType) }">
+          {{ getStageLabel(node.data.stageType) }}
         </div>
       </div>
     </div>
 
-    <!-- 空状态 -->
+    <!-- Empty -->
     <div v-else class="version-empty">
-      <span>暂无版本记录</span>
+      <span>无版本记录</span>
     </div>
   </div>
 </template>
 
 <style scoped>
-.version-tree {
-  margin-top: 4px;
-  padding-left: 8px;
-  border-left: 2px solid rgba(139, 92, 246, 0.2);
-  margin-left: 8px;
+.version-tree-container {
+  margin-top: 2px;
+  margin-left: 30px;
+  border-left: 1px solid #dcfce7;
+  padding-left: 2px;
 }
 
 .version-loading {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: #64748b;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 12px;
-  font-size: 11px;
-  color: #9ca3af;
 }
 
-.loading-dot {
-  width: 6px;
-  height: 6px;
-  background: #10b981;
+.loading-spinner {
+  width: 8px;
+  height: 8px;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-left-color: #10b981;
   border-radius: 50%;
-  animation: pulse 1s infinite;
+  animation: spin 0.8s linear infinite;
 }
 
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
 .version-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
 }
 
-.version-item {
+.version-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  height: 26px;
   padding-right: 8px;
-  border-radius: 6px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
   position: relative;
-  background: transparent;
+  gap: 6px;
 }
 
-.version-item:hover {
-  background: rgba(139, 92, 246, 0.06);
+.version-row:hover {
+  background-color: #f8fafc;
 }
 
-.version-item.is-active {
-  background: rgba(16, 185, 129, 0.1);
+.version-row.is-active {
+  background-color: #ecfdf5;
 }
 
-.version-item.is-active .version-name {
-  color: #059669;
+.version-row.is-active .version-name {
+  color: #047857;
   font-weight: 600;
 }
 
-.version-item.is-active .version-icon {
-  transform: scale(1.1);
-}
-
-/* 连接线样式 */
-.version-connector {
+/* Tree connection guide for nested items */
+.tree-guide {
   position: absolute;
-  left: 0;
-  top: 0;
+  left: -6px;
+  top: 1px;
   bottom: 50%;
-  width: 12px;
-  pointer-events: none;
-}
-
-.connector-line {
-  position: absolute;
-  left: 0;
-  top: -8px;
-  bottom: 0;
-  width: 2px;
-  background: rgba(139, 92, 246, 0.2);
-}
-
-.connector-branch {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 10px;
-  height: 2px;
-  background: rgba(139, 92, 246, 0.2);
+  width: 6px;
+  border-bottom: 1px solid #bbf7d0;
+  border-left: 1px solid #bbf7d0;
 }
 
 .version-icon {
-  font-size: 12px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  border-radius: 4px;
   flex-shrink: 0;
-  transition: transform 0.2s ease;
 }
 
 .version-name {
   flex: 1;
   font-size: 11px;
-  color: #4b5563;
+  color: #475569;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
+  line-height: 1;
 }
 
-.version-stage-tag {
-  font-size: 9px;
-  padding: 2px 6px;
-  border-radius: 10px;
-  font-weight: 500;
-  white-space: nowrap;
+.version-stage {
+  font-size: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 1px 6px;
+  line-height: 1.2;
   flex-shrink: 0;
-  letter-spacing: 0.3px;
 }
 
 .version-empty {
-  padding: 8px 12px;
+  padding: 6px 8px;
   font-size: 11px;
-  color: #9ca3af;
-  text-align: center;
+  color: #94a3b8;
 }
 </style>

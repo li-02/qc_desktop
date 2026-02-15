@@ -3,7 +3,19 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import emitter from "@/utils/eventBus";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Plus, Refresh, ArrowDown, ArrowUp, CaretLeft, CaretRight, Sort, Delete, Files, Close, Setting } from "@element-plus/icons-vue";
+import {
+  Plus,
+  Refresh,
+  ArrowDown,
+  ArrowUp,
+  CaretLeft,
+  CaretRight,
+  Sort,
+  Delete,
+  Files,
+  Close,
+  Setting,
+} from "@element-plus/icons-vue";
 import DatasetVersionTree from "@/components/sidebar/DatasetVersionTree.vue";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
@@ -30,30 +42,26 @@ const isBatchMode = ref(false);
 const selectedProjectIds = ref<Set<string>>(new Set());
 
 // 排序状态
-const sortType = ref<'date' | 'name'>('date');
-const sortOrder = ref<'asc' | 'desc'>('asc');
+const sortType = ref<"date" | "name">("date");
+const sortOrder = ref<"asc" | "desc">("asc");
 
 // 排序后的项目列表
 const sortedProjects = computed(() => {
   const projects = [...projectStore.projects];
   return projects.sort((a, b) => {
-    if (sortType.value === 'date') {
-      return sortOrder.value === 'asc' 
-        ? a.createdAt - b.createdAt 
-        : b.createdAt - a.createdAt;
+    if (sortType.value === "date") {
+      return sortOrder.value === "asc" ? a.createdAt - b.createdAt : b.createdAt - a.createdAt;
     } else {
-      return sortOrder.value === 'asc'
-        ? a.name.localeCompare(b.name)
-        : b.name.localeCompare(a.name);
+      return sortOrder.value === "asc" ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
     }
   });
 });
 
 // 处理排序命令
 const handleSortCommand = (command: string) => {
-  const [type, order] = command.split('-');
-  sortType.value = type as 'date' | 'name';
-  sortOrder.value = order as 'asc' | 'desc';
+  const [type, order] = command.split("-");
+  sortType.value = type as "date" | "name";
+  sortOrder.value = order as "asc" | "desc";
 };
 
 // 批量删除处理
@@ -165,7 +173,7 @@ const selectProject = (projectId: string) => {
 
 const handleProjectClick = (projectId: string) => {
   selectProject(projectId);
-  toggleProjectExpanded(projectId);
+  // toggleProjectExpanded(projectId); // Expansion is now handled only by the caret
 };
 
 // 数据集选择
@@ -271,7 +279,7 @@ const getTotalFiles = (project: any): number => {
   return datasets.reduce((sum: number, d: any) => {
     const fc = typeof d?.fileCount === "number" ? d.fileCount : 0;
     // 如果后端暂未返回 fileCount，则至少按 1 个原始文件计
-    return sum + (fc > 0 ? fc : (d?.originalFile ? 1 : 0));
+    return sum + (fc > 0 ? fc : d?.originalFile ? 1 : 0);
   }, 0);
 };
 
@@ -279,7 +287,8 @@ const getTotalSize = (project: any): string => {
   const datasets = Array.isArray(project?.datasets) ? project.datasets : [];
   const totalBytes = datasets.reduce((sum: number, d: any) => {
     if (typeof d?.totalSizeBytes === "number" && d.totalSizeBytes > 0) return sum + d.totalSizeBytes;
-    if (typeof d?.originalFileSizeBytes === "number" && d.originalFileSizeBytes > 0) return sum + d.originalFileSizeBytes;
+    if (typeof d?.originalFileSizeBytes === "number" && d.originalFileSizeBytes > 0)
+      return sum + d.originalFileSizeBytes;
     return sum;
   }, 0);
   return formatBytes(totalBytes);
@@ -306,7 +315,6 @@ const getDatasetTypeLabel = (type: string): string => {
   };
   return labelMap[type] || type.toUpperCase();
 };
-
 
 // 监听导入成功，自动展开项目
 const handleImportSuccess = () => {
@@ -361,25 +369,22 @@ onUnmounted(() => {
       <!-- 项目管理区域 -->
       <div class="projects-section">
         <div class="section-header" v-show="!isCollapsed">
-          <div style="display: flex; align-items: center; gap: 8px;">
+          <div class="section-title-wrap">
             <div class="section-title">项目管理</div>
-            <span v-if="isBatchMode && selectedProjectIds.size > 0" style="font-size: 12px; color: #6b7280; background: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 4px;">
+            <span v-if="isBatchMode && selectedProjectIds.size > 0" class="selected-badge">
               已选 {{ selectedProjectIds.size }}
             </span>
           </div>
-          
+
           <!-- 批量模式操作栏 -->
-          <div v-if="isBatchMode" class="section-actions" style="align-items: center">
-            <el-checkbox
-              :model-value="isAllSelected"
-              @change="toggleSelectAll"
-              size="small"
-              style="margin-right: 8px; height: 24px;"
-            >全选</el-checkbox>
-            
-            <button 
-              class="action-btn delete-btn" 
-              @click="handleBatchDelete" 
+          <div v-if="isBatchMode" class="section-actions batch-actions">
+            <el-checkbox class="batch-select-all" :model-value="isAllSelected" @change="toggleSelectAll" size="small"
+              >全选</el-checkbox
+            >
+
+            <button
+              class="action-btn delete-btn"
+              @click="handleBatchDelete"
               title="删除选中"
               :disabled="selectedProjectIds.size === 0"
               :style="{ color: selectedProjectIds.size > 0 ? '#dc2626' : '#9ca3af' }">
@@ -401,10 +406,18 @@ onUnmounted(() => {
               </button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="date-asc" :class="{ active: sortType === 'date' && sortOrder === 'asc' }">创建时间 (正序)</el-dropdown-item>
-                  <el-dropdown-item command="date-desc" :class="{ active: sortType === 'date' && sortOrder === 'desc' }">创建时间 (倒序)</el-dropdown-item>
-                  <el-dropdown-item command="name-asc" :class="{ active: sortType === 'name' && sortOrder === 'asc' }">项目名称 (正序)</el-dropdown-item>
-                  <el-dropdown-item command="name-desc" :class="{ active: sortType === 'name' && sortOrder === 'desc' }">项目名称 (倒序)</el-dropdown-item>
+                  <el-dropdown-item command="date-asc" :class="{ active: sortType === 'date' && sortOrder === 'asc' }"
+                    >创建时间 (正序)</el-dropdown-item
+                  >
+                  <el-dropdown-item command="date-desc" :class="{ active: sortType === 'date' && sortOrder === 'desc' }"
+                    >创建时间 (倒序)</el-dropdown-item
+                  >
+                  <el-dropdown-item command="name-asc" :class="{ active: sortType === 'name' && sortOrder === 'asc' }"
+                    >项目名称 (正序)</el-dropdown-item
+                  >
+                  <el-dropdown-item command="name-desc" :class="{ active: sortType === 'name' && sortOrder === 'desc' }"
+                    >项目名称 (倒序)</el-dropdown-item
+                  >
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -444,22 +457,31 @@ onUnmounted(() => {
                 'project-item',
                 {
                   active: projectStore.currentProject?.id === project.id,
-                  'batch-mode': isBatchMode
+                  'batch-mode': isBatchMode,
                 },
               ]"
               @click="isBatchMode ? toggleProjectSelection(project.id) : handleProjectClick(project.id)">
-              
               <!-- 批量选择复选框 -->
               <div v-if="isBatchMode" class="project-checkbox">
                 <el-checkbox
                   :model-value="selectedProjectIds.has(project.id)"
                   @change="toggleProjectSelection(project.id)"
-                  @click.stop
-                />
+                  @click.stop />
               </div>
 
               <!-- 项目头部 -->
               <div class="project-header">
+                <!-- 展开/收起按钮 (左侧) -->
+                <button
+                  class="project-expand-caret"
+                  :class="{
+                    expanded: isProjectExpanded(project.id),
+                    invisible: !project.datasets?.length,
+                  }"
+                  @click.stop="toggleProjectExpanded(project.id)">
+                  <el-icon><CaretRight /></el-icon>
+                </button>
+
                 <div class="project-main">
                   <div class="project-icon">
                     {{ getProjectIcon(project.siteInfo) }}
@@ -489,14 +511,6 @@ onUnmounted(() => {
                       <el-icon><Delete /></el-icon>
                     </button>
                   </div>
-
-                  <button
-                    v-if="project.datasets?.length > 0"
-                    class="project-expand-btn"
-                    :class="{ expanded: isProjectExpanded(project.id) }"
-                    @click.stop="toggleProjectExpanded(project.id)">
-                    <el-icon><CaretRight /></el-icon>
-                  </button>
                 </div>
               </div>
 
@@ -519,10 +533,7 @@ onUnmounted(() => {
               <!-- 数据集列表 -->
               <div :class="['datasets-list', { expanded: isProjectExpanded(project.id) }]">
                 <div v-if="project.datasets?.length > 0" class="datasets-container">
-                  <div
-                    v-for="dataset in project.datasets"
-                    :key="dataset.id"
-                    class="dataset-wrapper">
+                  <div v-for="dataset in project.datasets" :key="dataset.id" class="dataset-wrapper">
                     <!-- 数据集主行 -->
                     <div
                       :class="[
@@ -552,13 +563,12 @@ onUnmounted(() => {
                         </button>
                       </div>
                     </div>
-                    
+
                     <!-- 版本树 -->
                     <DatasetVersionTree
                       :dataset-id="dataset.id"
                       :is-expanded="isDatasetExpanded(dataset.id)"
-                      @select-version="(versionId) => handleVersionSelect(project.id, dataset.id, versionId)"
-                    />
+                      @select-version="versionId => handleVersionSelect(project.id, dataset.id, versionId)" />
                   </div>
                 </div>
 
@@ -597,25 +607,6 @@ onUnmounted(() => {
         <!--            <template #title>{{ item.name }}</template>-->
         <!--          </el-menu-item>-->
         <!--        </el-menu>-->
-
-        <!-- 面包屑和工具按钮 -->
-        <div class="main-toolbar">
-          <div class="breadcrumb-section">
-            <el-breadcrumb separator="/">
-              <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
-              <el-breadcrumb-item v-if="projectStore.currentProject">
-                {{ projectStore.currentProject.name }}
-              </el-breadcrumb-item>
-            </el-breadcrumb>
-          </div>
-
-          <!--          <div class="toolbar-actions">-->
-          <!--            <el-button-group>-->
-          <!--              <el-button @click="handleImportData" :icon="Upload" size="default"> 导入数据 </el-button>-->
-          <!--              <el-button type="primary" @click="createNewProject" :icon="Plus" size="default"> 新建项目 </el-button>-->
-          <!--            </el-button-group>-->
-          <!--          </div>-->
-        </div>
       </div>
 
       <!-- 内容区域 -->
@@ -644,19 +635,19 @@ onUnmounted(() => {
 
 /* 侧边栏主容器 */
 .sidebar {
+  --sb-surface: #f8fafc;
+  --sb-surface-elevated: #ffffff;
+  --sb-border: #e2e8f0;
+  --sb-muted: #64748b;
+  --sb-text: #1e293b;
+  --sb-accent: #10b981;
+  --sb-accent-soft: #ecfdf5;
   width: 320px;
-  background: linear-gradient(
-    160deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(248, 250, 252, 0.9) 30%,
-    rgba(240, 253, 244, 0.85) 70%,
-    rgba(236, 253, 245, 0.9) 100%
-  );
-  backdrop-filter: blur(20px);
-  border-right: 1px solid rgba(229, 231, 235, 0.4);
+  background: var(--sb-surface);
+  border-right: 1px solid var(--sb-border);
   display: flex;
   flex-direction: column;
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.06);
+  box-shadow: 2px 0 12px rgba(15, 23, 42, 0.04);
   position: relative;
   transition: width 0.3s ease-in-out;
   overflow: visible;
@@ -668,22 +659,13 @@ onUnmounted(() => {
 }
 
 .sidebar::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background:
-    radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.03) 0%, transparent 50%),
-    radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.02) 0%, transparent 50%);
-  pointer-events: none;
+  content: none;
 }
 
 /* 应用标题区域 */
 .app-header {
-  padding: 24px 20px 16px;
-  border-bottom: 1px solid rgba(229, 231, 235, 0.3);
+  padding: 16px;
+  border-bottom: 1px solid var(--sb-border);
   position: relative;
   z-index: 10;
   display: flex;
@@ -693,14 +675,14 @@ onUnmounted(() => {
 }
 
 .sidebar.collapsed .app-header {
-  padding: 24px 12px 16px;
+  padding: 16px 12px;
   justify-content: center;
 }
 
 .app-title {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
   flex: 1;
 }
@@ -710,32 +692,25 @@ onUnmounted(() => {
 }
 
 .app-icon {
-  width: 36px;
-  height: 36px;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  border-radius: 10px;
+  width: 34px;
+  height: 34px;
+  background: #d1fae5;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  font-size: 16px;
   position: relative;
   flex-shrink: 0;
 }
 
 .app-icon::after {
-  content: "";
-  position: absolute;
-  inset: 2px;
-  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
-  border-radius: 6px;
-  opacity: 0.8;
+  content: none;
 }
 
 .app-icon span {
-  position: relative;
-  z-index: 1;
-  color: white;
+  color: #047857;
 }
 
 .app-title-text {
@@ -757,24 +732,24 @@ onUnmounted(() => {
 
 /* 设置按钮 */
 .settings-btn {
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: rgba(255, 255, 255, 0.6);
-  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--sb-border);
+  background: var(--sb-surface-elevated);
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: #6b7280;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: var(--sb-muted);
+  transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
 .settings-btn:hover {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-  transform: rotate(30deg);
+  background: var(--sb-accent-soft);
+  color: var(--sb-accent);
+  border-color: #a7f3d0;
 }
 
 .settings-btn .el-icon {
@@ -784,14 +759,14 @@ onUnmounted(() => {
 .app-name {
   font-size: 16px;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--sb-text);
   letter-spacing: -0.02em;
   white-space: nowrap;
 }
 
 .app-subtitle {
   font-size: 10px;
-  color: #6b7280;
+  color: var(--sb-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   font-weight: 500;
@@ -806,26 +781,26 @@ onUnmounted(() => {
   transform: translateY(-50%);
   width: 24px;
   height: 24px;
-  border: 1px solid #e5e7eb;
-  background: #ffffff;
+  border: 1px solid var(--sb-border);
+  background: var(--sb-surface-elevated);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #9ca3af;
+  color: #94a3b8;
   z-index: 100;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
   padding: 0;
 }
 
 .collapse-btn:hover {
-  color: #10b981;
-  border-color: #10b981;
-  background: #f0fdf4;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
-  transform: translateY(-50%) scale(1.1);
+  color: var(--sb-accent);
+  border-color: #86efac;
+  background: var(--sb-accent-soft);
+  box-shadow: 0 3px 10px rgba(16, 185, 129, 0.14);
+  transform: translateY(-50%);
 }
 
 .collapse-icon {
@@ -839,7 +814,7 @@ onUnmounted(() => {
 /* 项目管理区域 */
 .projects-section {
   flex: 1;
-  padding: 0 16px 20px;
+  padding: 0 12px 16px;
   overflow-y: auto;
   position: relative;
   z-index: 10;
@@ -860,60 +835,82 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0;
-  padding: 16px 4px 8px;
+  margin-bottom: 6px;
+  padding: 12px 2px 10px;
   position: sticky;
   top: 0;
   z-index: 20;
-  background: rgba(248, 250, 252, 0.95);
-  backdrop-filter: blur(10px);
+  background: #f8fafc;
+}
+
+.section-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .section-title {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
+  color: #334155;
+}
+
+.selected-badge {
+  font-size: 11px;
+  color: #475569;
+  background: #f1f5f9;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
 }
 
 .section-actions {
   display: flex;
-  gap: 4px;
+  gap: 6px;
+}
+
+.batch-actions {
+  align-items: center;
+}
+
+.batch-select-all {
+  margin-right: 6px;
+  height: 24px;
 }
 
 .action-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--sb-border);
+  background: var(--sb-surface-elevated);
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #9ca3af;
+  color: var(--sb-muted);
   font-size: 14px;
 }
 
 .action-btn:hover {
-  background: rgba(16, 185, 129, 0.1);
+  background: var(--sb-accent-soft);
   color: #059669;
-  transform: translateY(-1px);
+  border-color: #a7f3d0;
 }
 
 /* 项目列表 */
 .project-item {
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(229, 231, 235, 0.4);
-  border-radius: 12px;
-  padding: 16px;
+  background: var(--sb-surface-elevated);
+  border: 1px solid var(--sb-border);
+  border-radius: 10px;
+  padding: 12px;
   margin-bottom: 8px;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .project-item.collapsed {
@@ -940,23 +937,23 @@ onUnmounted(() => {
   transition: padding-left 0.2s ease;
 }
 
+/* Gradient accent bar on hover/active */
 .project-item::before {
   content: "";
   position: absolute;
-  top: 0;
+  top: 10px;
   left: 0;
-  width: 4px;
-  height: 100%;
-  background: linear-gradient(to bottom, #10b981, #059669);
+  width: 2px;
+  bottom: 10px;
+  background: var(--sb-accent);
+  border-radius: 0 4px 4px 0;
   transform: scaleY(0);
-  transition: transform 0.3s ease;
+  transition: transform 0.2s ease;
 }
 
 .project-item:hover {
-  background: rgba(255, 255, 255, 0.9);
-  border-color: rgba(16, 185, 129, 0.3);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
 }
 
 .project-item:hover::before {
@@ -964,39 +961,28 @@ onUnmounted(() => {
 }
 
 .project-item.active {
-  background: rgba(16, 185, 129, 0.08);
-  border-color: rgba(16, 185, 129, 0.4);
-  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.15);
+  background: #f8fffb;
+  border-color: #86efac;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
 }
 
 .project-item.active::before {
   transform: scaleY(1);
+  background: #10b981;
 }
 
 .project-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
+  gap: 8px; /* Add gap for caret */
 }
 
-.project-main {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  flex: 1;
-}
-
-.project-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.project-expand-btn {
-  width: 20px;
-  height: 20px;
+/* New Caret Styles */
+.project-expand-caret {
+  width: 18px;
+  height: 18px;
   border: none;
   background: transparent;
   border-radius: 4px;
@@ -1005,34 +991,64 @@ onUnmounted(() => {
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #9ca3af;
-  font-size: 14px;
+  color: #94a3b8;
+  font-size: 12px;
+  flex-shrink: 0;
+  margin-left: -4px; /* Pull slightly left to align */
+}
+
+.project-expand-caret:hover {
+  background: #f0fdf4;
+  color: #10b981;
+}
+
+.project-expand-caret.expanded {
+  transform: rotate(90deg);
+  color: #10b981;
+}
+
+.project-expand-caret.invisible {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.project-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.project-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
 }
 
-.project-expand-btn:hover {
-  background: rgba(107, 114, 128, 0.1);
-  color: #1f2937;
-}
-
-.project-expand-btn.expanded {
-  transform: rotate(90deg);
-  background: rgba(107, 114, 128, 0.1);
-  color: #1f2937;
-}
+/* Removed old project-expand-btn styles */
 
 .project-icon {
-  width: 32px;
-  height: 32px;
-  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  width: 34px;
+  height: 34px;
+  background: #f1f5f9;
   border-radius: 8px;
+  border: 1px solid #e2e8f0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
-  color: white;
-  flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+  font-size: 16px;
+  color: #475569;
+  transition: all 0.3s ease;
+  box-shadow: none;
+}
+
+.project-item:hover .project-icon,
+.project-item.active .project-icon {
+  background: #d1fae5;
+  border-color: #86efac;
+  color: #047857;
 }
 
 .project-info {
@@ -1043,162 +1059,211 @@ onUnmounted(() => {
 .project-name {
   font-size: 14px;
   font-weight: 600;
-  color: #1f2937;
+  color: #1e293b;
   margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.2s;
+}
+
+.project-item.active .project-name {
+  color: #047857;
+}
+
+.project-meta {
+  font-size: 11px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.project-meta {
-  font-size: 11px;
-  color: #6b7280;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.project-item.active .project-meta {
+  color: #059669;
 }
 
 .project-actions {
   display: flex;
   gap: 4px;
   opacity: 0;
-  transition: opacity 0.2s ease;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  flex-shrink: 0;
+  background: #ffffff;
+  padding: 2px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  margin-left: -4px;
 }
 
 .project-item:hover .project-actions {
   opacity: 1;
+  pointer-events: auto;
+}
+
+.project-item.active .project-actions {
+  background: #f8fffb;
+  border-color: #bbf7d0;
 }
 
 .project-action-btn {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border: none;
-  background: rgba(107, 114, 128, 0.1);
-  border-radius: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #6b7280;
+  color: #64748b;
   font-size: 12px;
 }
 
 .project-action-btn:hover {
-  background: rgba(16, 185, 129, 0.2);
+  background: #f0fdf4;
+  border-color: #a7f3d0;
   color: #059669;
 }
 
 .project-action-btn.delete-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
+  background: #fef2f2;
+  border-color: #fecaca;
   color: #dc2626;
 }
 
 .project-stats {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #f1f5f9;
 }
 
 .stat-item {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   font-size: 11px;
-  color: #6b7280;
+  color: #64748b;
 }
 
 .stat-icon {
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
 }
 
 .stat-icon.datasets {
-  background: #fbbf24;
+  background: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.1);
 }
-
 .stat-icon.files {
   background: #8b5cf6;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.1);
 }
-
 .stat-icon.size {
   background: #06b6d4;
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.1);
 }
 
-/* 数据集列表 */
+/* 数据集列表 - 使用 CSS Grid 实现平滑展开 */
 .datasets-list {
-  margin-top: 12px;
-  padding-left: 16px;
-  padding-right: 6px;
-  border-left: 2px solid rgba(229, 231, 235, 0.3);
-  max-height: 0;
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  margin-top: 0;
+  transition:
+    grid-template-rows 0.25s ease-out,
+    opacity 0.2s ease-out,
+    margin-top 0.25s ease-out;
+}
+
+.datasets-list > .datasets-container,
+.datasets-list > .datasets-empty {
   overflow: hidden;
-  transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .datasets-list.expanded {
-  max-height: 600px;
-  overflow-y: auto;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  margin-top: 10px;
 }
 
-.dataset-wrapper {
-  margin-bottom: 4px;
-}
-
-.dataset-item {
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(229, 231, 235, 0.3);
-  border-radius: 8px;
-  padding: 8px 10px;
-  cursor: pointer;
-  transition: all 0.2s ease;
+.datasets-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 6px;
   position: relative;
 }
 
+/* Connecting line for datasets */
+.datasets-container::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: 2px;
+  bottom: 10px;
+  width: 1px;
+  background: #dcfce7;
+  border-radius: 1px;
+}
+
+.dataset-wrapper {
+  margin-bottom: 2px;
+  position: relative;
+}
+
+.dataset-item {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 7px 8px 7px 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-left: 16px;
+}
+
+/* Connector curve */
 .dataset-item::before {
   content: "";
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 3px;
-  height: 100%;
-  background: #8b5cf6;
-  border-radius: 0 2px 2px 0;
-  transform: scaleY(0);
-  transition: transform 0.2s ease;
+  left: -8px;
+  top: 50%;
+  width: 8px;
+  height: 1px;
+  background: #bbf7d0;
 }
 
 .dataset-item:hover {
-  background: rgba(255, 255, 255, 0.8);
-  border-color: rgba(139, 92, 246, 0.3);
-}
-
-.dataset-item:hover::before {
-  transform: scaleY(1);
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
 }
 
 .dataset-item.active {
-  background: rgba(16, 185, 129, 0.08);
-  border-color: rgba(16, 185, 129, 0.4);
+  background: #f8fffb;
+  border-color: #86efac;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.1);
 }
 
-.dataset-item.active::before {
-  transform: scaleY(1);
-  background: #10b981;
-}
-
-.dataset-item.expanded {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  margin-bottom: 0;
-}
+/* .dataset-item.expanded removed */
 
 .dataset-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+  width: 100%;
 }
 
 /* 数据集展开按钮 */
@@ -1213,15 +1278,15 @@ onUnmounted(() => {
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #9ca3af;
+  color: #94a3b8;
   font-size: 10px;
   flex-shrink: 0;
   padding: 0;
 }
 
 .dataset-expand-btn:hover {
-  background: rgba(107, 114, 128, 0.1);
-  color: #6b7280;
+  background: #f0fdf4;
+  color: #10b981;
 }
 
 .dataset-expand-btn.expanded {
@@ -1230,51 +1295,67 @@ onUnmounted(() => {
 }
 
 .dataset-icon {
-  width: 16px;
-  height: 16px;
-  background: #8b5cf6;
+  width: 18px;
+  height: 18px;
+  background: #f8fafc;
   border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 8px;
-  color: white;
+  font-size: 9px;
+  color: #64748b;
+  transition: all 0.2s;
+  border: 1px solid #e2e8f0;
+}
+
+.dataset-item:hover .dataset-icon,
+.dataset-item.active .dataset-icon {
+  background: #f0fdf4;
+  color: #059669;
+  border-color: #bbf7d0;
 }
 
 .dataset-name {
   font-size: 12px;
   font-weight: 500;
-  color: #374151;
+  color: #334155;
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: color 0.2s;
+}
+
+.dataset-item.active .dataset-name {
+  color: #047857;
+  font-weight: 600;
 }
 
 .dataset-type {
   font-size: 9px;
-  padding: 2px 6px;
-  background: rgba(139, 92, 246, 0.1);
-  color: #7c3aed;
+  padding: 1px 6px;
+  background: #f8fafc;
+  color: #64748b;
   border-radius: 4px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.3px;
+  border: 1px solid #e2e8f0;
 }
 
 .dataset-delete-btn {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border: none;
-  background: rgba(239, 68, 68, 0.1);
+  background: transparent;
   border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #dc2626;
-  font-size: 10px;
+  color: #ef4444;
+  font-size: 12px;
   opacity: 0;
   margin-left: 4px;
 }
@@ -1284,8 +1365,8 @@ onUnmounted(() => {
 }
 
 .dataset-delete-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-  transform: scale(1.1);
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 .dataset-meta {
@@ -1398,7 +1479,7 @@ onUnmounted(() => {
 }
 
 .main-header {
-  border-bottom: 1px solid rgba(229, 231, 235, 0.4);
+  border-bottom: none;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
 }
@@ -1408,25 +1489,9 @@ onUnmounted(() => {
   transition: all 0.3s ease;
 }
 
-.main-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 24px;
-}
-
-.breadcrumb-section {
-  flex: 1;
-}
-
-.toolbar-actions {
-  display: flex;
-  gap: 12px;
-}
-
 .content-area {
   flex: 1;
-  padding: 24px;
+  padding: 0;
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
   overflow: hidden; /* 防止外层滚动，强制内部滚动 */
   position: relative;
@@ -1458,44 +1523,6 @@ onUnmounted(() => {
   .project-item {
     padding: 12px;
   }
-
-  .main-toolbar {
-    flex-direction: column;
-    gap: 12px;
-    align-items: stretch;
-  }
-
-  .toolbar-actions {
-    justify-content: center;
-  }
-}
-
-/* 微动画 */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.project-item {
-  animation: fadeInUp 0.3s ease forwards;
-}
-
-.project-item:nth-child(2) {
-  animation-delay: 0.1s;
-}
-
-.project-item:nth-child(3) {
-  animation-delay: 0.2s;
-}
-
-.project-item:nth-child(4) {
-  animation-delay: 0.3s;
 }
 
 :deep(.el-dropdown-menu__item.active) {

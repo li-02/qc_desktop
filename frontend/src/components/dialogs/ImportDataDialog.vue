@@ -3,7 +3,18 @@ import { computed, ref } from "vue";
 // 第三步 上传文件
 import type { UploadInstance } from "element-plus";
 import { ElMessage } from "element-plus";
-import { UploadFilled, TrendCharts, Odometer, Sunny, Pouring, Lightning, Document, Plus, Setting, Refresh } from "@element-plus/icons-vue";
+import {
+  UploadFilled,
+  TrendCharts,
+  Odometer,
+  Sunny,
+  Pouring,
+  Lightning,
+  Document,
+  Plus,
+  Setting,
+  Refresh,
+} from "@element-plus/icons-vue";
 // import type {ElectronWindow} from "@shared/types/window";
 import type { TableColumns } from "@pureadmin/table";
 import PureTable from "@pureadmin/table";
@@ -78,48 +89,81 @@ const missingValueTypes = ref(missingTypesList.value.map(t => t.value)); // 选�
 // 文件处理状态
 const fileProcessing = ref(false);
 
+const canCloseDialog = computed(() => !loading.value && !fileProcessing.value);
+const canGoPrev = computed(() => currentStep.value > 0 && canCloseDialog.value);
+const canGoNext = computed(() => {
+  if (!canCloseDialog.value || currentStep.value >= stepForm.value.length - 1) return false;
+  if (currentStep.value === 1) {
+    return Boolean(datasetName.value.trim()) && Boolean(selectedFile.value);
+  }
+  return true;
+});
+const canImport = computed(() => {
+  return (
+    currentStep.value === stepForm.value.length - 1 &&
+    canCloseDialog.value &&
+    Boolean(projectStore.currentProject) &&
+    Boolean(datasetName.value.trim()) &&
+    Boolean(selectedDataType.value) &&
+    Boolean(selectedFile.value) &&
+    columns.value.length > 0 &&
+    missingValueTypes.value.length > 0
+  );
+});
+const currentStepDesc = computed(() => {
+  if (currentStep.value === 0) return "先选择数据类型，后续将按类型组织导入和分析流程。";
+  if (currentStep.value === 1) return "填写数据集名称并上传文件，系统会自动解析预览。";
+  return "确认数据预览与缺失值配置，然后执行导入。";
+});
+const selectedFileSizeText = computed(() => {
+  if (!selectedFile.value) return "0 B";
+  const size = selectedFile.value.size;
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+});
+
 // 获取用户系统时区
 const getSystemTimezone = (): string => {
   try {
     // 获取用户系统时区
     const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    console.log('检测到用户系统时区:', userTimezone);
+    console.log("检测到用户系统时区:", userTimezone);
 
     // 转换为我们支持的格式
     const timezoneMap: Record<string, string> = {
-      'Asia/Shanghai': 'UTC+8',
-      'Asia/Hong_Kong': 'UTC+8',
-      'Asia/Taipei': 'UTC+8',
-      'Asia/Seoul': 'UTC+9',
-      'Asia/Tokyo': 'UTC+9',
-      'Asia/Singapore': 'UTC+8',
-      'Asia/Kuala_Lumpur': 'UTC+8',
-      'Asia/Bangkok': 'UTC+7',
-      'Asia/Jakarta': 'UTC+7',
-      'Asia/Manila': 'UTC+8',
-      'Australia/Sydney': 'UTC+10',
-      'Australia/Melbourne': 'UTC+10',
-      'Australia/Perth': 'UTC+8',
-      'Pacific/Auckland': 'UTC+12',
-      'America/New_York': 'UTC-5',
-      'America/Chicago': 'UTC-6',
-      'America/Denver': 'UTC-7',
-      'America/Los_Angeles': 'UTC-8',
-      'Europe/London': 'UTC+0',
-      'Europe/Paris': 'UTC+1',
-      'Europe/Berlin': 'UTC+1',
-      'Europe/Moscow': 'UTC+3',
+      "Asia/Shanghai": "UTC+8",
+      "Asia/Hong_Kong": "UTC+8",
+      "Asia/Taipei": "UTC+8",
+      "Asia/Seoul": "UTC+9",
+      "Asia/Tokyo": "UTC+9",
+      "Asia/Singapore": "UTC+8",
+      "Asia/Kuala_Lumpur": "UTC+8",
+      "Asia/Bangkok": "UTC+7",
+      "Asia/Jakarta": "UTC+7",
+      "Asia/Manila": "UTC+8",
+      "Australia/Sydney": "UTC+10",
+      "Australia/Melbourne": "UTC+10",
+      "Australia/Perth": "UTC+8",
+      "Pacific/Auckland": "UTC+12",
+      "America/New_York": "UTC-5",
+      "America/Chicago": "UTC-6",
+      "America/Denver": "UTC-7",
+      "America/Los_Angeles": "UTC-8",
+      "Europe/London": "UTC+0",
+      "Europe/Paris": "UTC+1",
+      "Europe/Berlin": "UTC+1",
+      "Europe/Moscow": "UTC+3",
     };
 
-    const detectedTimezone = timezoneMap[userTimezone] || 'UTC+8'; // 默认北京时间
-    console.log('转换为应用程序时区格式:', detectedTimezone);
+    const detectedTimezone = timezoneMap[userTimezone] || "UTC+8"; // 默认北京时间
+    console.log("转换为应用程序时区格式:", detectedTimezone);
     return detectedTimezone;
   } catch (error) {
-    console.warn('无法获取系统时区，使用默认时区:', error);
-    return 'UTC+8'; // 默认北京时间
+    console.warn("无法获取系统时区，使用默认时区:", error);
+    return "UTC+8"; // 默认北京时间
   }
 };
-
 
 // 第二步 选择数据类型
 const dataOptions = [
@@ -172,10 +216,9 @@ const optimizedColumns = computed(() => {
     // 原始列定义复制
     const optimizedColumn = { ...column };
 
-
     // 如果是对象，添加width和minWidth属性
     if (typeof optimizedColumn === "object") {
-    // 根据列标题长度动态设置最小宽度
+      // 根据列标题长度动态设置最小宽度
       const titleLength = optimizedColumn.label?.toString().length || 0;
       const minColWidth = Math.max(100, titleLength * 12); // 最小100px
 
@@ -198,7 +241,6 @@ const optimizedColumns = computed(() => {
   });
 });
 
-
 /**
  * 点击增加缺失值类型
  */
@@ -212,7 +254,7 @@ const onConfirm = async () => {
   if (optionName.value) {
     // Check if it already exists
     const exists = missingTypesList.value.some(item => item.value === optionName.value);
-    
+
     if (!exists) {
       missingTypesList.value.push({
         label: optionName.value,
@@ -221,12 +263,12 @@ const onConfirm = async () => {
       // Save to settings
       await settingsStore.addCustomMissingType(optionName.value);
     }
-    
+
     // Select it if not already selected
     if (!missingValueTypes.value.includes(optionName.value)) {
       missingValueTypes.value.push(optionName.value);
     }
-    
+
     clearInputOption();
   }
 };
@@ -238,14 +280,25 @@ const clearInputOption = () => {
   isAdding.value = false;
 };
 const prevStep = () => {
-  if (currentStep.value > 0) {
+  if (canGoPrev.value) {
     currentStep.value--;
   }
 };
 const nextStep = () => {
-  if (currentStep.value < stepForm.value.length - 1) {
-    currentStep.value++;
+  if (!canGoNext.value) {
+    if (currentStep.value === 1) {
+      if (!datasetName.value.trim()) {
+        ElMessage.warning("请先填写数据集名称");
+        return;
+      }
+      if (!selectedFile.value) {
+        ElMessage.warning("请先上传数据文件");
+        return;
+      }
+    }
+    return;
   }
+  currentStep.value++;
 };
 /**
  * 提交导入选项
@@ -282,12 +335,12 @@ const submitImportOption = async () => {
 
   // 设置 loading 状态，防止重复提交
   loading.value = true;
-  
+
   try {
     const pureData = {
       projectId: projectStore.currentProject!.id,
       importOption: {
-        datasetName: String(datasetName.value),
+        datasetName: String(datasetName.value).trim(),
         type: String(selectedDataType.value),
         file: {
           name: String(selectedFile.value!.name),
@@ -304,10 +357,10 @@ const submitImportOption = async () => {
         sourceTimezone: getSystemTimezone(),
       },
     };
-    
+
     // 让 UI 更新 loading 状态后再执行导入
     await new Promise(resolve => setTimeout(resolve, 0));
-    
+
     const result = await datasetStore.importData(pureData.importOption);
     if (result) {
       ElMessage.success("数据导入成功");
@@ -329,6 +382,7 @@ const handleFileChange = (file: any) => {
     const fileType = file.name.split(".").pop()?.toLowerCase();
     if (!["csv", "xlsx", "xls"].includes(fileType || "")) {
       ElMessage.error("只支持CSV,Excel(xlsx/xls)文件");
+      handleRemove();
       return;
     }
     selectedFile.value = file.raw;
@@ -344,6 +398,9 @@ const handleFileChange = (file: any) => {
         path: filePath,
       },
     ];
+    if (!datasetName.value.trim()) {
+      datasetName.value = file.name.replace(/\.[^/.]+$/, "");
+    }
     processFile(file.raw, fileType || "");
   }
 };
@@ -357,7 +414,7 @@ const processFile = async (file: File, fileType: string) => {
   tableData.value = [];
   columns.value = [];
   totalRowCount.value = 0;
-  
+
   try {
     // 使用 Promise 包装 FileReader，避免回调嵌套
     const fileContent = await new Promise<string | ArrayBuffer>((resolve, reject) => {
@@ -370,7 +427,7 @@ const processFile = async (file: File, fileType: string) => {
         }
       };
       reader.onerror = () => reject(new Error("读取文件失败"));
-      
+
       if (fileType === "csv") {
         reader.readAsText(file);
       } else {
@@ -380,18 +437,18 @@ const processFile = async (file: File, fileType: string) => {
 
     // 使用 nextTick 让 UI 更新后再调用 IPC
     await new Promise(resolve => setTimeout(resolve, 0));
-    
+
     const type = fileType === "csv" ? "csv" : "excel";
     const result = await window.electronAPI.invoke(API_ROUTES.FILES.PARSE_PREVIEW, {
       fileType: type,
       fileContent: fileContent,
       maxRows: 20,
     });
-    
+
     if (!result.success) {
       throw new Error(result.error || "解析文件失败");
     }
-    
+
     columns.value = result.data.columns;
     tableData.value = result.data.tableData;
     totalRowCount.value = result.data.totalRows;
@@ -411,7 +468,7 @@ const handleExceed = () => {
 // 打开对话框
 const open = async () => {
   dialogVisible.value = true;
-  
+
   // Load custom missing types
   const customTypes = await settingsStore.getCustomMissingTypes();
   if (customTypes && customTypes.length > 0) {
@@ -421,10 +478,10 @@ const open = async () => {
       if (!missingTypesList.value.some(item => item.value === type)) {
         missingTypesList.value.push({
           label: type,
-          value: type
+          value: type,
         });
       }
-      
+
       // Select it if not already selected (ensure it's default selected)
       if (!missingValueTypes.value.includes(type)) {
         missingValueTypes.value.push(type);
@@ -439,10 +496,12 @@ const handleRemove = () => {
   fileList.value = [];
   columns.value = [];
   tableData.value = [];
+  totalRowCount.value = 0;
 };
 
 // 关闭对话框
 const close = () => {
+  if (!canCloseDialog.value) return;
   dialogVisible.value = false;
   // 清除导入选项
   datasetName.value = "";
@@ -477,16 +536,29 @@ defineExpose({
 <template>
   <el-dialog
     v-model="dialogVisible"
-    title="导入数据"
     width="750px"
-    class="fixed-steps-dialog emerald-glassmorphism"
+    class="fixed-steps-dialog"
     destroy-on-close
+    :close-on-click-modal="canCloseDialog"
+    :close-on-press-escape="canCloseDialog"
+    :show-close="canCloseDialog"
     @closed="handleClosed">
+    <template #header>
+      <div class="dialog-header">
+        <div class="dialog-header-icon">入</div>
+        <div class="dialog-header-text">
+          <div class="dialog-title">导入数据</div>
+          <div class="dialog-subtitle">按步骤完成类型选择、文件上传和参数配置</div>
+        </div>
+      </div>
+    </template>
+
     <el-steps class="dialog-steps" :active="currentStep" finish-status="success" align-center>
       <el-step title="选择数据类型" />
       <el-step title="上传文件" />
       <el-step title="配置参数" />
     </el-steps>
+    <div class="step-desc">{{ currentStepDesc }}</div>
 
     <div class="dialog-content-wrapper">
       <div v-if="currentStep === 0" class="step-container fade-in">
@@ -547,6 +619,10 @@ defineExpose({
             </div>
           </div>
         </el-upload>
+        <div v-if="selectedFile" class="selected-file-tip">
+          <span>{{ selectedFile.name }}</span>
+          <span>{{ selectedFileSizeText }}</span>
+        </div>
         <!-- 文件处理中的加载提示 -->
         <div v-if="fileProcessing" class="file-processing-overlay">
           <div class="processing-content">
@@ -559,7 +635,6 @@ defineExpose({
       <div v-if="currentStep === 2" class="fade-in">
         <div class="step-content flex-column">
           <div class="info-card overview-card">
-
             <!-- 表格预览部分 -->
             <div class="preview-container">
               <div v-if="columns.length > 0" class="table-container">
@@ -578,9 +653,7 @@ defineExpose({
               </div>
 
               <!-- 无数据时显示的提示 -->
-              <div
-                v-else-if="!fileProcessing"
-                class="empty-preview">
+              <div v-else-if="!fileProcessing" class="empty-preview">
                 <el-icon class="preview-icon">
                   <document />
                 </el-icon>
@@ -588,7 +661,6 @@ defineExpose({
               </div>
             </div>
           </div>
-
           <!-- 参数配置区域 -->
           <div class="info-card">
             <div class="section-header">
@@ -599,31 +671,25 @@ defineExpose({
               <div class="config-item">
                 <label class="config-label">缺失值表示:</label>
                 <div class="config-content">
-                  <el-select
-                    v-model="missingValueTypes"
-                    placeholder="缺失值示例"
-                    class="full-width-input"
-                    multiple>
+                  <el-select v-model="missingValueTypes" placeholder="缺失值示例" class="full-width-input" multiple>
                     <el-option
                       v-for="item in missingTypesList"
                       :key="item.value"
                       :label="item.label"
                       :value="item.value" />
                     <template #footer>
-                      <el-button
-                        v-if="!isAdding"
-                        text
-                        bg
-                        size="small"
-                        @click="onAddOption"
-                        class="btn-text-primary">
+                      <el-button v-if="!isAdding" text bg size="small" @click="onAddOption" class="btn-text-primary">
                         <el-icon class="btn-icon">
                           <plus />
                         </el-icon>
                         新增示例
                       </el-button>
                       <div v-else class="add-option-container">
-                        <el-input v-model="optionName" class="option-input mb-2" placeholder="输入新示例" size="small" />
+                        <el-input
+                          v-model="optionName"
+                          class="option-input mb-2"
+                          placeholder="输入新示例"
+                          size="small" />
                         <div class="button-group">
                           <el-button type="primary" size="small" color="#10b981" @click="onConfirm">确认</el-button>
                           <el-button size="small" @click="clearInputOption">取消</el-button>
@@ -641,14 +707,14 @@ defineExpose({
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button class="btn-secondary" @click="close">取消</el-button>
-        <el-button class="btn-secondary" @click="prevStep" :disabled="currentStep === 0">上一步</el-button>
-        <el-button class="btn-secondary" @click="nextStep" :disabled="currentStep === 2">下一步</el-button>
+        <el-button class="btn-secondary" :disabled="!canCloseDialog" @click="close">取消</el-button>
+        <el-button class="btn-secondary" :disabled="!canGoPrev" @click="prevStep">上一步</el-button>
+        <el-button class="btn-secondary" :disabled="!canGoNext" @click="nextStep">下一步</el-button>
         <el-button
           type="primary"
           class="btn-primary"
           :loading="loading"
-          :disabled="currentStep !== 2 || loading"
+          :disabled="!canImport"
           @click="submitImportOption">
           确认导入
         </el-button>
@@ -658,92 +724,133 @@ defineExpose({
 </template>
 
 <style>
-/* Global Dialog Overrides - Non-scoped to ensure they apply to teleported dialog */
 .fixed-steps-dialog.el-dialog {
-  border-radius: 20px !important;
+  --dlg-surface: #f8fafc;
+  --dlg-surface-elevated: #ffffff;
+  --dlg-border: #e2e8f0;
+  --dlg-text: #1e293b;
+  --dlg-muted: #64748b;
+  --dlg-accent: #10b981;
+  border-radius: 12px !important;
+  border: 1px solid var(--dlg-border);
   overflow: hidden;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  background: rgba(255, 255, 255, 0.98);
-  backdrop-filter: blur(20px);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+  background: var(--dlg-surface-elevated);
   display: flex !important;
   flex-direction: column !important;
-  height: 680px !important; /* Increased from 600px */
+  height: 700px !important;
   max-height: 90vh !important;
-  margin-top: 5vh !important; /* Adjusted */
+  margin-top: 5vh !important;
   --el-dialog-padding-primary: 0;
-  --el-dialog-content-font-size: 14px;
 }
 
 .fixed-steps-dialog .el-dialog__header {
   margin: 0;
-  padding: 16px 24px;
-  border-bottom: 1px solid rgba(16, 185, 129, 0.1);
-  background: linear-gradient(to right, #f0fdf4, #ffffff);
-  margin-right: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--dlg-border);
+  background: var(--dlg-surface);
   flex-shrink: 0;
+  margin-right: 0;
 }
 
-.fixed-steps-dialog .el-dialog__title {
-  color: #047857;
-  font-weight: 700;
-  font-size: 1.25rem;
+.fixed-steps-dialog .el-dialog__headerbtn {
+  top: 16px;
+  right: 16px;
 }
 
 .fixed-steps-dialog .el-dialog__headerbtn .el-dialog__close {
-  font-size: 1.25rem;
+  font-size: 18px;
   color: #9ca3af;
   transition: all 0.2s;
 }
 
 .fixed-steps-dialog .el-dialog__headerbtn:hover .el-dialog__close {
-  color: #10b981;
-  transform: rotate(90deg);
+  color: var(--dlg-accent);
 }
 
 .fixed-steps-dialog .el-dialog__body {
   padding: 0 !important;
   flex: 1 !important;
-  height: auto !important; /* Override explicit height from element styling if any */
+  height: auto !important;
   overflow: hidden !important;
   display: flex !important;
   flex-direction: column !important;
 }
 
 .fixed-steps-dialog .el-dialog__footer {
-  padding: 16px 30px;
-  border-top: 1px solid #f3f4f6;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--dlg-border);
+  background: var(--dlg-surface);
   flex-shrink: 0;
-  background-color: white; /* Ensure background is solid */
 }
 </style>
 
 <style scoped>
-/* Dialog & Layout */
-.fixed-steps-dialog {
-  --el-color-primary: #10b981;
-  --el-color-primary-light-3: #6ee7b7;
-  --el-color-primary-light-5: #a7f3d0;
-  --el-color-primary-light-7: #d1fae5;
-  --el-color-primary-light-8: #ecfdf5;
-  --el-color-primary-light-9: #f0fdf4;
-  --el-color-primary-dark-2: #059669;
+.dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+}
+
+.dialog-header-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid #a7f3d0;
+  background: #d1fae5;
+  color: #047857;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog-title {
+  color: #1e293b;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.dialog-subtitle {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.dialog-steps {
+  width: 100%;
+  padding: 12px 20px 4px;
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+
+.step-desc {
+  margin: 0 20px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 12px;
 }
 
 .dialog-content-wrapper {
-  /* padding moved to overrides */
-  display: flex;
-  flex-direction: column;
+  padding: 10px 20px;
+  flex: 1;
+  overflow-y: auto;
 }
 
-/* Animations */
 .fade-in {
-  animation: fadeIn 0.4s ease-out;
+  animation: fadeIn 0.2s ease-out;
 }
 
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -751,167 +858,130 @@ defineExpose({
   }
 }
 
-/* Stepper Customization */
-.dialog-steps {
-  width: 100%;
-  padding: 10px 30px 0; /* Moved padding here */
-  margin-bottom: 5px;
-  flex-shrink: 0;
-}
-
 :deep(.el-step__head.is-process) {
-  color: #10b981;
-  border-color: #10b981;
+  color: #059669;
+  border-color: #059669;
 }
 
 :deep(.el-step__head.is-process .el-step__icon) {
-  background: #ecfdf5;
-  border: 2px solid #10b981;
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+  background: #f0fdf4;
+  border: 1px solid #10b981;
+  box-shadow: none;
 }
 
 :deep(.el-step__title.is-process) {
-  font-weight: 700;
-  color: #10b981;
-}
-
-:deep(.el-step__head.is-success) {
-  color: #10b981;
-  border-color: #10b981;
-}
-
-:deep(.el-step__title.is-success) {
-  color: #10b981;
+  color: #047857;
   font-weight: 600;
 }
 
-/* Step 0: Data Type Cards */
+:deep(.el-step__head.is-success) {
+  color: #059669;
+  border-color: #059669;
+}
+
+:deep(.el-step__title.is-success) {
+  color: #059669;
+  font-weight: 600;
+}
+
 .step-container {
-  padding: 8px 4px;
-  margin: auto 0;
+  padding: 2px 0;
   width: 100%;
+  position: relative;
 }
 
 .data-type-grid {
   display: grid;
-  grid-template-columns: repeat(1, 1fr);
-  gap: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
-@media (min-width: 640px) {
+@media (max-width: 740px) {
   .data-type-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(1, minmax(0, 1fr));
   }
 }
 
 .data-type-card {
-  position: relative;
   display: flex;
   align-items: center;
-  padding: 24px;
-  border-radius: 16px;
-  border: 1px solid #e5e7eb;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
   background: #ffffff;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  height: 110px;
-  overflow: hidden;
-}
-
-.data-type-card::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  background: linear-gradient(to bottom, #10b981, #34d399);
-  opacity: 0;
-  transition: opacity 0.3s;
+  transition: all 0.2s ease;
+  min-height: 82px;
 }
 
 .data-type-card:hover {
-  border-color: #a7f3d0;
-  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.08);
-  transform: translateY(-4px);
-}
-
-.data-type-card:hover::before {
-  opacity: 1;
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .data-type-card.is-active {
-  background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
-  border-color: #10b981;
-  box-shadow: 0 0 0 1px #10b981, 0 10px 20px -3px rgba(16, 185, 129, 0.15);
-}
-
-.data-type-card.is-active::before {
-  opacity: 1;
+  background: #f8fffb;
+  border-color: #86efac;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
 }
 
 .card-icon {
-  margin-right: 20px;
-  width: 56px;
-  height: 56px;
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
-  border-radius: 12px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #f3f4f6;
-  color: #9ca3af;
-  transition: all 0.3s ease;
+  background: #f8fafc;
+  color: #64748b;
+  transition: all 0.2s;
 }
 
 .data-type-card:hover .card-icon {
-  background-color: #d1fae5;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
   color: #059669;
-  transform: scale(1.05);
 }
 
 .data-type-card.is-active .card-icon {
-  background: linear-gradient(135deg, #34d399 0%, #059669 100%);
-  color: white;
-  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);
+  background: #d1fae5;
+  border-color: #86efac;
+  color: #047857;
 }
 
 .card-content {
   flex: 1;
   min-width: 0;
-  padding-right: 16px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+  padding-right: 8px;
 }
 
 .card-title {
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: #374151;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
   margin: 0 0 4px 0;
 }
 
 .card-desc {
-  font-size: 0.8125rem;
-  color: #6b7280;
+  font-size: 12px;
+  color: #64748b;
   margin: 0;
 }
 
 .card-radio {
-  position: absolute;
-  top: 50%;
-  right: 20px;
-  transform: translateY(-50%);
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  border: 2px solid #d1d5db;
+  border: 1px solid #cbd5e1;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: white;
-  transition: all 0.3s;
+  background: #ffffff;
+  flex-shrink: 0;
+  transition: all 0.2s;
 }
 
 .data-type-card.is-active .card-radio {
@@ -920,56 +990,57 @@ defineExpose({
 }
 
 .radio-inner {
-  width: 10px;
-  height: 10px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background-color: white;
-}
-
-/* Step 1: Upload & Input */
-.input-group {
-  margin-bottom: 24px;
+  background: #ffffff;
 }
 
 .input-label {
-  font-size: 0.95rem;
+  font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: #334155;
   margin-bottom: 8px;
+}
+
+.input-group {
+  margin-bottom: 14px;
+}
+
+.custom-upload {
+  margin-top: 6px;
 }
 
 .custom-input :deep(.el-input__wrapper) {
   border-radius: 8px;
-  box-shadow: 0 0 0 1px #e5e7eb inset;
-  padding: 8px 15px;
-  transition: all 0.3s;
+  box-shadow: 0 0 0 1px #e2e8f0 inset;
+  transition: all 0.2s;
 }
 
 .custom-input :deep(.el-input__wrapper:hover) {
-  box-shadow: 0 0 0 1px #a7f3d0 inset;
+  box-shadow: 0 0 0 1px #cbd5e1 inset;
 }
 
 .custom-input :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2) inset, 0 0 0 1px #10b981 inset !important;
+  box-shadow: 0 0 0 1px #10b981 inset !important;
 }
 
-/* Upload Styling */
 .custom-upload :deep(.el-upload-dragger) {
-  padding: 20px;
+  padding: 16px;
   height: auto;
-  min-height: 160px;
+  min-height: 150px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px dashed #d1d5db;
-  border-radius: 12px;
-  background-color: #f9fafb;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+  transition: all 0.2s ease;
 }
 
 .custom-upload :deep(.el-upload-dragger:hover) {
-  border-color: #10b981;
-  background-color: #ecfdf5;
+  border-color: #86efac;
+  background: #f0fdf4;
 }
 
 .upload-content {
@@ -980,27 +1051,28 @@ defineExpose({
 }
 
 .upload-icon-wrapper {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background-color: #f3f4f6;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 12px;
-  transition: all 0.3s;
+  margin-bottom: 10px;
+  transition: all 0.2s;
 }
 
 .custom-upload :deep(.el-upload-dragger:hover) .upload-icon-wrapper {
-  background-color: #d1fae5;
-  transform: scale(1.1);
+  background: #d1fae5;
+  border-color: #86efac;
 }
 
 .custom-upload .el-icon--upload {
-  font-size: 24px;
-  color: #9ca3af;
+  font-size: 20px;
+  color: #94a3b8;
   margin: 0;
-  transition: color 0.3s;
+  transition: color 0.2s;
 }
 
 .custom-upload :deep(.el-upload-dragger:hover) .el-icon--upload {
@@ -1008,123 +1080,75 @@ defineExpose({
 }
 
 .upload-text h3 {
-  font-size: 1rem;
+  font-size: 14px;
   font-weight: 600;
-  color: #374151;
+  color: #334155;
   margin: 0 0 4px 0;
 }
 
 .upload-text p {
-  font-size: 0.875rem;
-  color: #6b7280;
+  font-size: 12px;
+  color: #64748b;
   margin: 0 0 2px 0;
 }
 
 .upload-limit {
-  font-size: 0.8rem !important;
-  color: #9ca3af !important;
-  margin-top: 8px !important;
+  font-size: 11px !important;
+  color: #94a3b8 !important;
+  margin-top: 6px !important;
 }
 
-/* Step 2: Info & Config */
-.info-card {
-  background-color: white;
-  border-radius: 12px;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
-  margin-bottom: 8px;
-  transition: box-shadow 0.3s;
-}
-
-.info-card:hover {
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-}
-
-/* Overview Card Styles matching screenshot */
-.overview-card {
-  background: #ecfdf5 !important; /* Emerald-50 */
-  border: none !important;
-  padding: 20px !important;
+.selected-file-tip {
+  margin-top: 14px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  font-size: 12px;
   display: flex;
-  flex-direction: column;
-  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
+.info-card {
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
 
-/* Original Styles to Keep or Override */
+.overview-card {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  padding: 8px !important;
+}
+
 .preview-container {
-  padding: 8px;
-  background-color: #fff;
+  padding: 0;
+  background: #fff;
 }
 
 .data-preview-table {
   border-radius: 8px;
-  border: 1px solid #f3f4f6;
-}
-
-/* Dialog Footer */
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.btn-secondary {
-  border-radius: 8px !important;
-  padding: 10px 24px !important;
-  height: 40px !important;
-  font-weight: 500 !important;
-}
-
-.btn-secondary:hover {
-  background-color: #ecfdf5 !important;
-  color: #059669 !important;
-  border-color: #a7f3d0 !important;
-}
-
-.btn-primary {
-  border-radius: 8px !important;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
-  border: none !important;
-  padding: 10px 24px !important;
-  height: 40px !important;
-  font-weight: 600 !important;
-  box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.3);
-  transition: all 0.3s !important;
-}
-
-.btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.4) !important;
-}
-
-.btn-primary:active {
-  transform: translateY(0);
-}
-
-/* Global Dialog Overrides REMOVED - Moved to non-scoped style */
-
-.dialog-content-wrapper {
-  padding: 0 30px 10px; /* Adjust padding */
-  flex: 1;
-  overflow-y: auto;
+  border: 1px solid #e2e8f0;
 }
 
 .config-item {
   display: flex;
   align-items: center;
-  background-color: #f9fafb;
+  background-color: #f8fafc;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   padding: 10px;
-  transition: all 0.3s;
-  gap: 16px; /* Added spacing */
+  transition: all 0.2s;
+  gap: 12px;
 }
 
 .config-item:hover {
-  border-color: #d1fae5;
-  background-color: #f0fdf4;
+  border-color: #cbd5e1;
 }
 
 .config-label {
@@ -1143,33 +1167,31 @@ defineExpose({
 }
 
 .config-body {
-  padding: 20px;
+  padding: 10px;
 }
 
 .section-header {
-  padding: 14px 20px;
-  background: linear-gradient(to right, #f0fdf4, #ffffff);
-  border-bottom: 1px solid rgba(16, 185, 129, 0.1);
+  padding: 10px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .header-icon {
   color: #10b981;
-  font-size: 20px;
+  font-size: 16px;
   display: flex;
   align-items: center;
 }
 
 .header-title {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #065f46;
-  letter-spacing: 0.5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
 }
 
-/* File Processing Overlay */
 .file-processing-overlay {
   position: absolute;
   top: 0;
@@ -1181,7 +1203,7 @@ defineExpose({
   align-items: center;
   justify-content: center;
   z-index: 10;
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
 .processing-content {
@@ -1193,40 +1215,72 @@ defineExpose({
 }
 
 .processing-icon {
-  font-size: 32px;
+  font-size: 24px;
 }
 
 .processing-icon.is-loading {
   animation: spin 1s linear infinite;
 }
 
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.step-container {
-  position: relative;
-}
-
-/* Scrollbar Customization */
-::-webkit-scrollbar {
+:deep(::-webkit-scrollbar) {
   width: 8px;
   height: 8px;
 }
 
-::-webkit-scrollbar-track {
+:deep(::-webkit-scrollbar-track) {
   background: #f1f1f1;
   border-radius: 4px;
 }
 
-::-webkit-scrollbar-thumb {
+:deep(::-webkit-scrollbar-thumb) {
   background: #d1d5db;
   border-radius: 4px;
 }
 
-::-webkit-scrollbar-thumb:hover {
+:deep(::-webkit-scrollbar-thumb:hover) {
   background: #9ca3af;
 }
 
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dialog-footer .el-button {
+  height: 36px;
+  min-width: 110px;
+  padding: 0 18px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.btn-secondary {
+  border: 1px solid #cbd5e1 !important;
+  background: #ffffff !important;
+  color: #334155 !important;
+}
+
+.btn-secondary:hover {
+  border-color: #a7f3d0 !important;
+  color: #059669 !important;
+  background: #ecfdf5 !important;
+}
+
+.btn-primary {
+  background: #10b981 !important;
+  border: 1px solid #10b981 !important;
+  color: #ffffff !important;
+}
+
+.btn-primary:hover {
+  background: #059669 !important;
+  border-color: #059669 !important;
+}
+
+.btn-primary.is-disabled {
+  background: #9ca3af !important;
+  border-color: #9ca3af !important;
+  color: #ffffff !important;
+}
 </style>

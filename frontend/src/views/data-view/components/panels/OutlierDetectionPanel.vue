@@ -652,7 +652,7 @@ onMounted(() => {
       <!-- 侧边栏：历史记录 -->
       <div class="panel-sidebar glass-panel">
         <div class="sidebar-header">
-          <button class="new-detection-btn" @click="switchToConfig" :class="{ active: activeView === 'config' }">
+          <button class="new-detection-btn" @click="switchToConfig">
             <el-icon><Plus /></el-icon>
             <span>新建检测</span>
           </button>
@@ -1155,8 +1155,7 @@ onMounted(() => {
   transition: all 0.2s ease;
 }
 
-.new-detection-btn:hover,
-.new-detection-btn.active {
+.new-detection-btn:hover {
   background: #059669;
 }
 

@@ -31,6 +31,9 @@ const loadVersions = async () => {
   try {
     await datasetStore.loadVersions(props.datasetId);
     versions.value = datasetStore.versions;
+    if (flattenedVersions.value.length > 0) {
+      emit("select-version", flattenedVersions.value[0].id);
+    }
   } catch (error) {
     console.error("Failed to load versions:", error);
   } finally {

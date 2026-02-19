@@ -173,25 +173,16 @@ const selectProject = (projectId: string) => {
 
 const handleProjectClick = (projectId: string) => {
   selectProject(projectId);
-  // toggleProjectExpanded(projectId); // Expansion is now handled only by the caret
-};
-
-// 数据集选择
-const selectDataset = (projectId: string, datasetId: string) => {
-  projectStore.setCurrentProject(projectId);
-  datasetStore.setCurrentDataset(datasetId);
-  // 自动展开数据集版本树
-  expandedDatasets.value.add(datasetId);
-  router.push("/data-view");
+  toggleProjectExpanded(projectId);
 };
 
 // 处理版本选择
-const handleVersionSelect = (projectId: string, datasetId: string, versionId: number) => {
+const handleVersionSelect = async (projectId: string, datasetId: string, versionId: number) => {
   projectStore.setCurrentProject(projectId);
   if (datasetStore.currentDataset?.id !== datasetId) {
-    datasetStore.setCurrentDataset(datasetId);
+    await datasetStore.setCurrentDataset(datasetId);
   }
-  datasetStore.setCurrentVersion(versionId);
+  await datasetStore.setCurrentVersion(versionId);
   router.push("/data-view");
 };
 
@@ -543,7 +534,7 @@ onUnmounted(() => {
                           expanded: isDatasetExpanded(dataset.id),
                         },
                       ]"
-                      @click.stop="selectDataset(project.id, dataset.id)">
+                      @click.stop="toggleDatasetExpanded(dataset.id)">
                       <div class="dataset-header">
                         <!-- 展开/收起按钮 -->
                         <button

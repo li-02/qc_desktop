@@ -14,7 +14,6 @@ import {
   Close,
   InfoFilled,
   Search,
-  Edit,
   ArrowRight,
   Connection,
 } from "@element-plus/icons-vue";
@@ -37,7 +36,7 @@ import { useGapFillingStore } from "@/stores/useGapFillingStore";
 import { translateRemark } from "@/utils/versionUtils";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
 import * as echarts from "echarts";
-import MissingAnalysisView from "../gapfilling/MissingAnalysisView.vue";
+import MissingMarkersEditor from "../common/MissingMarkersEditor.vue";
 
 // ==================== Props & Emits ====================
 interface ColumnInfo {
@@ -64,7 +63,6 @@ const emit = defineEmits<{
 // ==================== 视图模式 ====================
 type ViewMode = "config" | "result";
 const currentView = ref<ViewMode>("config");
-const activeModule = ref<"detection" | "analysis" | "imputation">("detection");
 
 // 监听视图模式变化，离开结果页时销毁图表
 watch(currentView, newVal => {
@@ -1421,27 +1419,7 @@ onUnmounted(() => {
 
             <!-- 检测控制行 -->
             <div class="detection-bar">
-              <div class="detection-bar-left">
-                <span class="bar-label">缺失值标记：</span>
-                <div class="markers-inline">
-                  <el-tag
-                    v-for="marker in datasetStore.currentDatasetMissingMarkers"
-                    :key="marker"
-                    size="small"
-                    type="info"
-                    effect="light"
-                    class="marker-tag">
-                    "{{ marker }}"
-                  </el-tag>
-                  <el-tag
-                    v-if="datasetStore.currentDatasetMissingMarkers.length === 0"
-                    size="small"
-                    type="warning"
-                    effect="light">
-                    无配置
-                  </el-tag>
-                </div>
-              </div>
+              <MissingMarkersEditor />
               <el-button
                 type="primary"
                 :loading="gapFillingStore.loading"
@@ -1513,97 +1491,8 @@ onUnmounted(() => {
 
           <!-- 检测完成后的主内容 -->
           <template v-if="gapFillingStore.hasStats">
-            <!-- 模块切换Tabs -->
-            <div class="module-switch-tabs">
-              <div
-                class="module-tab-item"
-                :class="{ 'module-tab-item--active': activeModule === 'detection' }"
-                @click="activeModule = 'detection'">
-                <el-icon><Search /></el-icon>
-                <span>缺失分析</span>
-              </div>
-              <div
-                class="module-tab-item"
-                :class="{ 'module-tab-item--active': activeModule === 'imputation' }"
-                @click="activeModule = 'imputation'">
-                <el-icon><Edit /></el-icon>
-                <span>执行插补</span>
-              </div>
-            </div>
-
-            <!-- 缺失分析模块 -->
-            <div v-if="activeModule === 'detection'" class="module-container">
-              <MissingAnalysisView />
-
-              <!-- 详细数据表格 -->
-              <div class="detailed-table-card glass-effect">
-                <div class="card-header-row">
-                  <h4 class="table-title">详细缺失报告</h4>
-                  <div class="table-actions">
-                    <el-button size="small" type="primary" plain @click="activeModule = 'imputation'">
-                      前往插补 <el-icon class="el-icon--right"><Edit /></el-icon>
-                    </el-button>
-                  </div>
-                </div>
-
-                <div class="table-container">
-                  <table class="column-stats-table">
-                    <thead>
-                      <tr>
-                        <th class="col-name">列名</th>
-                        <th class="col-missing">缺失数</th>
-                        <th class="col-rate">缺失率</th>
-                        <th class="col-total">总行数</th>
-                        <th class="col-preview">数据预览</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr
-                        v-for="col in gapFillingStore.missingStats?.columnStats || []"
-                        :key="col.columnName"
-                        :class="{ 'has-missing': col.missingCount > 0 }">
-                        <td class="col-name">
-                          <span class="column-name-text">{{ col.columnName }}</span>
-                        </td>
-                        <td class="col-missing">
-                          <span :class="['missing-count', { 'has-missing': col.missingCount > 0 }]">
-                            {{ col.missingCount.toLocaleString() }}
-                          </span>
-                        </td>
-                        <td class="col-rate">
-                          <div class="rate-bar-container">
-                            <div class="rate-text">{{ col.missingRate.toFixed(1) }}%</div>
-                            <div class="rate-bar-bg">
-                              <div class="rate-bar-fill" :style="{ width: Math.min(col.missingRate, 100) + '%' }"></div>
-                            </div>
-                          </div>
-                        </td>
-                        <td class="col-total">
-                          <span class="total-count">{{ col.totalCount.toLocaleString() }}</span>
-                        </td>
-                        <td class="col-preview">
-                          <div v-if="col.sampleRows && col.sampleRows.length > 0" class="sample-preview">
-                            <div v-for="(sample, index) in col.sampleRows.slice(0, 2)" :key="index" class="sample-item">
-                              <span class="sample-row">行{{ sample.rowIndex + 1 }}:</span>
-                              <span class="sample-value" :class="{ 'missing-value': sample.isMissing }">
-                                {{ sample.value === null ? "null" : `"${sample.value}"` }}
-                              </span>
-                            </div>
-                            <div v-if="col.sampleRows.length > 2" class="more-samples">
-                              ...等 {{ col.sampleRows.length }} 个样本
-                            </div>
-                          </div>
-                          <div v-else class="no-samples">无样本数据</div>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
             <!-- 执行插补模块 -->
-            <div v-if="activeModule === 'imputation'" class="module-container">
+            <div class="module-container">
               <!-- 方法选择区 -->
               <div class="method-selection-section">
                 <div class="section-header">

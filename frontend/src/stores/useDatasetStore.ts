@@ -177,6 +177,23 @@ export const useDatasetStore = defineStore("dataset", () => {
     }
   };
 
+  const updateMissingMarkers = async (markers: string[]) => {
+    if (!projectStore.currentProject || !currentDataset.value) {
+      throw new Error("无法更新缺失值标记：缺少必要条件");
+    }
+    const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.UPDATE, {
+      projectId: projectStore.currentProject.id,
+      datasetId: currentDataset.value.id,
+      updates: { missingValueTypes: markers },
+    });
+    if (result.success) {
+      // 更新本地状态
+      currentDataset.value = await getCurrentDatasetInfo(projectStore.currentProject.id, currentDataset.value.id);
+    } else {
+      throw new Error(result.error || "更新缺失值标记失败");
+    }
+  };
+
   const deleteDataset = async (projectId: string, datasetId: string) => {
     if (!window.electronAPI || !projectStore.currentProject) {
       throw new Error("无法删除数据集：缺少必要条件");
@@ -272,6 +289,7 @@ export const useDatasetStore = defineStore("dataset", () => {
     setCurrentVersion,
     loadVersions: loadDatasetVersions,
     importData,
+    updateMissingMarkers,
     deleteDataset,
     exportVersion,
   };

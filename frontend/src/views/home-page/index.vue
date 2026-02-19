@@ -21,6 +21,7 @@ import { useProjectStore } from "@/stores/useProjectStore";
 import emitter from "@/utils/eventBus";
 import ProjectInfoCard from "./components/ProjectInfoCard.vue";
 import DatasetInfoCard from "./components/DatasetInfoCard.vue";
+import UserGuideModal from "./components/UserGuideModal.vue";
 
 const router = useRouter();
 const projectStore = useProjectStore();
@@ -132,8 +133,9 @@ const quickViewData = () => {
   }
 };
 
+const guideVisible = ref(false);
 const showGuide = () => {
-  ElMessage.info("功能开发中");
+  guideVisible.value = true;
 };
 </script>
 
@@ -217,6 +219,9 @@ const showGuide = () => {
           </div>
         </div>
       </div>
+
+      <!-- 使用指南弹窗 -->
+      <UserGuideModal v-model="guideVisible" />
 
       <!-- Quick Start -->
       <div class="quick-start-card">

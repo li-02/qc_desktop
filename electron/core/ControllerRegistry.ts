@@ -9,6 +9,8 @@ import { CorrelationAnalysisController } from "../controller/CorrelationAnalysis
 import { SettingsController } from "../controller/SettingsController";
 import { ImputationController } from "../controller/ImputationController";
 import { FluxPartitioningController } from "../controller/FluxPartitioningController";
+import { ExportController } from "../controller/ExportController";
+import { ExportService } from "../service/ExportService";
 
 // 引入新的分层架构
 import { ProjectDBRepository } from "../repository/ProjectDBRepository";
@@ -46,6 +48,8 @@ export class ControllerRegistry {
   private settingsController!: SettingsController;
   private imputationController!: ImputationController;
   private fluxPartitioningController!: FluxPartitioningController;
+  private exportController!: ExportController;
+  private exportService!: ExportService;
 
   constructor(projectsDir: string) {
     this.initializeDependencies(projectsDir);
@@ -110,6 +114,12 @@ export class ControllerRegistry {
       this.fluxPartitioningController = new FluxPartitioningController();
       console.log("✓ FluxPartitioningController 初始化完成");
 
+      this.exportService = new ExportService(this.datasetRepository);
+      console.log("✓ ExportService 初始化完成");
+
+      this.exportController = new ExportController(this.exportService);
+      console.log("✓ ExportController 初始化完成");
+
       console.log("所有依赖关系初始化完成");
     } catch (error: any) {
       console.error("依赖初始化失败:", error);
@@ -130,6 +140,7 @@ export class ControllerRegistry {
       this.registerSettingsRoutes();
       this.registerImputationRoutes();
       this.registerFluxPartitioningRoutes();
+      this.registerExportRoutes();
 
       console.log("所有控制器路由已注册");
       console.log("已注册路由:", IPCManager.getRegisteredRoutes());
@@ -516,6 +527,22 @@ export class ControllerRegistry {
     }
 
     console.log(`通量分割路由注册完成，共 ${count} 个路由`);
+  }
+
+  /**
+   * 注册数据导出相关路由
+   */
+  private registerExportRoutes() {
+    const routes = this.exportController.getRoutes();
+    let count = 0;
+
+    for (const [path, handler] of Object.entries(routes)) {
+      IPCManager.registerRoute(path, handler);
+      console.log(`✓ 注册路由: ${path}`);
+      count++;
+    }
+
+    console.log(`数据导出路由注册完成，共 ${count} 个路由`);
   }
 
   /**

@@ -17,6 +17,7 @@ export const API_ROUTES = {
     EXPORT: "datasets/export",
     DELETE: "datasets/delete",
     GET_VERSION_MISSING_STATS: "datasets/get-version-missing-stats",
+    UPDATE: "datasets/update",
   },
 
   // 文件处理
@@ -98,6 +99,12 @@ export const API_ROUTES = {
     GET_RESULTS_BY_DATASET: "fluxPartitioning:getResultsByDataset",
     GET_RESULT: "fluxPartitioning:getResult",
     DELETE_RESULT: "fluxPartitioning:deleteResult",
+  },
+
+  // 数据导出
+  EXPORT: {
+    GET_PREVIEW: "export:getPreview",
+    EXECUTE: "export:execute",
   },
 
   // 菜单事件

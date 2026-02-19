@@ -7,6 +7,7 @@ import CorrelationAnalysisPanel from "./panels/CorrelationAnalysisPanel.vue";
 import OutlierDetectionPanel from "./panels/OutlierDetectionPanel.vue";
 import MissingValuePanel from "./panels/GapFillingPanel.vue";
 import FluxPartitioningPanel from "./panels/FluxPartitioningPanel.vue";
+import ExportDataPanel from "./panels/ExportDataPanel.vue";
 
 // Props
 interface Props {
@@ -218,6 +219,13 @@ defineExpose({
       <div v-else-if="activeTab === 'flux-partitioning'" class="tab-panel full-height-panel">
         <div class="panel-wrapper full-height-wrapper">
           <FluxPartitioningPanel :dataset-info="datasetInfo" :loading="contentLoading" @refresh="handleRefresh" />
+        </div>
+      </div>
+
+      <!-- 导出数据 -->
+      <div v-else-if="activeTab === 'export'" class="tab-panel full-height-panel">
+        <div class="panel-wrapper full-height-wrapper">
+          <ExportDataPanel :dataset-info="datasetInfo" :loading="contentLoading" @refresh="handleRefresh" />
         </div>
       </div>
 

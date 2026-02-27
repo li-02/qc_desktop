@@ -1,9 +1,9 @@
-export interface ProjectsIndexFile {
+export interface CategoriesIndexFile {
   lastUpdated: number;
-  projects: ProjectBaseInfo[];
+  categories: CategoryBaseInfo[];
 }
-// 项目基本信息
-export interface ProjectBaseInfo {
+// 分类基本信息
+export interface CategoryBaseInfo {
   id: string;
   name: string;
   path: string;
@@ -24,14 +24,9 @@ export interface DatasetBaseInfo {
   belongTo: string; // 所属项目 id
 }
 
-// 项目信息
-export interface ProjectInfo extends ProjectBaseInfo {
+// 分类信息
+export interface CategoryInfo extends CategoryBaseInfo {
   lastUpdated: number;
-  siteInfo: {
-    longitude: string;
-    latitude: string;
-    altitude: string;
-  };
   datasets: DatasetBaseInfo[];
 }
 export interface ColumnMissingStatus {
@@ -86,7 +81,7 @@ export interface DatasetInfo {
   belongTo: string;
   dirPath: string;
   missingValueTypes: string[];
-  timeColumn?: string;  // 时间列名称 (解析时自动识别)
+  timeColumn?: string; // 时间列名称 (解析时自动识别)
   originalFile: {
     name: string;
     filePath: string;
@@ -99,14 +94,9 @@ export interface DatasetInfo {
   processedFiles: ProcessedFileInfo[]; // 处理后的文件
 }
 
-// 创建项目的请求参数
-export interface CreateProjectRequest {
+// 创建分类的请求参数
+export interface CreateCategoryRequest {
   name: string;
-  siteInfo: {
-    longitude: string;
-    latitude: string;
-    altitude: string;
-  };
 }
 export interface ImportOption {
   type: string;
@@ -120,9 +110,31 @@ export interface ImportOption {
   rows: number;
   columns: string[];
 }
+// 批量导入请求参数
+export interface BatchImportRequest {
+  categoryId: string;
+  dataType: string;
+  missingValueTypes: string[];
+  sourceTimezone?: string;
+  files: Array<{
+    datasetName: string;
+    file: { name: string; size: string; path: string };
+  }>;
+}
+
+// 导入任务进度
+export interface ImportTaskProgress {
+  batchId: string;
+  taskIndex: number;
+  total: number;
+  datasetName: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  error?: string;
+}
+
 // 导入数据集的请求参数
 export interface ImportDatasetRequest {
-  projectId: string;
+  categoryId: string;
   datasetName: string;
   type: string;
   file: {

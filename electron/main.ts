@@ -110,7 +110,7 @@ function createApplicationMenu(): void {
           accelerator: "CmdOrCtrl+N",
           click: () => {
             if (appState.mainWindow) {
-              appState.mainWindow.webContents.send("open-create-project-dialog");
+              appState.mainWindow.webContents.send("open-create-category-dialog");
             }
           },
         },

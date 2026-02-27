@@ -5,9 +5,9 @@ export interface BaseEntity {
   is_del: number; // 0 or 1
 }
 
-export interface Site extends BaseEntity {
+export interface Category extends BaseEntity {
   id: number;
-  site_name: string;
+  category_name: string;
   description?: string;
   latitude?: number;
   longitude?: number;
@@ -16,10 +16,10 @@ export interface Site extends BaseEntity {
 
 export interface Dataset extends BaseEntity {
   id: number;
-  site_id: number;
+  category_id: number;
   dataset_name: string;
   source_file_path?: string;
-  time_column?: string;  // 时间列名称 (解析时自动识别)
+  time_column?: string; // 时间列名称 (解析时自动识别)
   missing_value_types?: string; // 缺失值表示 (JSON数组字符串)
   import_time: string;
   description?: string;
@@ -50,7 +50,7 @@ export interface DatasetVersion extends BaseEntity {
   id: number;
   dataset_id: number;
   parent_version_id?: number;
-  stage_type: 'RAW' | 'FILTERED' | 'QC';
+  stage_type: "RAW" | "FILTERED" | "QC";
   file_path: string;
   remark?: string;
 }
@@ -75,7 +75,6 @@ export interface ColumnStats {
   std_dev?: number;
 }
 
-
 /**
  * 相关性分析结果表 (biz_correlation_result)
  */
@@ -84,43 +83,42 @@ export interface CorrelationResult extends BaseEntity {
   dataset_id: number;
   version_id?: number;
   columns: string; // JSON array of column names
-  method: 'pearson' | 'spearman' | 'kendall';
+  method: "pearson" | "spearman" | "kendall";
   result_matrix: string; // JSON matrix
   significance_level?: number;
   sample_size: number;
   executed_at: string;
 }
 
-
 /**
  * 异常检测配置作用域
  */
-export type OutlierDetectionScopeType = 'APP' | 'SITE' | 'DATASET';
+export type OutlierDetectionScopeType = "APP" | "CATEGORY" | "DATASET";
 
 /**
  * 异常检测方法标识
  */
 export type DetectionMethodId =
-  | 'THRESHOLD_STATIC'
-  | 'THRESHOLD_DYNAMIC'
-  | 'ZSCORE'
-  | 'MODIFIED_ZSCORE'
-  | 'IQR'
-  | 'DESPIKING_MAD'
-  | 'DESPIKING_WINDOW'
-  | 'ISOLATION_FOREST'
-  | 'LOF'
-  | 'AUTOENCODER';
+  | "THRESHOLD_STATIC"
+  | "THRESHOLD_DYNAMIC"
+  | "ZSCORE"
+  | "MODIFIED_ZSCORE"
+  | "IQR"
+  | "DESPIKING_MAD"
+  | "DESPIKING_WINDOW"
+  | "ISOLATION_FOREST"
+  | "LOF"
+  | "AUTOENCODER";
 
 /**
  * 异常值处理动作
  */
-export type OutlierAction = 'FLAGGED' | 'REMOVED' | 'REPLACED';
+export type OutlierAction = "FLAGGED" | "REMOVED" | "REPLACED";
 
 /**
  * 检测结果状态
  */
-export type OutlierResultStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'APPLIED' | 'REVERTED';
+export type OutlierResultStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "APPLIED" | "REVERTED";
 
 /**
  * 异常检测配置表 (conf_outlier_detection)
@@ -178,7 +176,7 @@ export interface OutlierDetail extends BaseEntity {
 export interface DetectionMethodParam {
   key: string;
   label: string;
-  type: 'number' | 'select' | 'boolean';
+  type: "number" | "select" | "boolean";
   default: number | string | boolean;
   options?: { label: string; value: number | string }[];
   min?: number;
@@ -193,7 +191,7 @@ export interface DetectionMethodParam {
 export interface DetectionMethod {
   id: DetectionMethodId;
   name: string;
-  category: 'threshold' | 'statistical' | 'ml' | 'dl';
+  category: "threshold" | "statistical" | "ml" | "dl";
   description: string;
   params: DetectionMethodParam[];
   requiresPython: boolean;
@@ -238,4 +236,43 @@ export interface DetectionResultStats {
   outlierRate: number;
   beforeStats: ColumnStats;
   afterStats?: ColumnStats;
+}
+
+/**
+ * 用户自定义阈值模板表 (conf_threshold_template)
+ */
+export interface ThresholdTemplateRecord extends BaseEntity {
+  id: number;
+  name: string;
+  description?: string;
+  template_data: string;
+  source_dataset_id?: number;
+}
+
+/**
+ * 模板数据条目（单列）
+ */
+export interface ThresholdTemplateEntry {
+  min: number;
+  max: number;
+  unit?: string;
+}
+
+/**
+ * 模板数据（解析后的 template_data）
+ */
+export type ThresholdTemplateData = Record<string, ThresholdTemplateEntry>;
+
+/**
+ * 用户模板列表项（前端展示用）
+ */
+export interface UserTemplateListItem {
+  id: number;
+  name: string;
+  description: string | null;
+  columnCount: number;
+  columnNames: string[];
+  thresholds: ThresholdTemplateData;
+  sourceDatasetId: number | null;
+  createdAt: string;
 }

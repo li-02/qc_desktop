@@ -1,7 +1,7 @@
 // electron/core/ControllerRegistry.ts
 
 import { IPCManager } from "./IPCManager";
-import { ProjectController } from "../controller/ProjectController";
+import { CategoryController } from "../controller/CategoryController";
 import { DatasetController } from "../controller/DatasetController";
 import { FileController } from "../controller/FileController";
 import { OutlierDetectionController } from "../controller/OutlierDetectionController";
@@ -11,14 +11,25 @@ import { ImputationController } from "../controller/ImputationController";
 import { FluxPartitioningController } from "../controller/FluxPartitioningController";
 import { ExportController } from "../controller/ExportController";
 import { ExportService } from "../service/ExportService";
+import { WorkflowController } from "../controller/WorkflowController";
+import { WorkflowRepository } from "../repository/WorkflowRepository";
+import { WorkflowService } from "../service/WorkflowService";
+import {
+  OutlierDetectionExecutor,
+  ImputationExecutor,
+  FluxPartitioningExecutor,
+  CorrelationAnalysisExecutor,
+  ExportExecutor,
+} from "../service/workflow-executors";
 
 // 引入新的分层架构
-import { ProjectDBRepository } from "../repository/ProjectDBRepository";
+import { CategoryDBRepository } from "../repository/CategoryDBRepository";
 import { DatasetDBRepository } from "../repository/DatasetDBRepository";
 import { OutlierDetectionRepository } from "../repository/OutlierDetectionRepository";
 import { SettingsRepository } from "../repository/SettingsRepository";
-import { ProjectService } from "../service/ProjectService";
+import { CategoryService } from "../service/CategoryService";
 import { DatasetService } from "../service/DatasetService";
+import { ImportQueueService } from "../service/ImportQueueService";
 import { OutlierDetectionService } from "../service/OutlierDetectionService";
 import { SettingsService } from "../service/SettingsService";
 
@@ -28,19 +39,20 @@ import { SettingsService } from "../service/SettingsService";
  */
 export class ControllerRegistry {
   // 数据访问层
-  private projectRepository!: ProjectDBRepository;
+  private categoryRepository!: CategoryDBRepository;
   private datasetRepository!: DatasetDBRepository;
   private outlierRepository!: OutlierDetectionRepository;
   private settingsRepository!: SettingsRepository;
 
   // 业务逻辑层
-  private projectService!: ProjectService;
+  private categoryService!: CategoryService;
   private datasetService!: DatasetService;
+  private importQueueService!: ImportQueueService;
   private outlierService!: OutlierDetectionService;
   private settingsService!: SettingsService;
 
   // 控制器层
-  private projectController!: ProjectController;
+  private categoryController!: CategoryController;
   private datasetController!: DatasetController;
   private fileController!: FileController;
   private outlierController!: OutlierDetectionController;
@@ -50,6 +62,9 @@ export class ControllerRegistry {
   private fluxPartitioningController!: FluxPartitioningController;
   private exportController!: ExportController;
   private exportService!: ExportService;
+  private workflowRepository!: WorkflowRepository;
+  private workflowService!: WorkflowService;
+  private workflowController!: WorkflowController;
 
   constructor(projectsDir: string) {
     this.initializeDependencies(projectsDir);
@@ -64,8 +79,8 @@ export class ControllerRegistry {
 
     try {
       // 1. 初始化数据访问层 (Repository Layer)
-      this.projectRepository = new ProjectDBRepository();
-      console.log("✓ ProjectRepository 初始化完成");
+      this.categoryRepository = new CategoryDBRepository();
+      console.log("✓ CategoryRepository 初始化完成");
 
       this.datasetRepository = new DatasetDBRepository();
       console.log("✓ DatasetRepository 初始化完成");
@@ -77,11 +92,18 @@ export class ControllerRegistry {
       console.log("✓ SettingsRepository 初始化完成");
 
       // 2. 初始化业务逻辑层 (Service Layer)
-      this.projectService = new ProjectService(this.projectRepository, this.datasetRepository);
-      console.log("✓ ProjectService 初始化完成");
+      this.categoryService = new CategoryService(this.categoryRepository, this.datasetRepository);
+      console.log("✓ CategoryService 初始化完成");
 
-      this.datasetService = new DatasetService(this.datasetRepository, this.projectRepository, this.settingsRepository);
+      this.datasetService = new DatasetService(
+        this.datasetRepository,
+        this.categoryRepository,
+        this.settingsRepository
+      );
       console.log("✓ DatasetService 初始化完成");
+
+      this.importQueueService = new ImportQueueService(this.datasetService);
+      console.log("✓ ImportQueueService 初始化完成");
 
       this.outlierService = new OutlierDetectionService(this.outlierRepository, this.datasetRepository);
       console.log("✓ OutlierDetectionService 初始化完成");
@@ -90,10 +112,10 @@ export class ControllerRegistry {
       console.log("✓ SettingsService 初始化完成");
 
       // 3. 初始化控制器层 (Controller Layer)
-      this.projectController = new ProjectController(this.projectService);
-      console.log("✓ ProjectController 初始化完成");
+      this.categoryController = new CategoryController(this.categoryService);
+      console.log("✓ CategoryController 初始化完成");
 
-      this.datasetController = new DatasetController(this.datasetService);
+      this.datasetController = new DatasetController(this.datasetService, this.importQueueService);
       console.log("✓ DatasetController 初始化完成");
 
       this.fileController = new FileController();
@@ -120,6 +142,22 @@ export class ControllerRegistry {
       this.exportController = new ExportController(this.exportService);
       console.log("✓ ExportController 初始化完成");
 
+      // 4. 初始化工作流模块
+      this.workflowRepository = new WorkflowRepository();
+      console.log("✓ WorkflowRepository 初始化完成");
+
+      this.workflowService = new WorkflowService(this.workflowRepository);
+      // 注册节点执行器
+      this.workflowService.registerExecutor(new OutlierDetectionExecutor(this.outlierService));
+      this.workflowService.registerExecutor(new ImputationExecutor(this.imputationController));
+      this.workflowService.registerExecutor(new FluxPartitioningExecutor(this.fluxPartitioningController));
+      this.workflowService.registerExecutor(new CorrelationAnalysisExecutor(this.correlationController));
+      this.workflowService.registerExecutor(new ExportExecutor(this.exportService));
+      console.log("✓ WorkflowService 初始化完成（含节点执行器）");
+
+      this.workflowController = new WorkflowController(this.workflowService, null);
+      console.log("✓ WorkflowController 初始化完成");
+
       console.log("所有依赖关系初始化完成");
     } catch (error: any) {
       console.error("依赖初始化失败:", error);
@@ -132,7 +170,7 @@ export class ControllerRegistry {
    */
   registerAllRoutes() {
     try {
-      this.registerProjectRoutes();
+      this.registerCategoryRoutes();
       this.registerDatasetRoutes();
       this.registerFileRoutes();
       this.registerOutlierDetectionRoutes();
@@ -141,6 +179,7 @@ export class ControllerRegistry {
       this.registerImputationRoutes();
       this.registerFluxPartitioningRoutes();
       this.registerExportRoutes();
+      this.registerWorkflowRoutes();
 
       console.log("所有控制器路由已注册");
       console.log("已注册路由:", IPCManager.getRegisteredRoutes());
@@ -151,44 +190,44 @@ export class ControllerRegistry {
   }
 
   /**
-   * 注册项目相关路由
+   * 注册分类相关路由
    */
-  private registerProjectRoutes() {
+  private registerCategoryRoutes() {
     const routes = [
       {
-        path: "projects/get-all",
-        handler: this.projectController.getProjects.bind(this.projectController),
-        description: "获取所有项目",
+        path: "categories/get-all",
+        handler: this.categoryController.getCategories.bind(this.categoryController),
+        description: "获取所有分类",
       },
       {
-        path: "projects/get-by-id",
-        handler: this.projectController.getProjectById.bind(this.projectController),
-        description: "根据ID获取项目",
+        path: "categories/get-by-id",
+        handler: this.categoryController.getCategoryById.bind(this.categoryController),
+        description: "根据ID获取分类",
       },
       {
-        path: "projects/create",
-        handler: this.projectController.createProject.bind(this.projectController),
-        description: "创建新项目",
+        path: "categories/create",
+        handler: this.categoryController.createCategory.bind(this.categoryController),
+        description: "创建新分类",
       },
       {
-        path: "projects/update",
-        handler: this.projectController.updateProject.bind(this.projectController),
-        description: "更新项目信息",
+        path: "categories/update",
+        handler: this.categoryController.updateCategory.bind(this.categoryController),
+        description: "更新分类信息",
       },
       {
-        path: "projects/delete",
-        handler: this.projectController.deleteProject.bind(this.projectController),
-        description: "删除项目",
+        path: "categories/delete",
+        handler: this.categoryController.deleteCategory.bind(this.categoryController),
+        description: "删除分类",
       },
       {
-        path: "projects/batch-delete",
-        handler: this.projectController.batchDeleteProjects.bind(this.projectController),
-        description: "批量删除项目",
+        path: "categories/batch-delete",
+        handler: this.categoryController.batchDeleteCategories.bind(this.categoryController),
+        description: "批量删除分类",
       },
       {
-        path: "projects/check-name",
-        handler: this.projectController.checkProjectName.bind(this.projectController),
-        description: "检查项目名称可用性",
+        path: "categories/check-name",
+        handler: this.categoryController.checkCategoryName.bind(this.categoryController),
+        description: "检查分类名称可用性",
       },
     ];
 
@@ -197,7 +236,7 @@ export class ControllerRegistry {
       console.log(`✓ 注册路由: ${route.path} - ${route.description}`);
     });
 
-    console.log(`项目路由注册完成，共 ${routes.length} 个路由`);
+    console.log(`分类路由注册完成，共 ${routes.length} 个路由`);
   }
 
   /**
@@ -211,9 +250,14 @@ export class ControllerRegistry {
         description: "导入数据集",
       },
       {
-        path: "datasets/get-by-project",
-        handler: this.datasetController.getProjectDatasets.bind(this.datasetController),
-        description: "获取项目数据集",
+        path: "datasets/batch-import",
+        handler: this.datasetController.batchImport.bind(this.datasetController),
+        description: "批量导入数据集",
+      },
+      {
+        path: "datasets/get-by-category",
+        handler: this.datasetController.getCategoryDatasets.bind(this.datasetController),
+        description: "获取分类数据集",
       },
       {
         path: "datasets/get-info",
@@ -338,6 +382,32 @@ export class ControllerRegistry {
         handler: this.outlierController.applyThresholdTemplate.bind(this.outlierController),
         description: "应用阈值模板",
       },
+      // 用户自定义阈值模板
+      {
+        path: "outlier/save-as-template",
+        handler: this.outlierController.saveAsTemplate.bind(this.outlierController),
+        description: "保存当前阈值配置为模板",
+      },
+      {
+        path: "outlier/get-user-templates",
+        handler: this.outlierController.getUserTemplates.bind(this.outlierController),
+        description: "获取用户自定义模板列表",
+      },
+      {
+        path: "outlier/update-user-template",
+        handler: this.outlierController.updateUserTemplate.bind(this.outlierController),
+        description: "更新用户自定义模板",
+      },
+      {
+        path: "outlier/delete-user-template",
+        handler: this.outlierController.deleteUserTemplate.bind(this.outlierController),
+        description: "删除用户自定义模板",
+      },
+      {
+        path: "outlier/apply-user-template",
+        handler: this.outlierController.applyUserTemplate.bind(this.outlierController),
+        description: "应用用户自定义模板",
+      },
       // 检测配置 (三级作用域)
       {
         path: "outlier/get-detection-configs",
@@ -366,6 +436,11 @@ export class ControllerRegistry {
         description: "解析列阈值(考虑继承)",
       },
       // 检测执行
+      {
+        path: "outlier/execute-detection",
+        handler: this.outlierController.executeDetection.bind(this.outlierController),
+        description: "通用检测执行(支持所有方法)",
+      },
       {
         path: "outlier/execute-threshold-detection",
         handler: this.outlierController.executeThresholdDetection.bind(this.outlierController),
@@ -546,16 +621,39 @@ export class ControllerRegistry {
   }
 
   /**
+   * 注册自动化工作流相关路由
+   */
+  private registerWorkflowRoutes() {
+    const routes = this.workflowController.getRoutes();
+    let count = 0;
+
+    for (const [path, handler] of Object.entries(routes)) {
+      IPCManager.registerRoute(path, handler);
+      console.log(`✓ 注册路由: ${path}`);
+      count++;
+    }
+
+    console.log(`自动化工作流路由注册完成，共 ${count} 个路由`);
+  }
+
+  /**
+   * 设置主窗口引用（用于工作流进度推送）
+   */
+  setMainWindow(mainWindow: Electron.BrowserWindow) {
+    this.workflowController = new WorkflowController(this.workflowService, mainWindow);
+  }
+
+  /**
    * 获取应用健康状态
    */
   getHealthStatus() {
     return {
       dependencies: {
-        projectRepository: !!this.projectRepository,
+        categoryRepository: !!this.categoryRepository,
         datasetRepository: !!this.datasetRepository,
-        projectService: !!this.projectService,
+        categoryService: !!this.categoryService,
         datasetService: !!this.datasetService,
-        projectController: !!this.projectController,
+        categoryController: !!this.categoryController,
         datasetController: !!this.datasetController,
         fileController: !!this.fileController,
       },

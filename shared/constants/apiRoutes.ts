@@ -1,16 +1,20 @@
 export const API_ROUTES = {
-  // 项目管理
-  PROJECTS: {
-    GET_ALL: "projects/get-all",
-    CREATE: "projects/create",
-    CHECK_NAME: "projects/check-name",
-    DELETE: "projects/delete",
+  // 分类管理
+  CATEGORIES: {
+    GET_ALL: "categories/get-all",
+    CREATE: "categories/create",
+    CHECK_NAME: "categories/check-name",
+    DELETE: "categories/delete",
+    BATCH_DELETE: "categories/batch-delete",
+    UPDATE: "categories/update",
   },
 
   // 数据集管理
   DATASETS: {
     IMPORT: "datasets/import",
-    GET_BY_PROJECT: "datasets/get-by-project",
+    BATCH_IMPORT: "datasets/batch-import",
+    IMPORT_PROGRESS: "datasets/import-progress",
+    GET_BY_CATEGORY: "datasets/get-by-category",
     GET_INFO: "datasets/get-info",
     GET_VERSIONS: "datasets/get-versions",
     GET_VERSION_STATS: "datasets/get-version-stats",
@@ -37,9 +41,16 @@ export const API_ROUTES = {
     UPDATE_COLUMN_THRESHOLD: "outlier/update-column-threshold",
     BATCH_UPDATE_THRESHOLDS: "outlier/batch-update-thresholds",
 
-    // 阈值模板
+    // 阈值模板（内置）
     GET_TEMPLATES: "outlier/get-templates",
     APPLY_TEMPLATE: "outlier/apply-template",
+
+    // 用户自定义阈值模板
+    SAVE_AS_TEMPLATE: "outlier/save-as-template",
+    GET_USER_TEMPLATES: "outlier/get-user-templates",
+    UPDATE_USER_TEMPLATE: "outlier/update-user-template",
+    DELETE_USER_TEMPLATE: "outlier/delete-user-template",
+    APPLY_USER_TEMPLATE: "outlier/apply-user-template",
 
     // 检测配置 (三级作用域)
     GET_DETECTION_CONFIGS: "outlier/get-detection-configs",
@@ -51,6 +62,7 @@ export const API_ROUTES = {
     RESOLVE_THRESHOLD: "outlier/resolve-threshold",
 
     // 检测执行
+    EXECUTE_DETECTION: "outlier/execute-detection",
     EXECUTE_THRESHOLD_DETECTION: "outlier/execute-threshold-detection",
     GET_DETECTION_RESULTS: "outlier/get-detection-results",
     GET_RESULT_DETAILS: "outlier/get-result-details",
@@ -107,9 +119,31 @@ export const API_ROUTES = {
     EXECUTE: "export:execute",
   },
 
+  // 自动化工作流
+  WORKFLOW: {
+    // 工作流管理
+    CREATE: "workflow:create",
+    UPDATE: "workflow:update",
+    DELETE: "workflow:delete",
+    GET_ALL: "workflow:getAll",
+    GET_BY_ID: "workflow:getById",
+    CLONE: "workflow:clone",
+    // 节点管理
+    ADD_NODE: "workflow:addNode",
+    UPDATE_NODE: "workflow:updateNode",
+    DELETE_NODE: "workflow:deleteNode",
+    REORDER_NODES: "workflow:reorderNodes",
+    GET_NODES: "workflow:getNodes",
+    // 执行管理
+    EXECUTE: "workflow:execute",
+    CANCEL: "workflow:cancel",
+    GET_EXECUTIONS: "workflow:getExecutions",
+    GET_EXECUTION_DETAIL: "workflow:getExecutionDetail",
+  },
+
   // 菜单事件
   MENU: {
-    OPEN_CREATE_PROJECT: "open-create-project-dialog",
+    OPEN_CREATE_CATEGORY: "open-create-category-dialog",
     OPEN_IMPORT_DATA: "open-import-data-dialog",
   },
 } as const;

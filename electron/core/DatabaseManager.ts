@@ -46,6 +46,7 @@ export class DatabaseManager {
     this.initCorrelationAnalysisTables();
     this.initImputationTables();
     this.initFluxPartitioningTables();
+    this.initWorkflowTables();
     this.migrateSchema();
   }
 
@@ -55,15 +56,15 @@ export class DatabaseManager {
   private initCoreTables(): void {
     if (!this.db) return;
 
-    // 3.2.1 站点表 (sys_site)
+    // 3.2.1 分类表 (sys_category)
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS sys_site (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 站点唯一标识
-        site_name TEXT NOT NULL,               -- 站点名称
-        description TEXT,                      -- 站点描述
-        latitude REAL,                         -- 纬度 (-90 ~ 90)
-        longitude REAL,                        -- 经度 (-180 ~ 180)
-        altitude REAL,                         -- 海拔高度 (米)
+      CREATE TABLE IF NOT EXISTS sys_category (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 分类唯一标识
+        category_name TEXT NOT NULL,           -- 分类名称
+        description TEXT,                      -- 分类描述
+        latitude REAL,                         -- 纬度 (保留字段)
+        longitude REAL,                        -- 经度 (保留字段)
+        altitude REAL,                         -- 海拔高度 (保留字段)
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,  -- 创建时间
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,  -- 更新时间
         deleted_at DATETIME,                   -- 删除时间
@@ -75,7 +76,7 @@ export class DatabaseManager {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS sys_dataset (
         id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 数据集唯一标识
-        site_id INTEGER NOT NULL,              -- 所属站点ID
+        category_id INTEGER NOT NULL,          -- 所属分类ID
         dataset_name TEXT NOT NULL,            -- 数据集名称 (通常为文件名)
         source_file_path TEXT,                 -- 原始文件路径
         missing_value_types TEXT,              -- 缺失值表示 (JSON数组字符串)
@@ -86,7 +87,7 @@ export class DatabaseManager {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,   -- 更新时间
         deleted_at DATETIME,                   -- 删除时间
         is_del BOOLEAN DEFAULT 0,              -- 软删除标记
-        FOREIGN KEY (site_id) REFERENCES sys_site(id) ON DELETE CASCADE
+        FOREIGN KEY (category_id) REFERENCES sys_category(id) ON DELETE CASCADE
       );
     `);
 
@@ -160,12 +161,12 @@ export class DatabaseManager {
     if (!this.db) return;
 
     // 异常检测配置表 (conf_outlier_detection)
-    // 支持三级作用域: APP(全局) / SITE(站点) / DATASET(数据集)
+    // 支持三级作用域: APP(全局) / CATEGORY(分类) / DATASET(数据集)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS conf_outlier_detection (
         id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 配置唯一标识
-        scope_type TEXT NOT NULL CHECK(scope_type IN ('APP', 'SITE', 'DATASET')),  -- 作用域类型 (APP=全局/SITE=站点级/DATASET=数据集级)
-        scope_id INTEGER,                      -- 作用域ID (APP时为NULL, SITE时为站点ID, DATASET时为数据集ID)
+        scope_type TEXT NOT NULL CHECK(scope_type IN ('APP', 'CATEGORY', 'DATASET')),  -- 作用域类型 (APP=全局/CATEGORY=分类级/DATASET=数据集级)
+        scope_id INTEGER,                      -- 作用域ID (APP时为NULL, CATEGORY时为分类ID, DATASET时为数据集ID)
         column_name TEXT,                      -- 列名 (NULL表示全局默认配置)
         detection_method TEXT NOT NULL,        -- 检测方法标识 (如 ZSCORE/IQR/THRESHOLD_STATIC)
         method_params TEXT,                    -- 方法参数 (JSON格式)
@@ -248,6 +249,21 @@ export class DatabaseManager {
       );
     `);
 
+    // 用户自定义阈值模板表 (conf_threshold_template)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS conf_threshold_template (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,  -- 模板唯一标识
+        name              TEXT NOT NULL,                      -- 模板名称
+        description       TEXT,                               -- 模板描述（可选）
+        template_data     TEXT NOT NULL,                      -- 模板数据 (JSON格式)
+        source_dataset_id INTEGER,                            -- 来源数据集ID（仅记录来源，可为NULL）
+        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP, -- 创建时间
+        updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP, -- 更新时间
+        deleted_at        DATETIME,                           -- 删除时间
+        is_del            BOOLEAN DEFAULT 0                   -- 软删除标记
+      );
+    `);
+
     // 创建索引以提升查询性能
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_outlier_detection_scope 
@@ -261,6 +277,9 @@ export class DatabaseManager {
         
       CREATE INDEX IF NOT EXISTS idx_outlier_column_stat_result 
         ON biz_outlier_column_stat(result_id);
+
+      CREATE INDEX IF NOT EXISTS idx_threshold_template_name
+        ON conf_threshold_template(name);
     `);
   }
 
@@ -561,6 +580,153 @@ export class DatabaseManager {
       CREATE INDEX IF NOT EXISTS idx_flux_partitioning_result_status
         ON biz_flux_partitioning_result(status);
     `);
+  }
+
+  /**
+   * 初始化自动化工作流相关表结构
+   */
+  private initWorkflowTables(): void {
+    if (!this.db) return;
+
+    // 工作流定义表 (biz_workflow) — v2.0: dataset_id 和 initial_version_id 改为可空
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS biz_workflow (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        name                TEXT    NOT NULL,
+        description         TEXT,
+        dataset_id          INTEGER,
+        initial_version_id  INTEGER,
+        status              TEXT    NOT NULL DEFAULT 'DRAFT'
+                              CHECK(status IN ('DRAFT', 'READY', 'RUNNING', 'COMPLETED', 'FAILED')),
+        created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+        deleted_at          DATETIME,
+        is_del              BOOLEAN  DEFAULT 0
+      );
+    `);
+
+    // 工作流节点表 (biz_workflow_node)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS biz_workflow_node (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        workflow_id   INTEGER NOT NULL,
+        node_order    INTEGER NOT NULL,
+        node_type     TEXT    NOT NULL
+                        CHECK(node_type IN (
+                          'OUTLIER_DETECTION',
+                          'IMPUTATION',
+                          'FLUX_PARTITIONING',
+                          'CORRELATION_ANALYSIS',
+                          'EXPORT'
+                        )),
+        node_name     TEXT    NOT NULL,
+        config_json   TEXT,
+        is_enabled    BOOLEAN DEFAULT 1,
+        position_x    REAL,
+        position_y    REAL,
+        created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+        deleted_at    DATETIME,
+        is_del        BOOLEAN  DEFAULT 0,
+        FOREIGN KEY (workflow_id) REFERENCES biz_workflow(id) ON DELETE CASCADE
+      );
+    `);
+
+    // 工作流执行记录表 (biz_workflow_execution) — v2.0: 新增 dataset_id 和 initial_version_id
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS biz_workflow_execution (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        workflow_id         INTEGER NOT NULL,
+        dataset_id          INTEGER NOT NULL DEFAULT 0,
+        initial_version_id  INTEGER NOT NULL DEFAULT 0,
+        status              TEXT    NOT NULL DEFAULT 'PENDING'
+                              CHECK(status IN ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED')),
+        started_at          DATETIME,
+        finished_at         DATETIME,
+        total_nodes         INTEGER DEFAULT 0,
+        completed_nodes     INTEGER DEFAULT 0,
+        error_message       TEXT,
+        created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workflow_id) REFERENCES biz_workflow(id) ON DELETE CASCADE
+      );
+    `);
+
+    // 节点执行详情表 (biz_workflow_node_execution)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS biz_workflow_node_execution (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        execution_id      INTEGER NOT NULL,
+        node_id           INTEGER NOT NULL,
+        input_version_id  INTEGER,
+        output_version_id INTEGER,
+        status            TEXT    NOT NULL DEFAULT 'PENDING'
+                            CHECK(status IN ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'SKIPPED')),
+        started_at        DATETIME,
+        finished_at       DATETIME,
+        result_json       TEXT,
+        error_message     TEXT,
+        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (execution_id) REFERENCES biz_workflow_execution(id) ON DELETE CASCADE,
+        FOREIGN KEY (node_id) REFERENCES biz_workflow_node(id),
+        FOREIGN KEY (input_version_id) REFERENCES biz_dataset_version(id),
+        FOREIGN KEY (output_version_id) REFERENCES biz_dataset_version(id)
+      );
+    `);
+
+    // 索引
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_workflow_status
+        ON biz_workflow(status);
+      CREATE INDEX IF NOT EXISTS idx_workflow_node_order
+        ON biz_workflow_node(workflow_id, node_order);
+      CREATE INDEX IF NOT EXISTS idx_workflow_execution_workflow
+        ON biz_workflow_execution(workflow_id);
+      CREATE INDEX IF NOT EXISTS idx_workflow_execution_status
+        ON biz_workflow_execution(status);
+      CREATE INDEX IF NOT EXISTS idx_workflow_node_execution_exec
+        ON biz_workflow_node_execution(execution_id);
+      CREATE INDEX IF NOT EXISTS idx_workflow_node_execution_node
+        ON biz_workflow_node_execution(node_id);
+    `);
+
+    // v2.0 迁移：为已存在的 biz_workflow_execution 表添加 dataset_id 和 initial_version_id 列
+    this.migrateWorkflowTables();
+  }
+
+  private migrateWorkflowTables(): void {
+    if (!this.db) return;
+
+    // 检查 biz_workflow_execution 是否缺少 dataset_id 列
+    const execCols = this.db.prepare(`PRAGMA table_info(biz_workflow_execution)`).all() as any[];
+    const hasDatasetId = execCols.some((c: any) => c.name === "dataset_id");
+    if (!hasDatasetId) {
+      this.db.exec(`ALTER TABLE biz_workflow_execution ADD COLUMN dataset_id INTEGER NOT NULL DEFAULT 0`);
+      this.db.exec(`ALTER TABLE biz_workflow_execution ADD COLUMN initial_version_id INTEGER NOT NULL DEFAULT 0`);
+    }
+
+    // 检查 biz_workflow 的 dataset_id 是否为 NOT NULL，如果是则需要重建表
+    const wfCols = this.db.prepare(`PRAGMA table_info(biz_workflow)`).all() as any[];
+    const datasetCol = wfCols.find((c: any) => c.name === "dataset_id");
+    if (datasetCol && datasetCol.notnull === 1) {
+      this.db.exec(`
+        CREATE TABLE biz_workflow_new (
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          name                TEXT    NOT NULL,
+          description         TEXT,
+          dataset_id          INTEGER,
+          initial_version_id  INTEGER,
+          status              TEXT    NOT NULL DEFAULT 'DRAFT'
+                                CHECK(status IN ('DRAFT', 'READY', 'RUNNING', 'COMPLETED', 'FAILED')),
+          created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+          deleted_at          DATETIME,
+          is_del              BOOLEAN  DEFAULT 0
+        );
+        INSERT INTO biz_workflow_new SELECT * FROM biz_workflow;
+        DROP TABLE biz_workflow;
+        ALTER TABLE biz_workflow_new RENAME TO biz_workflow;
+      `);
+    }
   }
 
   /**
@@ -1636,6 +1802,9 @@ export class DatabaseManager {
 
     // 迁移 biz_outlier_result 表以修复 CHECK 约束
     this.migrateOutlierResultTable();
+
+    // 迁移 sys_site -> sys_category (重命名表和字段)
+    this.migrateSiteToCategoryTable();
   }
 
   /**
@@ -1708,5 +1877,47 @@ export class DatabaseManager {
     `);
 
     console.log("biz_outlier_result 表迁移完成");
+  }
+
+  /**
+   * 迁移 sys_site -> sys_category
+   * 处理已有数据库的表重命名和字段重命名
+   */
+  private migrateSiteToCategoryTable(): void {
+    if (!this.db) return;
+
+    const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
+    const tableNames = new Set(tables.map(t => t.name));
+
+    // 如果 sys_site 存在而 sys_category 不存在，执行迁移
+    if (tableNames.has("sys_site") && !tableNames.has("sys_category")) {
+      console.log("正在迁移 sys_site -> sys_category...");
+      this.db.exec(`ALTER TABLE sys_site RENAME TO sys_category;`);
+      console.log("sys_site 已重命名为 sys_category");
+    }
+
+    // 如果 sys_category 存在，检查是否需要重命名 site_name -> category_name
+    if (tableNames.has("sys_category") || tableNames.has("sys_site")) {
+      const cols = this.db.prepare("PRAGMA table_info(sys_category)").all() as { name: string }[];
+      const colNames = new Set(cols.map(c => c.name));
+
+      if (colNames.has("site_name") && !colNames.has("category_name")) {
+        console.log("正在重命名 site_name -> category_name...");
+        this.db.exec(`ALTER TABLE sys_category RENAME COLUMN site_name TO category_name;`);
+        console.log("site_name 已重命名为 category_name");
+      }
+    }
+
+    // 如果 sys_dataset 存在，检查是否需要重命名 site_id -> category_id
+    if (tableNames.has("sys_dataset")) {
+      const datasetCols = this.db.prepare("PRAGMA table_info(sys_dataset)").all() as { name: string }[];
+      const datasetColNames = new Set(datasetCols.map(c => c.name));
+
+      if (datasetColNames.has("site_id") && !datasetColNames.has("category_id")) {
+        console.log("正在重命名 sys_dataset.site_id -> category_id...");
+        this.db.exec(`ALTER TABLE sys_dataset RENAME COLUMN site_id TO category_id;`);
+        console.log("site_id 已重命名为 category_id");
+      }
+    }
   }
 }

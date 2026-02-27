@@ -2,7 +2,7 @@
 
 本文档以 **TodoList** 形式列出生态监测桌面端应用中所有 Vue 组件。
 
-**项目共有 28 个组件**
+**项目共有 35 个组件**
 
 ---
 
@@ -11,12 +11,12 @@
 ### 一、核心应用组件（2个）
 
 - [ ] `App.vue` - 应用根组件，包含全局对话框管理和路由视图
-- [ ] `MainLayout.vue` - 主布局组件，包含侧边栏、项目管理、数据集管理和主内容区域
+- [ ] `MainLayout.vue` - 主布局组件，包含侧边栏、分类管理、数据集管理和主内容区域
 
 ### 二、对话框组件（4个）
 
 - [ ] `components/dialogs/index.vue` - 全局对话框管理器
-- [✅ ] `components/dialogs/CreateProjectDialog.vue` - 创建项目对话框
+- [✅ ] `components/dialogs/CreateCategoryDialog.vue` - 新建分类对话框
 - [✅ ] `components/dialogs/ImportDataDialog.vue` - 导入数据对话框
 - [✅ ] `components/dialogs/SettingsDialog.vue` - 系统设置对话框
 
@@ -32,7 +32,7 @@
 
 ### 五、首页子组件（2个）
 
-- [ ] `views/home-page/components/ProjectInfoCard.vue` - 项目信息卡片
+- [ ] `views/home-page/components/ProjectInfoCard.vue` - 分类信息卡片（待评估是否废弃）
 - [ ] `views/home-page/components/DatasetInfoCard.vue` - 数据集信息卡片
 
 ### 六、数据视图核心组件（9个）
@@ -60,6 +60,16 @@
 
 - [ ] `views/data-view/components/gapfilling/MissingAnalysisView.vue` - 缺失值可视化分析视图
 
+### 九、自动化工作流组件（7个）
+
+- [ ] `views/workflow/index.vue` - 工作流主页面（入口视图，三栏布局）
+- [ ] `views/workflow/components/WorkflowList.vue` - 工作流列表（卡片式展示已有工作流）
+- [ ] `views/workflow/components/WorkflowEditor.vue` - 线性流水线编辑器（垂直时间线布局）
+- [ ] `views/workflow/components/WorkflowNodeCard.vue` - 单个节点卡片（类型图标、名称、配置摘要、启用开关）
+- [ ] `views/workflow/components/NodeConfigPanel.vue` - 节点配置面板（根据节点类型动态渲染表单）
+- [ ] `views/workflow/components/WorkflowExecutionView.vue` - 执行进度与结果展示视图
+- [ ] `views/workflow/components/NodeTypeSelector.vue` - 节点类型选择器（添加节点时使用）
+
 ---
 
 ## 组件分类统计
@@ -74,7 +84,8 @@
 | 数据视图组件 | 9      | 数据分析核心UI   |
 | 分析面板     | 5      | 数据处理功能面板 |
 | 专项分析     | 1      | 缺失值深度分析   |
-| **总计**     | **28** | -                |
+| 自动化工作流 | 7      | 工作流编辑与执行 |
+| **总计**     | **35** | -                |
 
 ---
 
@@ -86,7 +97,7 @@ App.vue (根组件)
 │   ├── DatasetVersionTree.vue (侧边栏)
 │   └── router-view (路由出口)
 │       ├── home-page/index.vue (首页)
-│       │   ├── ProjectInfoCard.vue
+│       │   ├── ProjectInfoCard.vue (待评估废弃)
 │       │   └── DatasetInfoCard.vue
 │       ├── data-view/index.vue (数据视图)
 │       │   ├── DataAnalysisTabs.vue
@@ -106,9 +117,16 @@ App.vue (根组件)
 │       │   ├── FunctionCard.vue
 │       │   ├── QuickOperation.vue
 │       │   └── VersionNodeItem.vue
-│       └── data-processing-page/index.vue (数据处理)
+│       ├── data-processing-page/index.vue (数据处理)
+│       └── workflow/index.vue (自动化工作流)
+│           ├── WorkflowList.vue (工作流列表)
+│           ├── WorkflowEditor.vue (流水线编辑器)
+│           │   ├── WorkflowNodeCard.vue (节点卡片)
+│           │   └── NodeTypeSelector.vue (节点类型选择)
+│           ├── NodeConfigPanel.vue (节点配置)
+│           └── WorkflowExecutionView.vue (执行视图)
 └── GlobalDialogs (全局对话框)
-    ├── CreateProjectDialog.vue
+    ├── CreateCategoryDialog.vue
     ├── ImportDataDialog.vue
     └── SettingsDialog.vue
 ```

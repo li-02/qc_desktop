@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import * as path from "path";
 import * as fs from "fs";
 import { DatasetDBRepository } from "../repository/DatasetDBRepository";
-import { ProjectDBRepository } from "../repository/ProjectDBRepository";
+import { CategoryDBRepository } from "../repository/CategoryDBRepository";
 import {
   DatasetInfo,
   ImportDatasetRequest,
@@ -18,16 +18,16 @@ import { SettingsRepository } from "../repository/SettingsRepository";
 
 export class DatasetService {
   private datasetRepository: DatasetDBRepository;
-  private projectRepository: ProjectDBRepository;
+  private categoryRepository: CategoryDBRepository;
   private settingsRepository: SettingsRepository;
 
   constructor(
     datasetRepository: DatasetDBRepository,
-    projectRepository: ProjectDBRepository,
+    categoryRepository: CategoryDBRepository,
     settingsRepository: SettingsRepository
   ) {
     this.datasetRepository = datasetRepository;
-    this.projectRepository = projectRepository;
+    this.categoryRepository = categoryRepository;
     this.settingsRepository = settingsRepository;
   }
 
@@ -65,21 +65,21 @@ export class DatasetService {
         throw new Error(validationResult.error);
       }
 
-      const projectId = parseInt(request.projectId);
-      if (isNaN(projectId)) throw new Error("无效的项目ID");
+      const categoryId = parseInt(request.categoryId);
+      if (isNaN(categoryId)) throw new Error("无效的分类ID");
 
-      const projectResult = this.projectRepository.getProjectById(projectId);
-      if (!projectResult.success) {
-        throw new Error("项目不存在");
+      const categoryResult = this.categoryRepository.getCategoryById(categoryId);
+      if (!categoryResult.success) {
+        throw new Error("分类不存在");
       }
 
-      const datasetsResult = this.datasetRepository.getDatasetsBySiteId(projectId);
+      const datasetsResult = this.datasetRepository.getDatasetsByCategoryId(categoryId);
       if (datasetsResult.success && datasetsResult.data!.some(d => d.dataset_name === request.datasetName)) {
         throw new Error(`数据集名称 "${request.datasetName}" 已存在`);
       }
 
       const baseDataDir = path.join(process.cwd(), "data");
-      const datasetDir = path.join(baseDataDir, projectId.toString(), request.datasetName);
+      const datasetDir = path.join(baseDataDir, categoryId.toString(), request.datasetName);
       if (!fs.existsSync(datasetDir)) {
         fs.mkdirSync(datasetDir, { recursive: true });
       }
@@ -106,7 +106,7 @@ export class DatasetService {
       console.log("[importDataset] saving missing_value_types =", missingValueTypesJson);
 
       const datasetIdResult = this.datasetRepository.createDataset({
-        site_id: projectId,
+        category_id: categoryId,
         dataset_name: request.datasetName,
         source_file_path: savedFilePath,
         missing_value_types: missingValueTypesJson,
@@ -180,12 +180,12 @@ export class DatasetService {
     }
   }
 
-  async getProjectDatasets(projectId: string): Promise<ServiceResponse<DatasetInfo[]>> {
+  async getCategoryDatasets(categoryId: string): Promise<ServiceResponse<DatasetInfo[]>> {
     try {
-      const id = parseInt(projectId);
-      if (isNaN(id)) return { success: false, error: "无效的项目ID" };
+      const id = parseInt(categoryId);
+      if (isNaN(id)) return { success: false, error: "无效的分类ID" };
 
-      const datasetsResult = this.datasetRepository.getDatasetsBySiteId(id);
+      const datasetsResult = this.datasetRepository.getDatasetsByCategoryId(id);
       if (!datasetsResult.success) return { success: false, error: datasetsResult.error };
 
       const datasets = datasetsResult.data!;
@@ -216,9 +216,9 @@ export class DatasetService {
     }
   }
 
-  async getDatasetInfo(projectId: string, datasetId: string): Promise<ServiceResponse<DatasetInfo>> {
+  async getDatasetInfo(categoryId: string, datasetId: string): Promise<ServiceResponse<DatasetInfo>> {
     try {
-      const pId = parseInt(projectId);
+      const pId = parseInt(categoryId);
       const dId = parseInt(datasetId);
       if (isNaN(pId) || isNaN(dId)) return { success: false, error: "无效的ID" };
 
@@ -279,7 +279,7 @@ export class DatasetService {
         type: "csv", // Default or store in db
         createdAt: this.parseSQLiteTimestampAsUTC(dataset.import_time),
         updatedAt: this.parseSQLiteTimestampAsUTC(dataset.import_time),
-        belongTo: dataset.site_id.toString(),
+        belongTo: dataset.category_id.toString(),
         dirPath: path.dirname(dataset.source_file_path || ""),
         missingValueTypes: (() => {
           try {
@@ -475,7 +475,7 @@ export class DatasetService {
     }
   }
 
-  async deleteDataset(projectId: string, datasetId: string): Promise<ServiceResponse<void>> {
+  async deleteDataset(categoryId: string, datasetId: string): Promise<ServiceResponse<void>> {
     try {
       const dId = parseInt(datasetId);
       if (isNaN(dId)) return { success: false, error: "无效的数据集ID" };
@@ -496,7 +496,7 @@ export class DatasetService {
   }
 
   async updateDataset(
-    projectId: string,
+    categoryId: string,
     datasetId: string,
     updates: { name?: string; type?: string; missingValueTypes?: string[] }
   ): Promise<ServiceResponse<DatasetInfo>> {
@@ -514,14 +514,14 @@ export class DatasetService {
       const result = this.datasetRepository.updateDataset(dId, updateData);
       if (!result.success) return { success: false, error: result.error };
 
-      return this.getDatasetInfo(projectId, datasetId);
+      return this.getDatasetInfo(categoryId, datasetId);
     } catch (error: any) {
       return { success: false, error: `更新数据集失败: ${error.message}` };
     }
   }
 
   async performImputation(
-    projectId: string,
+    categoryId: string,
     datasetId: string,
     method: string,
     options: any
@@ -587,7 +587,7 @@ export class DatasetService {
       type: "csv",
       createdAt: new Date(d.import_time).getTime(),
       updatedAt: new Date(d.import_time).getTime(),
-      belongTo: d.site_id.toString(),
+      belongTo: d.category_id.toString(),
       dirPath: path.dirname(d.source_file_path || ""),
       missingValueTypes: (() => {
         try {
@@ -612,11 +612,10 @@ export class DatasetService {
   }
 
   private async validateImportRequest(request: ImportDatasetRequest): Promise<ServiceResponse<void>> {
-    if (!request.projectId) return { success: false, error: "项目ID不能为空" };
+    if (!request.categoryId) return { success: false, error: "分类ID不能为空" };
     if (!request.datasetName) return { success: false, error: "数据集名称不能为空" };
     if (!request.file || !request.file.path) return { success: false, error: "文件路径不能为空" };
     if (!request.columns || request.columns.length === 0) return { success: false, error: "列信息不能为空" };
-    if (typeof request.rows !== "number" || request.rows <= 0) return { success: false, error: "行数必须是正整数" };
     return { success: true };
   }
 

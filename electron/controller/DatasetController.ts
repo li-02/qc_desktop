@@ -2,8 +2,9 @@
 
 import { BaseController } from "./BaseController";
 import { DatasetService } from "../service/DatasetService";
-import { IpcMainInvokeEvent } from "electron";
-import { ImportDatasetRequest } from "@shared/types/projectInterface";
+import { ImportQueueService } from "../service/ImportQueueService";
+import { IpcMainInvokeEvent, BrowserWindow } from "electron";
+import { ImportDatasetRequest, BatchImportRequest } from "@shared/types/projectInterface";
 
 /**
  * 数据集控制器 - 重构版
@@ -11,10 +12,12 @@ import { ImportDatasetRequest } from "@shared/types/projectInterface";
  */
 export class DatasetController extends BaseController {
   private datasetService: DatasetService;
+  private importQueueService: ImportQueueService;
 
-  constructor(datasetService: DatasetService) {
+  constructor(datasetService: DatasetService, importQueueService: ImportQueueService) {
     super();
     this.datasetService = datasetService;
+    this.importQueueService = importQueueService;
   }
 
   /**
@@ -22,7 +25,7 @@ export class DatasetController extends BaseController {
    */
   async importData(
     args: {
-      projectId: string;
+      categoryId: string;
       importOption: {
         datasetName: string;
         type: string;
@@ -56,7 +59,7 @@ export class DatasetController extends BaseController {
 
       // 构造请求对象
       const request: ImportDatasetRequest = {
-        projectId: args.projectId.trim(),
+        categoryId: args.categoryId.trim(),
         datasetName: args.importOption.datasetName.trim(),
         type: args.importOption.type.trim(),
         file: {
@@ -85,19 +88,35 @@ export class DatasetController extends BaseController {
   }
 
   /**
-   * 获取项目的所有数据集
+   * 批量导入数据集
    */
-  async getProjectDatasets(args: { projectId: string }, event: IpcMainInvokeEvent) {
+  async batchImport(args: BatchImportRequest, event: IpcMainInvokeEvent) {
     return this.handleAsync(async () => {
-      // 参数校验
-      if (!args.projectId || typeof args.projectId !== "string") {
-        throw new Error("项目ID不能为空");
+      if (!args.categoryId || typeof args.categoryId !== "string") {
+        throw new Error("分类ID不能为空");
+      }
+      if (!Array.isArray(args.files) || args.files.length === 0) {
+        throw new Error("文件列表不能为空");
+      }
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const result = await this.importQueueService.startBatchImport(args, win);
+      return result;
+    });
+  }
+
+  /**
+   * 获取分类的所有数据集
+   */
+  async getCategoryDatasets(args: { categoryId: string }, event: IpcMainInvokeEvent) {
+    return this.handleAsync(async () => {
+      if (!args.categoryId || typeof args.categoryId !== "string") {
+        throw new Error("分类ID不能为空");
       }
 
-      const result = await this.datasetService.getProjectDatasets(args.projectId.trim());
+      const result = await this.datasetService.getCategoryDatasets(args.categoryId.trim());
 
       if (!result.success) {
-        throw new Error(result.error || "获取项目数据集失败");
+        throw new Error(result.error || "获取分类数据集失败");
       }
 
       return { datasets: result.data };
@@ -109,22 +128,21 @@ export class DatasetController extends BaseController {
    */
   async getDatasetInfo(
     args: {
-      projectId: string;
+      categoryId: string;
       datasetId: string;
     },
     event: IpcMainInvokeEvent
   ) {
     return this.handleAsync(async () => {
-      // 参数校验
-      if (!args.projectId || typeof args.projectId !== "string") {
-        throw new Error("项目ID不能为空");
+      if (!args.categoryId || typeof args.categoryId !== "string") {
+        throw new Error("分类ID不能为空");
       }
 
       if (!args.datasetId || typeof args.datasetId !== "string") {
         throw new Error("数据集ID不能为空");
       }
 
-      const result = await this.datasetService.getDatasetInfo(args.projectId.trim(), args.datasetId.trim());
+      const result = await this.datasetService.getDatasetInfo(args.categoryId.trim(), args.datasetId.trim());
 
       if (!result.success) {
         throw new Error(result.error || "获取数据集信息失败");
@@ -224,22 +242,21 @@ export class DatasetController extends BaseController {
    */
   async deleteDataset(
     args: {
-      projectId: string;
+      categoryId: string;
       datasetId: string;
     },
     event: IpcMainInvokeEvent
   ) {
     return this.handleAsync(async () => {
-      // 参数校验
-      if (!args.projectId || typeof args.projectId !== "string") {
-        throw new Error("项目ID不能为空");
+      if (!args.categoryId || typeof args.categoryId !== "string") {
+        throw new Error("分类ID不能为空");
       }
 
       if (!args.datasetId || typeof args.datasetId !== "string") {
         throw new Error("数据集ID不能为空");
       }
 
-      const result = await this.datasetService.deleteDataset(args.projectId.trim(), args.datasetId.trim());
+      const result = await this.datasetService.deleteDataset(args.categoryId.trim(), args.datasetId.trim());
 
       if (!result.success) {
         throw new Error(result.error || "删除数据集失败");
@@ -254,7 +271,7 @@ export class DatasetController extends BaseController {
    */
   async updateDataset(
     args: {
-      projectId: string;
+      categoryId: string;
       datasetId: string;
       updates: {
         name?: string;
@@ -265,9 +282,8 @@ export class DatasetController extends BaseController {
     event: IpcMainInvokeEvent
   ) {
     return this.handleAsync(async () => {
-      // 参数校验
-      if (!args.projectId || typeof args.projectId !== "string") {
-        throw new Error("项目ID不能为空");
+      if (!args.categoryId || typeof args.categoryId !== "string") {
+        throw new Error("分类ID不能为空");
       }
 
       if (!args.datasetId || typeof args.datasetId !== "string") {
@@ -303,7 +319,7 @@ export class DatasetController extends BaseController {
       }
 
       const result = await this.datasetService.updateDataset(
-        args.projectId.trim(),
+        args.categoryId.trim(),
         args.datasetId.trim(),
         cleanUpdates
       );
@@ -321,15 +337,14 @@ export class DatasetController extends BaseController {
    */
   async validateDatasetStructure(
     args: {
-      projectId: string;
+      categoryId: string;
       datasetId: string;
     },
     event: IpcMainInvokeEvent
   ) {
     return this.handleAsync(async () => {
-      // 参数校验
-      if (!args.projectId || typeof args.projectId !== "string") {
-        throw new Error("项目ID不能为空");
+      if (!args.categoryId || typeof args.categoryId !== "string") {
+        throw new Error("分类ID不能为空");
       }
 
       if (!args.datasetId || typeof args.datasetId !== "string") {
@@ -337,7 +352,7 @@ export class DatasetController extends BaseController {
       }
 
       // 先获取数据集信息
-      const datasetResult = await this.datasetService.getDatasetInfo(args.projectId.trim(), args.datasetId.trim());
+      const datasetResult = await this.datasetService.getDatasetInfo(args.categoryId.trim(), args.datasetId.trim());
 
       if (!datasetResult.success) {
         throw new Error(datasetResult.error || "数据集不存在");
@@ -358,7 +373,7 @@ export class DatasetController extends BaseController {
    */
   async performImputation(
     args: {
-      projectId: string;
+      categoryId: string;
       datasetId: string;
       method: string;
       options: {
@@ -379,9 +394,8 @@ export class DatasetController extends BaseController {
     return this.handleAsync(async () => {
       console.log("进入 performImputation 方法", args);
 
-      // 参数校验
-      if (!args.projectId || typeof args.projectId !== "string") {
-        throw new Error("项目ID不能为空");
+      if (!args.categoryId || typeof args.categoryId !== "string") {
+        throw new Error("分类ID不能为空");
       }
 
       if (!args.datasetId || typeof args.datasetId !== "string") {
@@ -393,7 +407,7 @@ export class DatasetController extends BaseController {
       }
 
       const result = await this.datasetService.performImputation(
-        args.projectId.trim(),
+        args.categoryId.trim(),
         args.datasetId.trim(),
         args.method.trim(),
         args.options || {}
@@ -463,12 +477,12 @@ export class DatasetController extends BaseController {
       return "参数不能为空";
     }
 
-    if (!args.projectId || typeof args.projectId !== "string") {
-      return "项目ID不能为空";
+    if (!args.categoryId || typeof args.categoryId !== "string") {
+      return "分类ID不能为空";
     }
 
-    if (args.projectId.trim().length === 0) {
-      return "项目ID不能为空";
+    if (args.categoryId.trim().length === 0) {
+      return "分类ID不能为空";
     }
 
     if (!args.importOption) {

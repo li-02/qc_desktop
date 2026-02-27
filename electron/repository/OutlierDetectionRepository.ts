@@ -1,4 +1,4 @@
-import { DatabaseManager } from '../core/DatabaseManager';
+import { DatabaseManager } from "../core/DatabaseManager";
 import type {
   OutlierDetectionConfig,
   OutlierResult,
@@ -6,8 +6,9 @@ import type {
   OutlierDetectionScopeType,
   DetectionMethodId,
   OutlierResultStatus,
-  ColumnSetting
-} from '../../shared/types/database';
+  ColumnSetting,
+  ThresholdTemplateRecord,
+} from "../../shared/types/database";
 
 /**
  * 异常检测数据仓库
@@ -32,17 +33,17 @@ export class OutlierDetectionRepository {
     `;
     const params: (string | number)[] = [scopeType];
 
-    if (scopeType !== 'APP' && scopeId !== undefined) {
-      sql += ' AND scope_id = ?';
+    if (scopeType !== "APP" && scopeId !== undefined) {
+      sql += " AND scope_id = ?";
       params.push(scopeId);
     }
 
     if (columnName) {
-      sql += ' AND (column_name = ? OR column_name IS NULL)';
+      sql += " AND (column_name = ? OR column_name IS NULL)";
       params.push(columnName);
     }
 
-    sql += ' ORDER BY priority ASC';
+    sql += " ORDER BY priority ASC";
 
     return this.db.prepare(sql).all(...params) as OutlierDetectionConfig[];
   }
@@ -51,15 +52,17 @@ export class OutlierDetectionRepository {
    * 获取单个检测配置
    */
   getDetectionConfigById(id: number): OutlierDetectionConfig | undefined {
-    return this.db
-      .prepare('SELECT * FROM conf_outlier_detection WHERE id = ? AND is_del = 0')
-      .get(id) as OutlierDetectionConfig | undefined;
+    return this.db.prepare("SELECT * FROM conf_outlier_detection WHERE id = ? AND is_del = 0").get(id) as
+      | OutlierDetectionConfig
+      | undefined;
   }
 
   /**
    * 创建检测配置
    */
-  createDetectionConfig(config: Omit<OutlierDetectionConfig, 'id' | 'created_at' | 'updated_at' | 'deleted_at' | 'is_del'>): number {
+  createDetectionConfig(
+    config: Omit<OutlierDetectionConfig, "id" | "created_at" | "updated_at" | "deleted_at" | "is_del">
+  ): number {
     const stmt = this.db.prepare(`
       INSERT INTO conf_outlier_detection 
         (scope_type, scope_id, column_name, detection_method, method_params, priority, is_active)
@@ -87,28 +90,28 @@ export class OutlierDetectionRepository {
     const values: (string | number | null)[] = [];
 
     if (updates.detection_method !== undefined) {
-      fields.push('detection_method = ?');
+      fields.push("detection_method = ?");
       values.push(updates.detection_method);
     }
     if (updates.method_params !== undefined) {
-      fields.push('method_params = ?');
+      fields.push("method_params = ?");
       values.push(updates.method_params);
     }
     if (updates.priority !== undefined) {
-      fields.push('priority = ?');
+      fields.push("priority = ?");
       values.push(updates.priority);
     }
     if (updates.is_active !== undefined) {
-      fields.push('is_active = ?');
+      fields.push("is_active = ?");
       values.push(updates.is_active);
     }
 
     if (fields.length === 0) return false;
 
-    fields.push('updated_at = CURRENT_TIMESTAMP');
+    fields.push("updated_at = CURRENT_TIMESTAMP");
     values.push(id);
 
-    const sql = `UPDATE conf_outlier_detection SET ${fields.join(', ')} WHERE id = ?`;
+    const sql = `UPDATE conf_outlier_detection SET ${fields.join(", ")} WHERE id = ?`;
     const result = this.db.prepare(sql).run(...values);
 
     return result.changes > 0;
@@ -119,11 +122,13 @@ export class OutlierDetectionRepository {
    */
   deleteDetectionConfig(id: number): boolean {
     const result = this.db
-      .prepare(`
+      .prepare(
+        `
         UPDATE conf_outlier_detection 
         SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
         WHERE id = ?
-      `)
+      `
+      )
       .run(id);
 
     return result.changes > 0;
@@ -142,11 +147,11 @@ export class OutlierDetectionRepository {
     const params: (number | string)[] = [datasetId];
 
     if (columnName) {
-      sql += ' AND column_name = ?';
+      sql += " AND column_name = ?";
       params.push(columnName);
     }
 
-    sql += ' ORDER BY column_index ASC';
+    sql += " ORDER BY column_index ASC";
 
     return this.db.prepare(sql).all(...params) as ColumnSetting[];
   }
@@ -171,14 +176,14 @@ export class OutlierDetectionRepository {
     const values: (number | string | null)[] = [];
 
     const fieldMap: Record<string, keyof typeof thresholds> = {
-      min_threshold: 'min_threshold',
-      max_threshold: 'max_threshold',
-      physical_min: 'physical_min',
-      physical_max: 'physical_max',
-      warning_min: 'warning_min',
-      warning_max: 'warning_max',
-      unit: 'unit',
-      variable_type: 'variable_type'
+      min_threshold: "min_threshold",
+      max_threshold: "max_threshold",
+      physical_min: "physical_min",
+      physical_max: "physical_max",
+      warning_min: "warning_min",
+      warning_max: "warning_max",
+      unit: "unit",
+      variable_type: "variable_type",
     };
 
     for (const [dbField, key] of Object.entries(fieldMap)) {
@@ -190,10 +195,10 @@ export class OutlierDetectionRepository {
 
     if (fields.length === 0) return false;
 
-    fields.push('updated_at = CURRENT_TIMESTAMP');
+    fields.push("updated_at = CURRENT_TIMESTAMP");
     values.push(id);
 
-    const sql = `UPDATE conf_column_setting SET ${fields.join(', ')} WHERE id = ?`;
+    const sql = `UPDATE conf_column_setting SET ${fields.join(", ")} WHERE id = ?`;
     const result = this.db.prepare(sql).run(...values);
 
     return result.changes > 0;
@@ -264,7 +269,7 @@ export class OutlierDetectionRepository {
       result.method_params ?? null,
       result.status,
       result.dataset_id,
-      result.column_name ?? '_MULTI_COLUMN_'
+      result.column_name ?? "_MULTI_COLUMN_"
     );
 
     return insertResult.lastInsertRowid as number;
@@ -273,48 +278,51 @@ export class OutlierDetectionRepository {
   /**
    * 更新检测结果
    */
-  updateDetectionResult(id: number, updates: {
-    status?: string;
-    total_rows?: number;
-    outlier_count?: number;
-    outlier_rate?: number;
-    detection_params?: string;
-    generated_version_id?: number;
-  }): boolean {
+  updateDetectionResult(
+    id: number,
+    updates: {
+      status?: string;
+      total_rows?: number;
+      outlier_count?: number;
+      outlier_rate?: number;
+      detection_params?: string;
+      generated_version_id?: number;
+    }
+  ): boolean {
     const fields: string[] = [];
     const values: (string | number | null)[] = [];
 
     if (updates.status !== undefined) {
-      fields.push('status = ?');
+      fields.push("status = ?");
       values.push(updates.status);
     }
     if (updates.total_rows !== undefined) {
-      fields.push('total_rows = ?');
+      fields.push("total_rows = ?");
       values.push(updates.total_rows);
     }
     if (updates.outlier_count !== undefined) {
-      fields.push('outlier_count = ?');
+      fields.push("outlier_count = ?");
       values.push(updates.outlier_count);
     }
     if (updates.outlier_rate !== undefined) {
-      fields.push('outlier_rate = ?');
+      fields.push("outlier_rate = ?");
       values.push(updates.outlier_rate);
     }
     if (updates.detection_params !== undefined) {
-      fields.push('detection_params = ?');
+      fields.push("detection_params = ?");
       values.push(updates.detection_params);
     }
     if (updates.generated_version_id !== undefined) {
-      fields.push('generated_version_id = ?');
+      fields.push("generated_version_id = ?");
       values.push(updates.generated_version_id);
     }
 
     if (fields.length === 0) return false;
 
-    fields.push('updated_at = CURRENT_TIMESTAMP');
+    fields.push("updated_at = CURRENT_TIMESTAMP");
     values.push(id);
 
-    const sql = `UPDATE biz_outlier_result SET ${fields.join(', ')} WHERE id = ?`;
+    const sql = `UPDATE biz_outlier_result SET ${fields.join(", ")} WHERE id = ?`;
     const result = this.db.prepare(sql).run(...values);
 
     return result.changes > 0;
@@ -325,11 +333,13 @@ export class OutlierDetectionRepository {
    */
   renameDetectionResult(id: number, name: string): boolean {
     const result = this.db
-      .prepare(`
+      .prepare(
+        `
         UPDATE biz_outlier_result 
         SET name = ?, updated_at = CURRENT_TIMESTAMP 
         WHERE id = ? AND is_del = 0
-      `)
+      `
+      )
       .run(name, id);
 
     return result.changes > 0;
@@ -338,7 +348,9 @@ export class OutlierDetectionRepository {
   /**
    * 创建检测结果 (旧版兼容)
    */
-  createOutlierResult(result: Omit<OutlierResult, 'id' | 'created_at' | 'updated_at' | 'deleted_at' | 'is_del'>): number {
+  createOutlierResult(
+    result: Omit<OutlierResult, "id" | "created_at" | "updated_at" | "deleted_at" | "is_del">
+  ): number {
     const stmt = this.db.prepare(`
       INSERT INTO biz_outlier_result 
         (version_id, detection_config_id, column_name, detection_method, 
@@ -355,7 +367,7 @@ export class OutlierDetectionRepository {
       result.outlier_count ?? 0,
       result.detection_params ?? null,
       result.executed_at ?? new Date().toISOString(),
-      result.status ?? 'PENDING'
+      result.status ?? "PENDING"
     );
 
     return insertResult.lastInsertRowid as number;
@@ -366,11 +378,13 @@ export class OutlierDetectionRepository {
    */
   getDetectionResults(datasetId: number): OutlierResult[] {
     return this.db
-      .prepare(`
+      .prepare(
+        `
         SELECT * FROM biz_outlier_result 
         WHERE dataset_id = ? AND is_del = 0 
         ORDER BY executed_at DESC
-      `)
+      `
+      )
       .all(datasetId) as OutlierResult[];
   }
 
@@ -385,11 +399,11 @@ export class OutlierDetectionRepository {
     const params: (number | string)[] = [versionId];
 
     if (columnName) {
-      sql += ' AND column_name = ?';
+      sql += " AND column_name = ?";
       params.push(columnName);
     }
 
-    sql += ' ORDER BY executed_at DESC';
+    sql += " ORDER BY executed_at DESC";
 
     return this.db.prepare(sql).all(...params) as OutlierResult[];
   }
@@ -399,11 +413,13 @@ export class OutlierDetectionRepository {
    */
   deleteDetectionResult(id: number): boolean {
     const result = this.db
-      .prepare(`
+      .prepare(
+        `
         UPDATE biz_outlier_result 
         SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
         WHERE id = ?
-      `)
+      `
+      )
       .run(id);
 
     return result.changes > 0;
@@ -413,9 +429,9 @@ export class OutlierDetectionRepository {
    * 获取单个检测结果
    */
   getOutlierResultById(id: number): OutlierResult | undefined {
-    return this.db
-      .prepare('SELECT * FROM biz_outlier_result WHERE id = ? AND is_del = 0')
-      .get(id) as OutlierResult | undefined;
+    return this.db.prepare("SELECT * FROM biz_outlier_result WHERE id = ? AND is_del = 0").get(id) as
+      | OutlierResult
+      | undefined;
   }
 
   /**
@@ -423,11 +439,13 @@ export class OutlierDetectionRepository {
    */
   updateOutlierResultStatus(id: number, status: OutlierResultStatus): boolean {
     const result = this.db
-      .prepare(`
+      .prepare(
+        `
         UPDATE biz_outlier_result 
         SET status = ?, updated_at = CURRENT_TIMESTAMP 
         WHERE id = ?
-      `)
+      `
+      )
       .run(status, id);
 
     return result.changes > 0;
@@ -438,11 +456,13 @@ export class OutlierDetectionRepository {
    */
   deleteOutlierResult(id: number): boolean {
     const result = this.db
-      .prepare(`
+      .prepare(
+        `
         UPDATE biz_outlier_result 
         SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
         WHERE id = ?
-      `)
+      `
+      )
       .run(id);
 
     return result.changes > 0;
@@ -458,7 +478,7 @@ export class OutlierDetectionRepository {
     details: Array<{
       row_index: number;
       original_value?: number;
-      action?: 'FLAGGED' | 'REMOVED' | 'REPLACED';
+      action?: "FLAGGED" | "REMOVED" | "REPLACED";
       replaced_value?: number;
     }>
   ): number {
@@ -475,7 +495,7 @@ export class OutlierDetectionRepository {
           resultId,
           detail.row_index,
           detail.original_value ?? null,
-          detail.action ?? 'FLAGGED',
+          detail.action ?? "FLAGGED",
           detail.replaced_value ?? null
         );
         count++;
@@ -489,12 +509,7 @@ export class OutlierDetectionRepository {
   /**
    * 获取检测结果的详情 (支持分页和列筛选)
    */
-  getOutlierDetails(
-    resultId: number,
-    columnName?: string,
-    limit: number = 100,
-    offset: number = 0
-  ): OutlierDetail[] {
+  getOutlierDetails(resultId: number, columnName?: string, limit: number = 100, offset: number = 0): OutlierDetail[] {
     let sql = `
       SELECT * FROM biz_outlier_detail 
       WHERE result_id = ? AND is_del = 0
@@ -502,11 +517,11 @@ export class OutlierDetectionRepository {
     const params: (number | string)[] = [resultId];
 
     if (columnName) {
-      sql += ' AND column_name = ?';
+      sql += " AND column_name = ?";
       params.push(columnName);
     }
 
-    sql += ' ORDER BY row_index ASC LIMIT ? OFFSET ?';
+    sql += " ORDER BY row_index ASC LIMIT ? OFFSET ?";
     params.push(limit, offset);
 
     return this.db.prepare(sql).all(...params) as OutlierDetail[];
@@ -517,7 +532,7 @@ export class OutlierDetectionRepository {
    */
   getAllOutlierDetails(resultId: number): OutlierDetail[] {
     return this.db
-      .prepare('SELECT * FROM biz_outlier_detail WHERE result_id = ? AND is_del = 0 ORDER BY row_index ASC')
+      .prepare("SELECT * FROM biz_outlier_detail WHERE result_id = ? AND is_del = 0 ORDER BY row_index ASC")
       .all(resultId) as OutlierDetail[];
   }
 
@@ -532,7 +547,7 @@ export class OutlierDetectionRepository {
     const params: (number | string)[] = [resultId];
 
     if (columnName) {
-      sql += ' AND column_name = ?';
+      sql += " AND column_name = ?";
       params.push(columnName);
     }
 
@@ -585,11 +600,13 @@ export class OutlierDetectionRepository {
    */
   deleteOutlierDetails(resultId: number): boolean {
     const result = this.db
-      .prepare(`
+      .prepare(
+        `
         UPDATE biz_outlier_detail 
         SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
         WHERE result_id = ?
-      `)
+      `
+      )
       .run(resultId);
 
     return result.changes > 0;
@@ -601,7 +618,7 @@ export class OutlierDetectionRepository {
   updateOutlierDetail(
     id: number,
     updates: {
-      action?: 'FLAGGED' | 'REMOVED' | 'REPLACED';
+      action?: "FLAGGED" | "REMOVED" | "REPLACED";
       replaced_value?: number;
       is_confirmed?: number;
     }
@@ -610,24 +627,24 @@ export class OutlierDetectionRepository {
     const values: (string | number | null)[] = [];
 
     if (updates.action !== undefined) {
-      fields.push('action = ?');
+      fields.push("action = ?");
       values.push(updates.action);
     }
     if (updates.replaced_value !== undefined) {
-      fields.push('replaced_value = ?');
+      fields.push("replaced_value = ?");
       values.push(updates.replaced_value);
     }
     if (updates.is_confirmed !== undefined) {
-      fields.push('is_confirmed = ?');
+      fields.push("is_confirmed = ?");
       values.push(updates.is_confirmed);
     }
 
     if (fields.length === 0) return false;
 
-    fields.push('updated_at = CURRENT_TIMESTAMP');
+    fields.push("updated_at = CURRENT_TIMESTAMP");
     values.push(id);
 
-    const sql = `UPDATE biz_outlier_detail SET ${fields.join(', ')} WHERE id = ?`;
+    const sql = `UPDATE biz_outlier_detail SET ${fields.join(", ")} WHERE id = ?`;
     const result = this.db.prepare(sql).run(...values);
 
     return result.changes > 0;
@@ -639,13 +656,15 @@ export class OutlierDetectionRepository {
   batchConfirmOutliers(detailIds: number[]): number {
     if (detailIds.length === 0) return 0;
 
-    const placeholders = detailIds.map(() => '?').join(',');
+    const placeholders = detailIds.map(() => "?").join(",");
     const result = this.db
-      .prepare(`
+      .prepare(
+        `
         UPDATE biz_outlier_detail 
         SET is_confirmed = 1, updated_at = CURRENT_TIMESTAMP 
         WHERE id IN (${placeholders}) AND is_del = 0
-      `)
+      `
+      )
       .run(...detailIds);
 
     return result.changes;
@@ -662,12 +681,14 @@ export class OutlierDetectionRepository {
     by_method: Record<string, number>;
   } {
     const results = this.db
-      .prepare(`
+      .prepare(
+        `
         SELECT column_name, detection_method, SUM(outlier_count) as count
         FROM biz_outlier_result 
         WHERE version_id = ? AND is_del = 0 AND status != 'REVERTED'
         GROUP BY column_name, detection_method
-      `)
+      `
+      )
       .all(versionId) as Array<{ column_name: string; detection_method: string; count: number }>;
 
     const byColumn: Record<string, number> = {};
@@ -726,11 +747,13 @@ export class OutlierDetectionRepository {
    */
   deleteOutlierColumnStats(resultId: number): boolean {
     const result = this.db
-      .prepare(`
+      .prepare(
+        `
         UPDATE biz_outlier_column_stat 
         SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
         WHERE result_id = ?
-      `)
+      `
+      )
       .run(resultId);
 
     return result.changes > 0;
@@ -749,18 +772,20 @@ export class OutlierDetectionRepository {
   }> {
     // 1. 尝试从 biz_outlier_column_stat 获取
     const stats = this.db
-      .prepare(`
+      .prepare(
+        `
         SELECT column_name, outlier_count, missing_count, min_threshold, max_threshold
         FROM biz_outlier_column_stat
         WHERE result_id = ? AND is_del = 0
-      `)
+      `
+      )
       .all(resultId) as Array<{
-        column_name: string;
-        outlier_count: number;
-        missing_count: number;
-        min_threshold: number | null;
-        max_threshold: number | null;
-      }>;
+      column_name: string;
+      outlier_count: number;
+      missing_count: number;
+      min_threshold: number | null;
+      max_threshold: number | null;
+    }>;
 
     if (stats.length > 0) {
       return stats.map(s => ({
@@ -768,18 +793,20 @@ export class OutlierDetectionRepository {
         outlierCount: s.outlier_count,
         missingCount: s.missing_count || 0,
         minThreshold: s.min_threshold,
-        maxThreshold: s.max_threshold
+        maxThreshold: s.max_threshold,
       }));
     }
 
     // 2. 回退到旧逻辑：从 biz_outlier_detail 聚合
     const results = this.db
-      .prepare(`
+      .prepare(
+        `
         SELECT column_name as columnName, COUNT(*) as outlierCount
         FROM biz_outlier_detail 
         WHERE result_id = ? AND is_del = 0
         GROUP BY column_name
-      `)
+      `
+      )
       .all(resultId) as Array<{ columnName: string; outlierCount: number }>;
 
     return results.map(r => ({
@@ -787,7 +814,95 @@ export class OutlierDetectionRepository {
       outlierCount: r.outlierCount,
       missingCount: 0,
       minThreshold: null,
-      maxThreshold: null
+      maxThreshold: null,
     }));
+  }
+
+  // ==================== 用户自定义阈值模板 ====================
+
+  /**
+   * 创建阈值模板
+   */
+  createTemplate(name: string, templateData: string, description?: string, sourceDatasetId?: number): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO conf_threshold_template (name, description, template_data, source_dataset_id)
+      VALUES (?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(name, description ?? null, templateData, sourceDatasetId ?? null);
+    return result.lastInsertRowid as number;
+  }
+
+  /**
+   * 获取所有用户模板
+   */
+  getAllTemplates(): ThresholdTemplateRecord[] {
+    return this.db
+      .prepare(
+        `
+        SELECT * FROM conf_threshold_template
+        WHERE is_del = 0
+        ORDER BY created_at DESC
+      `
+      )
+      .all() as ThresholdTemplateRecord[];
+  }
+
+  /**
+   * 根据ID获取模板
+   */
+  getTemplateById(id: number): ThresholdTemplateRecord | undefined {
+    return this.db.prepare("SELECT * FROM conf_threshold_template WHERE id = ? AND is_del = 0").get(id) as
+      | ThresholdTemplateRecord
+      | undefined;
+  }
+
+  /**
+   * 更新模板
+   */
+  updateTemplate(id: number, updates: { name?: string; description?: string; template_data?: string }): boolean {
+    const setClauses: string[] = [];
+    const values: any[] = [];
+
+    if (updates.name !== undefined) {
+      setClauses.push("name = ?");
+      values.push(updates.name);
+    }
+    if (updates.description !== undefined) {
+      setClauses.push("description = ?");
+      values.push(updates.description);
+    }
+    if (updates.template_data !== undefined) {
+      setClauses.push("template_data = ?");
+      values.push(updates.template_data);
+    }
+
+    if (setClauses.length === 0) return false;
+
+    setClauses.push("updated_at = CURRENT_TIMESTAMP");
+    values.push(id);
+
+    const result = this.db
+      .prepare(`UPDATE conf_threshold_template SET ${setClauses.join(", ")} WHERE id = ? AND is_del = 0`)
+      .run(...values);
+
+    return result.changes > 0;
+  }
+
+  /**
+   * 删除模板（软删除）
+   */
+  deleteTemplate(id: number): boolean {
+    const result = this.db
+      .prepare(
+        `
+        UPDATE conf_threshold_template
+        SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND is_del = 0
+      `
+      )
+      .run(id);
+
+    return result.changes > 0;
   }
 }

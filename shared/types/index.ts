@@ -3,3 +3,4 @@ export * from "./projectInterface";
 export * from "./electron-api";
 export * from "./table";
 export * from "./imputation";
+export * from "./workflow";

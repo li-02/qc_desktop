@@ -1,7 +1,7 @@
-import { BaseController } from './BaseController';
-import { OutlierDetectionService } from '../service/OutlierDetectionService';
-import { IpcMainInvokeEvent } from 'electron';
-import type { OutlierDetectionScopeType, DetectionMethodId } from '../../shared/types/database';
+import { BaseController } from "./BaseController";
+import { OutlierDetectionService } from "../service/OutlierDetectionService";
+import { IpcMainInvokeEvent } from "electron";
+import type { OutlierDetectionScopeType, DetectionMethodId } from "../../shared/types/database";
 
 /**
  * 异常检测控制器
@@ -35,18 +35,15 @@ export class OutlierDetectionController extends BaseController {
   /**
    * 获取数据集的列阈值配置
    */
-  async getColumnThresholds(
-    args: { datasetId: string },
-    _event: IpcMainInvokeEvent
-  ) {
+  async getColumnThresholds(args: { datasetId: string }, _event: IpcMainInvokeEvent) {
     return this.handleAsync(async () => {
       if (!args.datasetId) {
-        throw new Error('数据集ID不能为空');
+        throw new Error("数据集ID不能为空");
       }
 
       const datasetId = parseInt(args.datasetId);
       if (isNaN(datasetId)) {
-        throw new Error('无效的数据集ID');
+        throw new Error("无效的数据集ID");
       }
 
       const result = this.outlierService.getColumnThresholds(datasetId);
@@ -79,16 +76,16 @@ export class OutlierDetectionController extends BaseController {
   ) {
     return this.handleAsync(async () => {
       if (!args.columnId) {
-        throw new Error('列ID不能为空');
+        throw new Error("列ID不能为空");
       }
 
       const columnId = parseInt(args.columnId);
       if (isNaN(columnId)) {
-        throw new Error('无效的列ID');
+        throw new Error("无效的列ID");
       }
 
       if (!args.thresholds || Object.keys(args.thresholds).length === 0) {
-        throw new Error('阈值配置不能为空');
+        throw new Error("阈值配置不能为空");
       }
 
       const result = this.outlierService.updateColumnThreshold(columnId, args.thresholds);
@@ -117,7 +114,7 @@ export class OutlierDetectionController extends BaseController {
   ) {
     return this.handleAsync(async () => {
       if (!args.updates || !Array.isArray(args.updates) || args.updates.length === 0) {
-        throw new Error('更新列表不能为空');
+        throw new Error("更新列表不能为空");
       }
 
       const updates = args.updates.map(u => ({
@@ -125,13 +122,13 @@ export class OutlierDetectionController extends BaseController {
         min_threshold: u.min_threshold,
         max_threshold: u.max_threshold,
         physical_min: u.physical_min,
-        physical_max: u.physical_max
+        physical_max: u.physical_max,
       }));
 
       // 验证所有 ID
       for (const u of updates) {
         if (isNaN(u.id)) {
-          throw new Error('存在无效的列ID');
+          throw new Error("存在无效的列ID");
         }
       }
 
@@ -156,15 +153,15 @@ export class OutlierDetectionController extends BaseController {
   ) {
     return this.handleAsync(async () => {
       if (!args.datasetId) {
-        throw new Error('数据集ID不能为空');
+        throw new Error("数据集ID不能为空");
       }
       if (!args.templateName) {
-        throw new Error('模板名称不能为空');
+        throw new Error("模板名称不能为空");
       }
 
       const datasetId = parseInt(args.datasetId);
       if (isNaN(datasetId)) {
-        throw new Error('无效的数据集ID');
+        throw new Error("无效的数据集ID");
       }
 
       // 获取模板
@@ -200,6 +197,131 @@ export class OutlierDetectionController extends BaseController {
     });
   }
 
+  // ==================== 用户自定义阈值模板 ====================
+
+  /**
+   * 保存当前数据集阈值配置为模板
+   */
+  async saveAsTemplate(args: { datasetId: string; name: string; description?: string }, _event: IpcMainInvokeEvent) {
+    return this.handleAsync(async () => {
+      if (!args.datasetId) {
+        throw new Error("数据集ID不能为空");
+      }
+      if (!args.name || !args.name.trim()) {
+        throw new Error("模板名称不能为空");
+      }
+
+      const datasetId = parseInt(args.datasetId);
+      if (isNaN(datasetId)) {
+        throw new Error("无效的数据集ID");
+      }
+
+      const result = this.outlierService.saveCurrentAsTemplate(datasetId, args.name.trim(), args.description?.trim());
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      return result.data;
+    });
+  }
+
+  /**
+   * 获取用户自定义模板列表
+   */
+  async getUserTemplates(_args: {}, _event: IpcMainInvokeEvent) {
+    return this.handleAsync(async () => {
+      const result = this.outlierService.getUserTemplates();
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return { templates: result.data };
+    });
+  }
+
+  /**
+   * 更新用户自定义模板
+   */
+  async updateUserTemplate(
+    args: { templateId: string; name?: string; description?: string; templateData?: string },
+    _event: IpcMainInvokeEvent
+  ) {
+    return this.handleAsync(async () => {
+      if (!args.templateId) {
+        throw new Error("模板ID不能为空");
+      }
+
+      const templateId = parseInt(args.templateId);
+      if (isNaN(templateId)) {
+        throw new Error("无效的模板ID");
+      }
+
+      const updates: { name?: string; description?: string; templateData?: any } = {};
+      if (args.name !== undefined) updates.name = args.name;
+      if (args.description !== undefined) updates.description = args.description;
+      if (args.templateData !== undefined) {
+        try {
+          updates.templateData = JSON.parse(args.templateData);
+        } catch {
+          throw new Error("模板数据格式无效");
+        }
+      }
+
+      const result = this.outlierService.updateUserTemplate(templateId, updates);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      return { success: true };
+    });
+  }
+
+  /**
+   * 删除用户自定义模板
+   */
+  async deleteUserTemplate(args: { templateId: string }, _event: IpcMainInvokeEvent) {
+    return this.handleAsync(async () => {
+      if (!args.templateId) {
+        throw new Error("模板ID不能为空");
+      }
+
+      const templateId = parseInt(args.templateId);
+      if (isNaN(templateId)) {
+        throw new Error("无效的模板ID");
+      }
+
+      const result = this.outlierService.deleteUserTemplate(templateId);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      return { success: true };
+    });
+  }
+
+  /**
+   * 应用用户自定义模板
+   */
+  async applyUserTemplate(args: { datasetId: string; templateId: string }, _event: IpcMainInvokeEvent) {
+    return this.handleAsync(async () => {
+      if (!args.datasetId || !args.templateId) {
+        throw new Error("数据集ID和模板ID不能为空");
+      }
+
+      const datasetId = parseInt(args.datasetId);
+      const templateId = parseInt(args.templateId);
+      if (isNaN(datasetId) || isNaN(templateId)) {
+        throw new Error("无效的ID");
+      }
+
+      const result = this.outlierService.applyUserTemplate(datasetId, templateId);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      return result.data;
+    });
+  }
+
   // ==================== 检测配置管理 (三级作用域) ====================
 
   /**
@@ -213,15 +335,15 @@ export class OutlierDetectionController extends BaseController {
     _event: IpcMainInvokeEvent
   ) {
     return this.handleAsync(async () => {
-      if (!args.scopeType || !['APP', 'SITE', 'DATASET'].includes(args.scopeType)) {
-        throw new Error('无效的作用域类型');
+      if (!args.scopeType || !["APP", "SITE", "DATASET"].includes(args.scopeType)) {
+        throw new Error("无效的作用域类型");
       }
 
       let scopeId: number | undefined;
       if (args.scopeId) {
         scopeId = parseInt(args.scopeId);
         if (isNaN(scopeId)) {
-          throw new Error('无效的作用域ID');
+          throw new Error("无效的作用域ID");
         }
       }
 
@@ -249,18 +371,18 @@ export class OutlierDetectionController extends BaseController {
     _event: IpcMainInvokeEvent
   ) {
     return this.handleAsync(async () => {
-      if (!args.scopeType || !['APP', 'SITE', 'DATASET'].includes(args.scopeType)) {
-        throw new Error('无效的作用域类型');
+      if (!args.scopeType || !["APP", "SITE", "DATASET"].includes(args.scopeType)) {
+        throw new Error("无效的作用域类型");
       }
       if (!args.detectionMethod) {
-        throw new Error('检测方法不能为空');
+        throw new Error("检测方法不能为空");
       }
 
       let scopeId: number | undefined;
       if (args.scopeId) {
         scopeId = parseInt(args.scopeId);
         if (isNaN(scopeId)) {
-          throw new Error('无效的作用域ID');
+          throw new Error("无效的作用域ID");
         }
       }
 
@@ -270,7 +392,7 @@ export class OutlierDetectionController extends BaseController {
         column_name: args.columnName,
         detection_method: args.detectionMethod,
         method_params: args.methodParams,
-        priority: args.priority
+        priority: args.priority,
       });
 
       if (!result.success) {
@@ -298,19 +420,19 @@ export class OutlierDetectionController extends BaseController {
   ) {
     return this.handleAsync(async () => {
       if (!args.id) {
-        throw new Error('配置ID不能为空');
+        throw new Error("配置ID不能为空");
       }
 
       const id = parseInt(args.id);
       if (isNaN(id)) {
-        throw new Error('无效的配置ID');
+        throw new Error("无效的配置ID");
       }
 
       const result = this.outlierService.updateDetectionConfig(id, {
         detection_method: args.updates.detectionMethod,
         method_params: args.updates.methodParams,
         priority: args.updates.priority,
-        is_active: args.updates.isActive !== undefined ? (args.updates.isActive ? 1 : 0) : undefined
+        is_active: args.updates.isActive !== undefined ? (args.updates.isActive ? 1 : 0) : undefined,
       });
 
       if (!result.success) {
@@ -324,18 +446,15 @@ export class OutlierDetectionController extends BaseController {
   /**
    * 删除检测配置
    */
-  async deleteDetectionConfig(
-    args: { id: string },
-    _event: IpcMainInvokeEvent
-  ) {
+  async deleteDetectionConfig(args: { id: string }, _event: IpcMainInvokeEvent) {
     return this.handleAsync(async () => {
       if (!args.id) {
-        throw new Error('配置ID不能为空');
+        throw new Error("配置ID不能为空");
       }
 
       const id = parseInt(args.id);
       if (isNaN(id)) {
-        throw new Error('无效的配置ID');
+        throw new Error("无效的配置ID");
       }
 
       const result = this.outlierService.deleteDetectionConfig(id);
@@ -360,16 +479,16 @@ export class OutlierDetectionController extends BaseController {
   ) {
     return this.handleAsync(async () => {
       if (!args.columnName) {
-        throw new Error('列名不能为空');
+        throw new Error("列名不能为空");
       }
       if (!args.datasetId || !args.siteId) {
-        throw new Error('数据集ID和站点ID不能为空');
+        throw new Error("数据集ID和站点ID不能为空");
       }
 
       const datasetId = parseInt(args.datasetId);
       const siteId = parseInt(args.siteId);
       if (isNaN(datasetId) || isNaN(siteId)) {
-        throw new Error('无效的ID');
+        throw new Error("无效的ID");
       }
 
       const result = this.outlierService.resolveColumnThreshold(args.columnName, datasetId, siteId);
@@ -384,30 +503,37 @@ export class OutlierDetectionController extends BaseController {
   // ==================== 检测执行 ====================
 
   /**
-   * 执行阈值检测
+   * 通用检测执行 (支持所有检测方法)
    */
-  async executeThresholdDetection(
+  async executeDetection(
     args: {
       datasetId: string;
       versionId: string;
+      method: string;
+      methodParams?: Record<string, any>;
       columnNames?: string[];
     },
     _event: IpcMainInvokeEvent
   ) {
     return this.handleAsync(async () => {
       if (!args.datasetId || !args.versionId) {
-        throw new Error('数据集ID和版本ID不能为空');
+        throw new Error("数据集ID和版本ID不能为空");
+      }
+      if (!args.method) {
+        throw new Error("检测方法不能为空");
       }
 
       const datasetId = parseInt(args.datasetId);
       const versionId = parseInt(args.versionId);
       if (isNaN(datasetId) || isNaN(versionId)) {
-        throw new Error('无效的ID');
+        throw new Error("无效的ID");
       }
 
-      const result = this.outlierService.executeThresholdDetection(
+      const result = this.outlierService.executeDetection(
         datasetId,
         versionId,
+        args.method as DetectionMethodId,
+        args.methodParams || {},
         args.columnNames
       );
 
@@ -420,20 +546,49 @@ export class OutlierDetectionController extends BaseController {
   }
 
   /**
-   * 获取检测结果列表
+   * 执行阈值检测
    */
-  async getDetectionResults(
-    args: { datasetId: string },
+  async executeThresholdDetection(
+    args: {
+      datasetId: string;
+      versionId: string;
+      columnNames?: string[];
+    },
     _event: IpcMainInvokeEvent
   ) {
     return this.handleAsync(async () => {
+      if (!args.datasetId || !args.versionId) {
+        throw new Error("数据集ID和版本ID不能为空");
+      }
+
+      const datasetId = parseInt(args.datasetId);
+      const versionId = parseInt(args.versionId);
+      if (isNaN(datasetId) || isNaN(versionId)) {
+        throw new Error("无效的ID");
+      }
+
+      const result = this.outlierService.executeThresholdDetection(datasetId, versionId, args.columnNames);
+
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      return result.data;
+    });
+  }
+
+  /**
+   * 获取检测结果列表
+   */
+  async getDetectionResults(args: { datasetId: string }, _event: IpcMainInvokeEvent) {
+    return this.handleAsync(async () => {
       if (!args.datasetId) {
-        throw new Error('数据集ID不能为空');
+        throw new Error("数据集ID不能为空");
       }
 
       const datasetId = parseInt(args.datasetId);
       if (isNaN(datasetId)) {
-        throw new Error('无效的数据集ID');
+        throw new Error("无效的数据集ID");
       }
 
       const result = this.outlierService.getDetectionResults(datasetId);
@@ -459,12 +614,12 @@ export class OutlierDetectionController extends BaseController {
   ) {
     return this.handleAsync(async () => {
       if (!args.resultId) {
-        throw new Error('结果ID不能为空');
+        throw new Error("结果ID不能为空");
       }
 
       const resultId = parseInt(args.resultId);
       if (isNaN(resultId)) {
-        throw new Error('无效的结果ID');
+        throw new Error("无效的结果ID");
       }
 
       const result = this.outlierService.getDetectionResultDetails(
@@ -485,18 +640,15 @@ export class OutlierDetectionController extends BaseController {
   /**
    * 获取检测结果统计 (用于补全历史记录缺失的统计)
    */
-  async getOutlierResultStats(
-    args: { resultId: string },
-    _event: IpcMainInvokeEvent
-  ) {
+  async getOutlierResultStats(args: { resultId: string }, _event: IpcMainInvokeEvent) {
     return this.handleAsync(async () => {
       if (!args.resultId) {
-        throw new Error('结果ID不能为空');
+        throw new Error("结果ID不能为空");
       }
 
       const resultId = parseInt(args.resultId);
       if (isNaN(resultId)) {
-        throw new Error('无效的结果ID');
+        throw new Error("无效的结果ID");
       }
 
       const result = this.outlierService.getOutlierResultStats(resultId);
@@ -511,18 +663,15 @@ export class OutlierDetectionController extends BaseController {
   /**
    * 删除检测结果
    */
-  async deleteDetectionResult(
-    args: { resultId: string },
-    _event: IpcMainInvokeEvent
-  ) {
+  async deleteDetectionResult(args: { resultId: string }, _event: IpcMainInvokeEvent) {
     return this.handleAsync(async () => {
       if (!args.resultId) {
-        throw new Error('结果ID不能为空');
+        throw new Error("结果ID不能为空");
       }
 
       const resultId = parseInt(args.resultId);
       if (isNaN(resultId)) {
-        throw new Error('无效的结果ID');
+        throw new Error("无效的结果ID");
       }
 
       const result = this.outlierService.deleteDetectionResult(resultId);
@@ -537,21 +686,18 @@ export class OutlierDetectionController extends BaseController {
   /**
    * 重命名检测结果
    */
-  async renameDetectionResult(
-    args: { resultId: string; name: string },
-    _event: IpcMainInvokeEvent
-  ) {
+  async renameDetectionResult(args: { resultId: string; name: string }, _event: IpcMainInvokeEvent) {
     return this.handleAsync(async () => {
       if (!args.resultId) {
-        throw new Error('结果ID不能为空');
+        throw new Error("结果ID不能为空");
       }
       if (!args.name) {
-        throw new Error('名称不能为空');
+        throw new Error("名称不能为空");
       }
 
       const resultId = parseInt(args.resultId);
       if (isNaN(resultId)) {
-        throw new Error('无效的结果ID');
+        throw new Error("无效的结果ID");
       }
 
       const result = this.outlierService.renameDetectionResult(resultId, args.name);
@@ -566,18 +712,15 @@ export class OutlierDetectionController extends BaseController {
   /**
    * 应用异常值过滤
    */
-  async applyOutlierFiltering(
-    args: { resultId: string },
-    _event: IpcMainInvokeEvent
-  ) {
+  async applyOutlierFiltering(args: { resultId: string }, _event: IpcMainInvokeEvent) {
     return this.handleAsync(async () => {
       if (!args.resultId) {
-        throw new Error('结果ID不能为空');
+        throw new Error("结果ID不能为空");
       }
 
       const resultId = parseInt(args.resultId);
       if (isNaN(resultId)) {
-        throw new Error('无效的结果ID');
+        throw new Error("无效的结果ID");
       }
 
       const result = this.outlierService.applyOutlierFiltering(resultId);
@@ -592,18 +735,15 @@ export class OutlierDetectionController extends BaseController {
   /**
    * 撤销异常值过滤
    */
-  async revertOutlierFiltering(
-    args: { resultId: string },
-    _event: IpcMainInvokeEvent
-  ) {
+  async revertOutlierFiltering(args: { resultId: string }, _event: IpcMainInvokeEvent) {
     return this.handleAsync(async () => {
       if (!args.resultId) {
-        throw new Error('结果ID不能为空');
+        throw new Error("结果ID不能为空");
       }
 
       const resultId = parseInt(args.resultId);
       if (isNaN(resultId)) {
-        throw new Error('无效的结果ID');
+        throw new Error("无效的结果ID");
       }
 
       const result = this.outlierService.revertOutlierFiltering(resultId);
@@ -614,5 +754,4 @@ export class OutlierDetectionController extends BaseController {
       return { success: true };
     });
   }
-
 }

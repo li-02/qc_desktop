@@ -1,5 +1,5 @@
-import { OutlierDetectionRepository } from '../repository/OutlierDetectionRepository';
-import { DatasetDBRepository } from '../repository/DatasetDBRepository';
+import { OutlierDetectionRepository } from "../repository/OutlierDetectionRepository";
+import { DatasetDBRepository } from "../repository/DatasetDBRepository";
 import type {
   OutlierDetectionConfig,
   OutlierResult,
@@ -9,9 +9,11 @@ import type {
   ColumnSetting,
   ResolvedThresholdConfig,
   DetectionMethod,
-  DetectionMethodParam
-} from '../../shared/types/database';
-import type { ServiceResponse } from '../../shared/types/projectInterface';
+  DetectionMethodParam,
+  ThresholdTemplateData,
+  UserTemplateListItem,
+} from "../../shared/types/database";
+import type { ServiceResponse } from "../../shared/types/projectInterface";
 
 /**
  * 异常检测服务
@@ -21,10 +23,7 @@ export class OutlierDetectionService {
   private outlierRepo: OutlierDetectionRepository;
   private datasetRepo: DatasetDBRepository;
 
-  constructor(
-    outlierRepo: OutlierDetectionRepository,
-    datasetRepo: DatasetDBRepository
-  ) {
+  constructor(outlierRepo: OutlierDetectionRepository, datasetRepo: DatasetDBRepository) {
     this.outlierRepo = outlierRepo;
     this.datasetRepo = datasetRepo;
   }
@@ -37,76 +36,81 @@ export class OutlierDetectionService {
   getAvailableDetectionMethods(): ServiceResponse<DetectionMethod[]> {
     const methods: DetectionMethod[] = [
       {
-        id: 'THRESHOLD_STATIC',
-        name: '静态阈值过滤',
-        category: 'threshold',
-        description: '根据设定的上下限过滤超出范围的值',
+        id: "THRESHOLD_STATIC",
+        name: "静态阈值过滤",
+        category: "threshold",
+        description: "根据设定的上下限过滤超出范围的值",
         requiresPython: false,
         isAvailable: true,
         params: [
-          { key: 'min_value', label: '最小值', type: 'number', default: 0, tooltip: '低于此值将被标记为异常' },
-          { key: 'max_value', label: '最大值', type: 'number', default: 100, tooltip: '高于此值将被标记为异常' },
-          { key: 'include_boundary', label: '包含边界值', type: 'boolean', default: true }
-        ]
+          { key: "min_value", label: "最小值", type: "number", default: 0, tooltip: "低于此值将被标记为异常" },
+          { key: "max_value", label: "最大值", type: "number", default: 100, tooltip: "高于此值将被标记为异常" },
+          { key: "include_boundary", label: "包含边界值", type: "boolean", default: true },
+        ],
       },
       {
-        id: 'ZSCORE',
-        name: 'Z-Score 标准差法',
-        category: 'statistical',
-        description: '基于标准差检测偏离均值过远的异常值',
+        id: "ZSCORE",
+        name: "Z-Score 标准差法",
+        category: "statistical",
+        description: "基于标准差检测偏离均值过远的异常值",
         requiresPython: false,
         isAvailable: true,
         params: [
-          { key: 'threshold', label: '阈值倍数', type: 'number', default: 3, min: 1, max: 5, step: 0.5, tooltip: '超过均值±N倍标准差的值将被标记' }
-        ]
+          {
+            key: "threshold",
+            label: "阈值倍数",
+            type: "number",
+            default: 3,
+            min: 1,
+            max: 5,
+            step: 0.5,
+            tooltip: "超过均值±N倍标准差的值将被标记",
+          },
+        ],
       },
       {
-        id: 'MODIFIED_ZSCORE',
-        name: 'Modified Z-Score (MAD)',
-        category: 'statistical',
-        description: '基于中位数绝对偏差的稳健异常检测',
+        id: "MODIFIED_ZSCORE",
+        name: "Modified Z-Score (MAD)",
+        category: "statistical",
+        description: "基于中位数绝对偏差的稳健异常检测",
         requiresPython: false,
         isAvailable: true,
-        params: [
-          { key: 'threshold', label: 'MAD阈值', type: 'number', default: 3.5, min: 2, max: 5, step: 0.5 }
-        ]
+        params: [{ key: "threshold", label: "MAD阈值", type: "number", default: 3.5, min: 2, max: 5, step: 0.5 }],
       },
       {
-        id: 'IQR',
-        name: 'IQR 四分位距法',
-        category: 'statistical',
-        description: '基于四分位距检测异常值',
+        id: "IQR",
+        name: "IQR 四分位距法",
+        category: "statistical",
+        description: "基于四分位距检测异常值",
         requiresPython: false,
         isAvailable: true,
-        params: [
-          { key: 'multiplier', label: 'IQR倍数', type: 'number', default: 1.5, min: 1, max: 3, step: 0.5 }
-        ]
+        params: [{ key: "multiplier", label: "IQR倍数", type: "number", default: 1.5, min: 1, max: 3, step: 0.5 }],
       },
       {
-        id: 'DESPIKING_MAD',
-        name: 'MAD Despiking',
-        category: 'statistical',
-        description: '滑动窗口MAD去尖峰，适用于通量数据',
+        id: "DESPIKING_MAD",
+        name: "MAD Despiking",
+        category: "statistical",
+        description: "滑动窗口MAD去尖峰，适用于通量数据",
         requiresPython: true,
         isAvailable: true,
         params: [
-          { key: 'window_size', label: '窗口大小', type: 'number', default: 13, min: 5, max: 51, step: 2 },
-          { key: 'threshold', label: 'MAD倍数', type: 'number', default: 5.2, min: 3, max: 10, step: 0.1 },
-          { key: 'max_iterations', label: '最大迭代次数', type: 'number', default: 10, min: 1, max: 20 }
-        ]
+          { key: "window_size", label: "窗口大小", type: "number", default: 13, min: 5, max: 51, step: 2 },
+          { key: "threshold", label: "MAD倍数", type: "number", default: 5.2, min: 3, max: 10, step: 0.1 },
+          { key: "max_iterations", label: "最大迭代次数", type: "number", default: 10, min: 1, max: 20 },
+        ],
       },
       {
-        id: 'ISOLATION_FOREST',
-        name: 'Isolation Forest',
-        category: 'ml',
-        description: '基于隔离森林的机器学习异常检测',
+        id: "ISOLATION_FOREST",
+        name: "Isolation Forest",
+        category: "ml",
+        description: "基于隔离森林的机器学习异常检测",
         requiresPython: true,
         isAvailable: false, // Phase 2
         params: [
-          { key: 'contamination', label: '异常比例', type: 'number', default: 0.1, min: 0.01, max: 0.5, step: 0.01 },
-          { key: 'n_estimators', label: '树数量', type: 'number', default: 100, min: 50, max: 500 }
-        ]
-      }
+          { key: "contamination", label: "异常比例", type: "number", default: 0.1, min: 0.01, max: 0.5, step: 0.01 },
+          { key: "n_estimators", label: "树数量", type: "number", default: 100, min: 50, max: 500 },
+        ],
+      },
     ];
 
     return { success: true, data: methods };
@@ -151,7 +155,7 @@ export class OutlierDetectionService {
 
       const updated = this.outlierRepo.updateColumnThresholds(columnId, thresholds);
       if (!updated) {
-        return { success: false, error: '更新失败，列配置不存在' };
+        return { success: false, error: "更新失败，列配置不存在" };
       }
 
       return { success: true };
@@ -200,12 +204,12 @@ export class OutlierDetectionService {
       const updates: Array<{ id: number; min_threshold: number; max_threshold: number }> = [];
 
       for (const col of columns) {
-        const templateConfig = template[col.column_name] || template[col.variable_type || ''];
+        const templateConfig = template[col.column_name] || template[col.variable_type || ""];
         if (templateConfig) {
           updates.push({
             id: col.id,
             min_threshold: templateConfig.min,
-            max_threshold: templateConfig.max
+            max_threshold: templateConfig.max,
           });
         }
       }
@@ -257,7 +261,7 @@ export class OutlierDetectionService {
         detection_method: config.detection_method,
         method_params: config.method_params ? JSON.stringify(config.method_params) : undefined,
         priority: config.priority ?? 0,
-        is_active: 1
+        is_active: 1,
       });
 
       return { success: true, data: { id } };
@@ -288,7 +292,7 @@ export class OutlierDetectionService {
 
       const success = this.outlierRepo.updateDetectionConfig(id, updateData);
       if (!success) {
-        return { success: false, error: '配置不存在或更新失败' };
+        return { success: false, error: "配置不存在或更新失败" };
       }
 
       return { success: true };
@@ -304,7 +308,7 @@ export class OutlierDetectionService {
     try {
       const success = this.outlierRepo.deleteDetectionConfig(id);
       if (!success) {
-        return { success: false, error: '配置不存在' };
+        return { success: false, error: "配置不存在" };
       }
       return { success: true };
     } catch (error: any) {
@@ -338,15 +342,15 @@ export class OutlierDetectionService {
               warningMax: col.warning_max ?? undefined,
               unit: col.unit ?? undefined,
               variableType: col.variable_type ?? undefined,
-              source: 'DATASET'
-            }
+              source: "DATASET",
+            },
           };
         }
       }
 
-      // 2. 查 SITE 级配置
-      const siteConfigs = this.outlierRepo.getDetectionConfigs('SITE', siteId, columnName);
-      const siteThresholdConfig = siteConfigs.find(c => c.detection_method === 'THRESHOLD_STATIC');
+      // 2. 查 CATEGORY 级配置
+      const siteConfigs = this.outlierRepo.getDetectionConfigs("CATEGORY", siteId, columnName);
+      const siteThresholdConfig = siteConfigs.find(c => c.detection_method === "THRESHOLD_STATIC");
       if (siteThresholdConfig && siteThresholdConfig.method_params) {
         const params = JSON.parse(siteThresholdConfig.method_params);
         return {
@@ -355,14 +359,14 @@ export class OutlierDetectionService {
             columnName,
             minThreshold: params.min_value,
             maxThreshold: params.max_value,
-            source: 'SITE'
-          }
+            source: "CATEGORY",
+          },
         };
       }
 
       // 3. 查 APP 级配置
-      const appConfigs = this.outlierRepo.getDetectionConfigs('APP', undefined, columnName);
-      const appThresholdConfig = appConfigs.find(c => c.detection_method === 'THRESHOLD_STATIC');
+      const appConfigs = this.outlierRepo.getDetectionConfigs("APP", undefined, columnName);
+      const appThresholdConfig = appConfigs.find(c => c.detection_method === "THRESHOLD_STATIC");
       if (appThresholdConfig && appThresholdConfig.method_params) {
         const params = JSON.parse(appThresholdConfig.method_params);
         return {
@@ -371,8 +375,8 @@ export class OutlierDetectionService {
             columnName,
             minThreshold: params.min_value,
             maxThreshold: params.max_value,
-            source: 'APP'
-          }
+            source: "APP",
+          },
         };
       }
 
@@ -381,8 +385,8 @@ export class OutlierDetectionService {
         success: true,
         data: {
           columnName,
-          source: 'APP' // 默认
-        }
+          source: "APP", // 默认
+        },
       };
     } catch (error: any) {
       return { success: false, error: `解析阈值配置失败: ${error.message}` };
@@ -394,39 +398,217 @@ export class OutlierDetectionService {
   /**
    * 获取通量数据常用阈值模板
    */
-  getFluxThresholdTemplates(): ServiceResponse<Record<string, Record<string, { min: number; max: number; unit: string }>>> {
+  getFluxThresholdTemplates(): ServiceResponse<
+    Record<string, Record<string, { min: number; max: number; unit: string }>>
+  > {
     const templates = {
       standard: {
-        Ta: { min: -40, max: 50, unit: '°C' },
-        Ta_2m: { min: -40, max: 50, unit: '°C' },
-        RH: { min: 0, max: 100, unit: '%' },
-        VPD: { min: 0, max: 8, unit: 'kPa' },
-        SW_IN: { min: 0, max: 1400, unit: 'W/m²' },
-        SW_OUT: { min: 0, max: 1000, unit: 'W/m²' },
-        LW_IN: { min: 100, max: 600, unit: 'W/m²' },
-        LW_OUT: { min: 200, max: 700, unit: 'W/m²' },
-        PPFD: { min: 0, max: 2500, unit: 'μmol/m²/s' },
-        CO2: { min: 350, max: 550, unit: 'ppm' },
-        H2O: { min: 0, max: 50, unit: 'mmol/mol' },
-        NEE: { min: -40, max: 30, unit: 'μmol/m²/s' },
-        LE: { min: -50, max: 700, unit: 'W/m²' },
-        H: { min: -100, max: 500, unit: 'W/m²' },
-        USTAR: { min: 0, max: 3, unit: 'm/s' },
-        WS: { min: 0, max: 30, unit: 'm/s' },
-        WD: { min: 0, max: 360, unit: '°' },
-        P: { min: 0, max: 100, unit: 'mm' },
-        PA: { min: 80, max: 110, unit: 'kPa' }
+        Ta: { min: -40, max: 50, unit: "°C" },
+        Ta_2m: { min: -40, max: 50, unit: "°C" },
+        RH: { min: 0, max: 100, unit: "%" },
+        VPD: { min: 0, max: 8, unit: "kPa" },
+        SW_IN: { min: 0, max: 1400, unit: "W/m²" },
+        SW_OUT: { min: 0, max: 1000, unit: "W/m²" },
+        LW_IN: { min: 100, max: 600, unit: "W/m²" },
+        LW_OUT: { min: 200, max: 700, unit: "W/m²" },
+        PPFD: { min: 0, max: 2500, unit: "μmol/m²/s" },
+        CO2: { min: 350, max: 550, unit: "ppm" },
+        H2O: { min: 0, max: 50, unit: "mmol/mol" },
+        NEE: { min: -40, max: 30, unit: "μmol/m²/s" },
+        LE: { min: -50, max: 700, unit: "W/m²" },
+        H: { min: -100, max: 500, unit: "W/m²" },
+        USTAR: { min: 0, max: 3, unit: "m/s" },
+        WS: { min: 0, max: 30, unit: "m/s" },
+        WD: { min: 0, max: 360, unit: "°" },
+        P: { min: 0, max: 100, unit: "mm" },
+        PA: { min: 80, max: 110, unit: "kPa" },
       },
       strict: {
-        Ta: { min: -30, max: 45, unit: '°C' },
-        RH: { min: 5, max: 100, unit: '%' },
-        SW_IN: { min: 0, max: 1300, unit: 'W/m²' },
-        CO2: { min: 380, max: 500, unit: 'ppm' },
-        NEE: { min: -30, max: 20, unit: 'μmol/m²/s' }
-      }
+        Ta: { min: -30, max: 45, unit: "°C" },
+        RH: { min: 5, max: 100, unit: "%" },
+        SW_IN: { min: 0, max: 1300, unit: "W/m²" },
+        CO2: { min: 380, max: 500, unit: "ppm" },
+        NEE: { min: -30, max: 20, unit: "μmol/m²/s" },
+      },
     };
 
     return { success: true, data: templates };
+  }
+
+  // ==================== 用户自定义阈值模板 ====================
+
+  /**
+   * 将当前数据集的阈值配置保存为模板
+   */
+  saveCurrentAsTemplate(
+    datasetId: number,
+    name: string,
+    description?: string
+  ): ServiceResponse<{ id: number; columnCount: number }> {
+    try {
+      const columns = this.outlierRepo.getColumnThresholds(datasetId);
+      const configuredColumns = columns.filter(c => c.min_threshold !== null || c.max_threshold !== null);
+
+      if (configuredColumns.length === 0) {
+        return { success: false, error: "当前数据集没有已配置阈值的列，无法保存为模板" };
+      }
+
+      const templateData: ThresholdTemplateData = {};
+      for (const col of configuredColumns) {
+        templateData[col.column_name] = {
+          min: col.min_threshold ?? 0,
+          max: col.max_threshold ?? 0,
+          unit: col.unit || undefined,
+        };
+      }
+
+      const id = this.outlierRepo.createTemplate(name, JSON.stringify(templateData), description, datasetId);
+
+      return { success: true, data: { id, columnCount: configuredColumns.length } };
+    } catch (error: any) {
+      return { success: false, error: `保存模板失败: ${error.message}` };
+    }
+  }
+
+  /**
+   * 获取用户自定义模板列表
+   */
+  getUserTemplates(): ServiceResponse<UserTemplateListItem[]> {
+    try {
+      const records = this.outlierRepo.getAllTemplates();
+      const items: UserTemplateListItem[] = records.map(r => {
+        let columnCount = 0;
+        let columnNames: string[] = [];
+        let thresholds: ThresholdTemplateData = {};
+        try {
+          const data: ThresholdTemplateData = JSON.parse(r.template_data);
+          columnNames = Object.keys(data);
+          columnCount = columnNames.length;
+          thresholds = data;
+        } catch (e) {
+          // JSON 解析失败，返回空
+        }
+        return {
+          id: r.id,
+          name: r.name,
+          description: r.description ?? null,
+          columnCount,
+          columnNames,
+          thresholds,
+          sourceDatasetId: r.source_dataset_id ?? null,
+          createdAt: r.created_at,
+        };
+      });
+      return { success: true, data: items };
+    } catch (error: any) {
+      return { success: false, error: `获取模板列表失败: ${error.message}` };
+    }
+  }
+
+  /**
+   * 更新用户自定义模板
+   */
+  updateUserTemplate(
+    templateId: number,
+    updates: { name?: string; description?: string; templateData?: ThresholdTemplateData }
+  ): ServiceResponse<void> {
+    try {
+      const template = this.outlierRepo.getTemplateById(templateId);
+      if (!template) {
+        return { success: false, error: "模板不存在" };
+      }
+
+      const repoUpdates: { name?: string; description?: string; template_data?: string } = {};
+      if (updates.name !== undefined) {
+        if (!updates.name.trim()) {
+          return { success: false, error: "模板名称不能为空" };
+        }
+        repoUpdates.name = updates.name.trim();
+      }
+      if (updates.description !== undefined) {
+        repoUpdates.description = updates.description;
+      }
+      if (updates.templateData !== undefined) {
+        repoUpdates.template_data = JSON.stringify(updates.templateData);
+      }
+
+      const success = this.outlierRepo.updateTemplate(templateId, repoUpdates);
+      if (!success) {
+        return { success: false, error: "更新模板失败" };
+      }
+
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: `更新模板失败: ${error.message}` };
+    }
+  }
+
+  /**
+   * 删除用户自定义模板
+   */
+  deleteUserTemplate(templateId: number): ServiceResponse<void> {
+    try {
+      const success = this.outlierRepo.deleteTemplate(templateId);
+      if (!success) {
+        return { success: false, error: "模板不存在或已被删除" };
+      }
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: `删除模板失败: ${error.message}` };
+    }
+  }
+
+  /**
+   * 应用用户自定义模板到指定数据集
+   */
+  applyUserTemplate(
+    datasetId: number,
+    templateId: number
+  ): ServiceResponse<{ appliedCount: number; skippedCount: number; totalInTemplate: number }> {
+    try {
+      const template = this.outlierRepo.getTemplateById(templateId);
+      if (!template) {
+        return { success: false, error: "模板不存在" };
+      }
+
+      let templateData: ThresholdTemplateData;
+      try {
+        templateData = JSON.parse(template.template_data);
+      } catch (e) {
+        return { success: false, error: "模板数据格式异常" };
+      }
+
+      const templateKeys = Object.keys(templateData);
+      const totalInTemplate = templateKeys.length;
+
+      const columns = this.outlierRepo.getColumnThresholds(datasetId);
+      const columnMap = new Map(columns.map(c => [c.column_name, c]));
+
+      const updates: Array<{ id: number; min_threshold: number; max_threshold: number }> = [];
+      let skippedCount = 0;
+
+      for (const key of templateKeys) {
+        const col = columnMap.get(key);
+        if (col) {
+          updates.push({
+            id: col.id,
+            min_threshold: templateData[key].min,
+            max_threshold: templateData[key].max,
+          });
+        } else {
+          skippedCount++;
+        }
+      }
+
+      let appliedCount = 0;
+      if (updates.length > 0) {
+        appliedCount = this.outlierRepo.batchUpdateColumnThresholds(updates);
+      }
+
+      return { success: true, data: { appliedCount, skippedCount, totalInTemplate } };
+    } catch (error: any) {
+      return { success: false, error: `应用模板失败: ${error.message}` };
+    }
   }
 
   // ==================== 检测执行 ====================
@@ -457,71 +639,83 @@ export class OutlierDetectionService {
     try {
       // 1. 获取列阈值配置
       const columns = this.outlierRepo.getColumnThresholds(datasetId);
-      console.log('[OutlierDetection] All columns from DB:', columns.map(c => ({
-        name: c.column_name,
-        min: c.min_threshold,
-        max: c.max_threshold
-      })));
-      
+      console.log(
+        "[OutlierDetection] All columns from DB:",
+        columns.map(c => ({
+          name: c.column_name,
+          min: c.min_threshold,
+          max: c.max_threshold,
+        }))
+      );
+
       const targetColumns = columnNames
         ? columns.filter(c => columnNames.includes(c.column_name))
         : columns.filter(c => c.min_threshold !== null || c.max_threshold !== null);
-      
-      console.log('[OutlierDetection] Target columns for detection:', targetColumns.map(c => c.column_name));
+
+      console.log(
+        "[OutlierDetection] Target columns for detection:",
+        targetColumns.map(c => c.column_name)
+      );
 
       if (targetColumns.length === 0) {
-        return { success: false, error: '没有配置阈值的列，请先配置阈值' };
+        return { success: false, error: "没有配置阈值的列，请先配置阈值" };
       }
 
       // 2. 创建检测结果记录
       const resultId = this.outlierRepo.createDetectionResult({
         dataset_id: datasetId,
         version_id: versionId,
-        detection_method: 'THRESHOLD_STATIC',
+        detection_method: "THRESHOLD_STATIC",
         method_params: JSON.stringify({ columns: targetColumns.map(c => c.column_name) }),
-        status: 'RUNNING'
+        status: "RUNNING",
       });
 
       // 3. 读取数据并执行检测
       const datasetResult = this.datasetRepo.getDatasetById(datasetId);
       if (!datasetResult.success || !datasetResult.data) {
-        this.outlierRepo.updateDetectionResult(resultId, { status: 'FAILED' });
-        return { success: false, error: '数据集不存在' };
+        this.outlierRepo.updateDetectionResult(resultId, { status: "FAILED" });
+        return { success: false, error: "数据集不存在" };
       }
 
       // 获取 CSV 文件路径
       const filePath = datasetResult.data.source_file_path;
       if (!filePath) {
-        this.outlierRepo.updateDetectionResult(resultId, { status: 'FAILED' });
-        return { success: false, error: '数据文件路径不存在' };
+        this.outlierRepo.updateDetectionResult(resultId, { status: "FAILED" });
+        return { success: false, error: "数据文件路径不存在" };
       }
 
       // 4. 读取 CSV 数据并检测
-      const fs = require('fs');
-      const path = require('path');
+      const fs = require("fs");
+      const path = require("path");
 
       if (!fs.existsSync(filePath)) {
-        this.outlierRepo.updateDetectionResult(resultId, { status: 'FAILED' });
+        this.outlierRepo.updateDetectionResult(resultId, { status: "FAILED" });
         return { success: false, error: `数据文件不存在: ${filePath}` };
       }
 
-      const csvContent = fs.readFileSync(filePath, 'utf-8');
-      const lines = csvContent.split('\n').filter((line: string) => line.trim());
+      const csvContent = fs.readFileSync(filePath, "utf-8");
+      const lines = csvContent.split("\n").filter((line: string) => line.trim());
 
       if (lines.length < 2) {
-        this.outlierRepo.updateDetectionResult(resultId, { status: 'FAILED' });
-        return { success: false, error: '数据文件为空或格式错误' };
+        this.outlierRepo.updateDetectionResult(resultId, { status: "FAILED" });
+        return { success: false, error: "数据文件为空或格式错误" };
       }
 
-      const headers = lines[0].split(',').map((h: string) => h.trim().replace(/"/g, ''));
+      const headers = lines[0].split(",").map((h: string) => h.trim().replace(/"/g, ""));
       const headersLower = headers.map((h: string) => h.toLowerCase());
       const totalRows = lines.length - 1;
 
       // 尝试识别时间列
       const timeColIndex = headers.findIndex((h: string) => {
         const upper = h.toUpperCase();
-        return upper === 'TIMESTAMP' || upper === 'DATE' || upper === 'TIME' || upper === 'DATETIME' ||
-          upper.includes('TIME') || upper.includes('DATE');
+        return (
+          upper === "TIMESTAMP" ||
+          upper === "DATE" ||
+          upper === "TIME" ||
+          upper === "DATETIME" ||
+          upper.includes("TIME") ||
+          upper.includes("DATE")
+        );
       });
 
       // 5. 对每列执行阈值检测
@@ -555,14 +749,14 @@ export class OutlierDetectionService {
 
       const isMissingValue = (val: string) => {
         if (!missingValueTypes || missingValueTypes.length === 0) return false;
-        const trimmed = (val ?? '').trim();
-        if (trimmed === '') {
-            return missingValueTypes.includes('') || missingValueTypes.includes('null');
+        const trimmed = (val ?? "").trim();
+        if (trimmed === "") {
+          return missingValueTypes.includes("") || missingValueTypes.includes("null");
         }
         return missingValueTypes.some(t => {
-            const tt = (t ?? '').trim();
-            if (tt === '') return false;
-            return trimmed.toLowerCase() === tt.toLowerCase();
+          const tt = (t ?? "").trim();
+          if (tt === "") return false;
+          return trimmed.toLowerCase() === tt.toLowerCase();
         });
       };
 
@@ -585,11 +779,11 @@ export class OutlierDetectionService {
         const maxThreshold = col.max_threshold ?? null;
 
         for (let i = 1; i < lines.length; i++) {
-          const values = lines[i].split(',');
+          const values = lines[i].split(",");
           if (colIndex >= values.length) continue;
 
-          const rawValue = values[colIndex].trim().replace(/"/g, '');
-          
+          const rawValue = values[colIndex].trim().replace(/"/g, "");
+
           // Check for missing value
           if (isMissingValue(rawValue)) {
             missingCount++;
@@ -607,24 +801,24 @@ export class OutlierDetectionService {
             // but usually read_csv would treat them as NaN.
             // If we strictly follow user definition, we only count explicit missing values.
             // But empty string is common.
-            if (rawValue === '') {
-                 missingCount++;
+            if (rawValue === "") {
+              missingCount++;
             }
             continue;
           }
 
           // 检测是否超出阈值
           let isOutlier = false;
-          let outlierType = '';
+          let outlierType = "";
           let thresholdValue = 0;
 
           if (minThreshold !== null && value < minThreshold) {
             isOutlier = true;
-            outlierType = 'BELOW_MIN';
+            outlierType = "BELOW_MIN";
             thresholdValue = minThreshold;
           } else if (maxThreshold !== null && value > maxThreshold) {
             isOutlier = true;
-            outlierType = 'ABOVE_MAX';
+            outlierType = "ABOVE_MAX";
             thresholdValue = maxThreshold;
           }
 
@@ -635,7 +829,7 @@ export class OutlierDetectionService {
             // 记录异常值详情
             let timePoint: string | undefined;
             if (timeColIndex !== -1 && timeColIndex < values.length) {
-              timePoint = values[timeColIndex].trim().replace(/"/g, '');
+              timePoint = values[timeColIndex].trim().replace(/"/g, "");
             }
 
             outlierDetails.push({
@@ -645,7 +839,7 @@ export class OutlierDetectionService {
               original_value: value,
               outlier_type: outlierType,
               threshold_value: thresholdValue,
-              time_point: timePoint
+              time_point: timePoint,
             });
 
             // 分批保存，避免内存占用过高
@@ -661,7 +855,7 @@ export class OutlierDetectionService {
           outlierCount,
           missingCount,
           minThreshold,
-          maxThreshold
+          maxThreshold,
         });
       }
 
@@ -678,12 +872,12 @@ export class OutlierDetectionService {
           outlier_count: r.outlierCount,
           missing_count: r.missingCount,
           min_threshold: r.minThreshold ?? undefined,
-          max_threshold: r.maxThreshold ?? undefined
+          max_threshold: r.maxThreshold ?? undefined,
         }));
         this.outlierRepo.batchCreateOutlierColumnStats(statsToSave);
       }
 
-      console.log('[OutlierDetection] Detection completed. Column results:', columnResults);
+      console.log("[OutlierDetection] Detection completed. Column results:", columnResults);
 
       // 7. 更新检测结果
       const outlierRate = totalRows > 0 ? (totalOutliers / (totalRows * targetColumns.length)) * 100 : 0;
@@ -696,16 +890,16 @@ export class OutlierDetectionService {
           outlierCount: r.outlierCount,
           missingCount: r.missingCount,
           minThreshold: r.minThreshold,
-          maxThreshold: r.maxThreshold
-        }))
+          maxThreshold: r.maxThreshold,
+        })),
       };
 
       this.outlierRepo.updateDetectionResult(resultId, {
-        status: 'COMPLETED',
+        status: "COMPLETED",
         total_rows: totalRows,
         outlier_count: totalOutliers,
         outlier_rate: outlierRate,
-        detection_params: JSON.stringify(finalParams)
+        detection_params: JSON.stringify(finalParams),
       });
 
       return {
@@ -717,13 +911,502 @@ export class OutlierDetectionService {
             columnsChecked: targetColumns.length,
             outlierCount: totalOutliers,
             outlierRate,
-            columnResults
-          }
-        }
+            columnResults,
+          },
+        },
       };
     } catch (error: any) {
       return { success: false, error: `检测执行失败: ${error.message}` };
     }
+  }
+
+  /**
+   * 通用检测执行入口 (根据 method 分派)
+   */
+  executeDetection(
+    datasetId: number,
+    versionId: number,
+    method: DetectionMethodId,
+    methodParams: Record<string, any>,
+    columnNames?: string[]
+  ): ServiceResponse<{
+    resultId: number;
+    summary: {
+      totalRows: number;
+      columnsChecked: number;
+      outlierCount: number;
+      outlierRate: number;
+      columnResults: Array<{
+        columnName: string;
+        outlierCount: number;
+        missingCount: number;
+        minThreshold: number | null;
+        maxThreshold: number | null;
+      }>;
+    };
+  }> {
+    switch (method) {
+      case "THRESHOLD_STATIC":
+        return this.executeThresholdDetection(datasetId, versionId, columnNames);
+      case "ZSCORE":
+        return this.executeStatisticalDetection(datasetId, versionId, method, methodParams, columnNames);
+      case "MODIFIED_ZSCORE":
+        return this.executeStatisticalDetection(datasetId, versionId, method, methodParams, columnNames);
+      case "IQR":
+        return this.executeStatisticalDetection(datasetId, versionId, method, methodParams, columnNames);
+      case "DESPIKING_MAD":
+        return this.executeStatisticalDetection(datasetId, versionId, method, methodParams, columnNames);
+      default:
+        return { success: false, error: `不支持的检测方法: ${method}` };
+    }
+  }
+
+  /**
+   * 执行统计类检测 (ZSCORE / MODIFIED_ZSCORE / IQR / DESPIKING_MAD)
+   */
+  private executeStatisticalDetection(
+    datasetId: number,
+    versionId: number,
+    method: DetectionMethodId,
+    methodParams: Record<string, any>,
+    columnNames?: string[]
+  ): ServiceResponse<{
+    resultId: number;
+    summary: {
+      totalRows: number;
+      columnsChecked: number;
+      outlierCount: number;
+      outlierRate: number;
+      columnResults: Array<{
+        columnName: string;
+        outlierCount: number;
+        missingCount: number;
+        minThreshold: number | null;
+        maxThreshold: number | null;
+      }>;
+    };
+  }> {
+    try {
+      // 1. 获取列配置
+      const columns = this.outlierRepo.getColumnThresholds(datasetId);
+      const targetColumns = columnNames ? columns.filter(c => columnNames.includes(c.column_name)) : columns;
+
+      if (targetColumns.length === 0) {
+        return { success: false, error: "没有可检测的列" };
+      }
+
+      // 2. 创建检测结果记录
+      const resultId = this.outlierRepo.createDetectionResult({
+        dataset_id: datasetId,
+        version_id: versionId,
+        detection_method: method,
+        method_params: JSON.stringify({ ...methodParams, columns: targetColumns.map(c => c.column_name) }),
+        status: "RUNNING",
+      });
+
+      // 3. 读取数据文件
+      const datasetResult = this.datasetRepo.getDatasetById(datasetId);
+      if (!datasetResult.success || !datasetResult.data) {
+        this.outlierRepo.updateDetectionResult(resultId, { status: "FAILED" });
+        return { success: false, error: "数据集不存在" };
+      }
+
+      const filePath = datasetResult.data.source_file_path;
+      if (!filePath) {
+        this.outlierRepo.updateDetectionResult(resultId, { status: "FAILED" });
+        return { success: false, error: "数据文件路径不存在" };
+      }
+
+      const fs = require("fs");
+      if (!fs.existsSync(filePath)) {
+        this.outlierRepo.updateDetectionResult(resultId, { status: "FAILED" });
+        return { success: false, error: `数据文件不存在: ${filePath}` };
+      }
+
+      const csvContent = fs.readFileSync(filePath, "utf-8");
+      const lines = csvContent.split("\n").filter((line: string) => line.trim());
+
+      if (lines.length < 2) {
+        this.outlierRepo.updateDetectionResult(resultId, { status: "FAILED" });
+        return { success: false, error: "数据文件为空或格式错误" };
+      }
+
+      const headers = lines[0].split(",").map((h: string) => h.trim().replace(/"/g, ""));
+      const headersLower = headers.map((h: string) => h.toLowerCase());
+      const totalRows = lines.length - 1;
+
+      // 时间列
+      const timeColIndex = headers.findIndex((h: string) => {
+        const upper = h.toUpperCase();
+        return (
+          upper === "TIMESTAMP" ||
+          upper === "DATE" ||
+          upper === "TIME" ||
+          upper === "DATETIME" ||
+          upper.includes("TIME") ||
+          upper.includes("DATE")
+        );
+      });
+
+      // 缺失值配置
+      const missingValueTypes: string[] = (() => {
+        try {
+          return datasetResult.data.missing_value_types ? JSON.parse(datasetResult.data.missing_value_types) : [];
+        } catch {
+          return [];
+        }
+      })();
+
+      const isMissingValue = (val: string) => {
+        if (!missingValueTypes || missingValueTypes.length === 0) return false;
+        const trimmed = (val ?? "").trim();
+        if (trimmed === "") {
+          return missingValueTypes.includes("") || missingValueTypes.includes("null");
+        }
+        return missingValueTypes.some(t => {
+          const tt = (t ?? "").trim();
+          if (tt === "") return false;
+          return trimmed.toLowerCase() === tt.toLowerCase();
+        });
+      };
+
+      // 4. 解析每列数据为数值数组
+      const parseColumnValues = (colIndex: number): { values: (number | null)[] } => {
+        const values: (number | null)[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          const row = lines[i].split(",");
+          if (colIndex >= row.length) {
+            values.push(null);
+            continue;
+          }
+          const raw = row[colIndex].trim().replace(/"/g, "");
+          if (isMissingValue(raw) || raw === "") {
+            values.push(null);
+            continue;
+          }
+          const num = parseFloat(raw);
+          values.push(isNaN(num) ? null : num);
+        }
+        return { values };
+      };
+
+      // 5. 对每列执行统计检测
+      const columnResults: Array<{
+        columnName: string;
+        outlierCount: number;
+        missingCount: number;
+        minThreshold: number | null;
+        maxThreshold: number | null;
+      }> = [];
+      let totalOutliers = 0;
+      const outlierDetails: Array<{
+        result_id: number;
+        column_name: string;
+        row_index: number;
+        original_value: number;
+        outlier_type: string;
+        threshold_value: number;
+        time_point?: string;
+      }> = [];
+
+      for (const col of targetColumns) {
+        const colNameLower = col.column_name.toLowerCase();
+        let colIndex = headers.indexOf(col.column_name);
+        if (colIndex === -1) colIndex = headersLower.indexOf(colNameLower);
+        if (colIndex === -1) {
+          console.warn(`[OutlierDetection] Column "${col.column_name}" not found in CSV headers`);
+          continue;
+        }
+
+        const { values } = parseColumnValues(colIndex);
+        const validValues = values.filter((v): v is number => v !== null);
+        const missingCount = values.filter(v => v === null).length;
+
+        if (validValues.length === 0) {
+          columnResults.push({
+            columnName: col.column_name,
+            outlierCount: 0,
+            missingCount,
+            minThreshold: null,
+            maxThreshold: null,
+          });
+          continue;
+        }
+
+        // 计算边界
+        let lowerBound: number;
+        let upperBound: number;
+
+        switch (method) {
+          case "ZSCORE": {
+            const threshold = methodParams.threshold ?? 3;
+            const mean = validValues.reduce((a, b) => a + b, 0) / validValues.length;
+            const stdDev = Math.sqrt(validValues.reduce((sum, v) => sum + (v - mean) ** 2, 0) / validValues.length);
+            lowerBound = mean - threshold * stdDev;
+            upperBound = mean + threshold * stdDev;
+            break;
+          }
+          case "MODIFIED_ZSCORE": {
+            const madThreshold = methodParams.threshold ?? 3.5;
+            const sorted = [...validValues].sort((a, b) => a - b);
+            const median =
+              sorted.length % 2 === 0
+                ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+                : sorted[Math.floor(sorted.length / 2)];
+            const absDeviations = validValues.map(v => Math.abs(v - median));
+            const sortedDev = [...absDeviations].sort((a, b) => a - b);
+            const mad =
+              sortedDev.length % 2 === 0
+                ? (sortedDev[sortedDev.length / 2 - 1] + sortedDev[sortedDev.length / 2]) / 2
+                : sortedDev[Math.floor(sortedDev.length / 2)];
+            // Modified Z-Score = 0.6745 * (xi - median) / MAD
+            // Outlier if |Modified Z-Score| > threshold
+            // Equivalent: |xi - median| > threshold * MAD / 0.6745
+            const bound = mad === 0 ? 0 : (madThreshold * mad) / 0.6745;
+            lowerBound = median - bound;
+            upperBound = median + bound;
+            break;
+          }
+          case "IQR": {
+            const multiplier = methodParams.multiplier ?? 1.5;
+            const sorted = [...validValues].sort((a, b) => a - b);
+            const q1Index = Math.floor(sorted.length * 0.25);
+            const q3Index = Math.floor(sorted.length * 0.75);
+            const q1 = sorted[q1Index];
+            const q3 = sorted[q3Index];
+            const iqr = q3 - q1;
+            lowerBound = q1 - multiplier * iqr;
+            upperBound = q3 + multiplier * iqr;
+            break;
+          }
+          case "DESPIKING_MAD": {
+            // 滑动窗口 MAD despiking
+            const windowSize = methodParams.window_size ?? 13;
+            const despThreshold = methodParams.threshold ?? 5.2;
+            const maxIterations = methodParams.max_iterations ?? 10;
+            const outlierIndices = this.madDespikingDetect(values, windowSize, despThreshold, maxIterations);
+
+            let colOutlierCount = 0;
+            for (const idx of outlierIndices) {
+              const val = values[idx];
+              if (val === null) continue;
+              colOutlierCount++;
+              totalOutliers++;
+
+              let timePoint: string | undefined;
+              if (timeColIndex !== -1) {
+                const row = lines[idx + 1].split(",");
+                if (timeColIndex < row.length) timePoint = row[timeColIndex].trim().replace(/"/g, "");
+              }
+
+              outlierDetails.push({
+                result_id: resultId,
+                column_name: col.column_name,
+                row_index: idx + 1,
+                original_value: val,
+                outlier_type: "DESPIKING",
+                threshold_value: despThreshold,
+                time_point: timePoint,
+              });
+
+              if (outlierDetails.length >= 2000) {
+                this.outlierRepo.batchCreateOutlierDetails(outlierDetails);
+                outlierDetails.length = 0;
+              }
+            }
+
+            columnResults.push({
+              columnName: col.column_name,
+              outlierCount: colOutlierCount,
+              missingCount,
+              minThreshold: null,
+              maxThreshold: null,
+            });
+            continue; // skip the common bound-based logic below
+          }
+          default:
+            lowerBound = -Infinity;
+            upperBound = Infinity;
+        }
+
+        // 通用边界检测 (ZSCORE / MODIFIED_ZSCORE / IQR)
+        let colOutlierCount = 0;
+        for (let i = 0; i < values.length; i++) {
+          const val = values[i];
+          if (val === null) continue;
+
+          let isOutlier = false;
+          let outlierType = "";
+          let thresholdValue = 0;
+
+          if (val < lowerBound) {
+            isOutlier = true;
+            outlierType = "BELOW_MIN";
+            thresholdValue = lowerBound;
+          } else if (val > upperBound) {
+            isOutlier = true;
+            outlierType = "ABOVE_MAX";
+            thresholdValue = upperBound;
+          }
+
+          if (isOutlier) {
+            colOutlierCount++;
+            totalOutliers++;
+
+            let timePoint: string | undefined;
+            if (timeColIndex !== -1) {
+              const row = lines[i + 1].split(",");
+              if (timeColIndex < row.length) timePoint = row[timeColIndex].trim().replace(/"/g, "");
+            }
+
+            outlierDetails.push({
+              result_id: resultId,
+              column_name: col.column_name,
+              row_index: i + 1,
+              original_value: val,
+              outlier_type: outlierType,
+              threshold_value: thresholdValue,
+              time_point: timePoint,
+            });
+
+            if (outlierDetails.length >= 2000) {
+              this.outlierRepo.batchCreateOutlierDetails(outlierDetails);
+              outlierDetails.length = 0;
+            }
+          }
+        }
+
+        columnResults.push({
+          columnName: col.column_name,
+          outlierCount: colOutlierCount,
+          missingCount,
+          minThreshold: lowerBound === -Infinity ? null : parseFloat(lowerBound.toFixed(6)),
+          maxThreshold: upperBound === Infinity ? null : parseFloat(upperBound.toFixed(6)),
+        });
+      }
+
+      // 6. 保存剩余详情
+      if (outlierDetails.length > 0) {
+        this.outlierRepo.batchCreateOutlierDetails(outlierDetails);
+      }
+
+      // 6.5 保存列统计
+      if (columnResults.length > 0) {
+        const statsToSave = columnResults.map(r => ({
+          result_id: resultId,
+          column_name: r.columnName,
+          outlier_count: r.outlierCount,
+          missing_count: r.missingCount,
+          min_threshold: r.minThreshold ?? undefined,
+          max_threshold: r.maxThreshold ?? undefined,
+        }));
+        this.outlierRepo.batchCreateOutlierColumnStats(statsToSave);
+      }
+
+      // 7. 更新检测结果
+      const outlierRate = totalRows > 0 ? (totalOutliers / (totalRows * targetColumns.length)) * 100 : 0;
+      const finalParams = {
+        method,
+        ...methodParams,
+        columns: targetColumns.map(c => c.column_name),
+        columnResults: columnResults.map(r => ({
+          columnName: r.columnName,
+          outlierCount: r.outlierCount,
+          missingCount: r.missingCount,
+          minThreshold: r.minThreshold,
+          maxThreshold: r.maxThreshold,
+        })),
+      };
+
+      this.outlierRepo.updateDetectionResult(resultId, {
+        status: "COMPLETED",
+        total_rows: totalRows,
+        outlier_count: totalOutliers,
+        outlier_rate: outlierRate,
+        detection_params: JSON.stringify(finalParams),
+      });
+
+      console.log(`[OutlierDetection] ${method} detection completed. Total outliers: ${totalOutliers}`);
+
+      return {
+        success: true,
+        data: {
+          resultId,
+          summary: {
+            totalRows,
+            columnsChecked: targetColumns.length,
+            outlierCount: totalOutliers,
+            outlierRate,
+            columnResults,
+          },
+        },
+      };
+    } catch (error: any) {
+      return { success: false, error: `${method} 检测执行失败: ${error.message}` };
+    }
+  }
+
+  /**
+   * MAD Despiking 滑动窗口检测
+   * 返回异常值在 values 数组中的索引列表 (0-based)
+   */
+  private madDespikingDetect(
+    values: (number | null)[],
+    windowSize: number,
+    threshold: number,
+    maxIterations: number
+  ): number[] {
+    const n = values.length;
+    const halfWin = Math.floor(windowSize / 2);
+    // 工作副本：被标记为 spike 的值在后续迭代中视为 null
+    const working = [...values];
+    const spikeSet = new Set<number>();
+
+    for (let iter = 0; iter < maxIterations; iter++) {
+      let newSpikes = 0;
+
+      for (let i = 0; i < n; i++) {
+        if (working[i] === null) continue;
+
+        // 提取窗口内有效值
+        const winStart = Math.max(0, i - halfWin);
+        const winEnd = Math.min(n - 1, i + halfWin);
+        const winValues: number[] = [];
+        for (let j = winStart; j <= winEnd; j++) {
+          if (working[j] !== null) winValues.push(working[j] as number);
+        }
+
+        if (winValues.length < 3) continue;
+
+        // 计算窗口中位数和 MAD
+        const sorted = [...winValues].sort((a, b) => a - b);
+        const median =
+          sorted.length % 2 === 0
+            ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+            : sorted[Math.floor(sorted.length / 2)];
+
+        const absDevs = winValues.map(v => Math.abs(v - median)).sort((a, b) => a - b);
+        const mad =
+          absDevs.length % 2 === 0
+            ? (absDevs[absDevs.length / 2 - 1] + absDevs[absDevs.length / 2]) / 2
+            : absDevs[Math.floor(absDevs.length / 2)];
+
+        if (mad === 0) continue;
+
+        const deviation = Math.abs((working[i] as number) - median) / (mad * 1.4826);
+        if (deviation > threshold) {
+          if (!spikeSet.has(i)) {
+            spikeSet.add(i);
+            working[i] = null;
+            newSpikes++;
+          }
+        }
+      }
+
+      if (newSpikes === 0) break;
+    }
+
+    return Array.from(spikeSet).sort((a, b) => a - b);
   }
 
   /**
@@ -762,13 +1445,15 @@ export class OutlierDetectionService {
   /**
    * 获取检测结果的统计信息 (用于补全历史记录缺失的统计)
    */
-  getOutlierResultStats(resultId: number): ServiceResponse<Array<{
-    columnName: string;
-    outlierCount: number;
-    missingCount: number;
-    minThreshold: number | null;
-    maxThreshold: number | null;
-  }>> {
+  getOutlierResultStats(resultId: number): ServiceResponse<
+    Array<{
+      columnName: string;
+      outlierCount: number;
+      missingCount: number;
+      minThreshold: number | null;
+      maxThreshold: number | null;
+    }>
+  > {
     try {
       const stats = this.outlierRepo.getOutlierColumnStats(resultId);
       return { success: true, data: stats };
@@ -789,7 +1474,7 @@ export class OutlierDetectionService {
       // 再删除结果
       const success = this.outlierRepo.deleteDetectionResult(resultId);
       if (!success) {
-        return { success: false, error: '检测结果不存在' };
+        return { success: false, error: "检测结果不存在" };
       }
       return { success: true };
     } catch (error: any) {
@@ -802,12 +1487,12 @@ export class OutlierDetectionService {
    */
   renameDetectionResult(resultId: number, name: string): ServiceResponse<void> {
     try {
-      if (!name || name.trim() === '') {
-        return { success: false, error: '名称不能为空' };
+      if (!name || name.trim() === "") {
+        return { success: false, error: "名称不能为空" };
       }
       const success = this.outlierRepo.renameDetectionResult(resultId, name.trim());
       if (!success) {
-        return { success: false, error: '检测结果不存在' };
+        return { success: false, error: "检测结果不存在" };
       }
       return { success: true };
     } catch (error: any) {
@@ -824,17 +1509,17 @@ export class OutlierDetectionService {
       // 1. 获取检测结果
       const result = this.outlierRepo.getOutlierResultById(resultId);
       if (!result) {
-        return { success: false, error: '检测结果不存在' };
+        return { success: false, error: "检测结果不存在" };
       }
 
-      if (result.status !== 'COMPLETED') {
-        return { success: false, error: '只能对已完成的检测结果应用过滤' };
+      if (result.status !== "COMPLETED") {
+        return { success: false, error: "只能对已完成的检测结果应用过滤" };
       }
 
       // 2. 获取原始数据版本信息
       const versionResult = this.datasetRepo.getDatasetVersionById(result.version_id);
       if (!versionResult.success || !versionResult.data) {
-        return { success: false, error: '原始数据版本不存在' };
+        return { success: false, error: "原始数据版本不存在" };
       }
       const sourceVersion = versionResult.data;
 
@@ -853,40 +1538,40 @@ export class OutlierDetectionService {
       const isMissingValue = (value: string) => {
         if (!missingValueTypes || missingValueTypes.length === 0) return false;
 
-        const trimmed = (value ?? '').trim();
+        const trimmed = (value ?? "").trim();
 
         // 兼容导入时可能用 "" 代表空值
-        if (trimmed === '') {
-          return missingValueTypes.includes('') || missingValueTypes.includes('null');
+        if (trimmed === "") {
+          return missingValueTypes.includes("") || missingValueTypes.includes("null");
         }
 
         return missingValueTypes.some(t => {
-          const tt = (t ?? '').trim();
-          if (tt === '') return false;
+          const tt = (t ?? "").trim();
+          if (tt === "") return false;
           return trimmed.toLowerCase() === tt.toLowerCase();
         });
       };
 
       // 3. 读取原始文件
-      const fs = require('fs');
-      const path = require('path');
-      
+      const fs = require("fs");
+      const path = require("path");
+
       if (!fs.existsSync(sourceVersion.file_path)) {
-        return { success: false, error: '原始数据文件不存在' };
+        return { success: false, error: "原始数据文件不存在" };
       }
 
-      const csvContent = fs.readFileSync(sourceVersion.file_path, 'utf-8');
-      const lines = csvContent.split('\n'); // 注意：这里简单分割，未处理换行符在引号内的情况
-      
+      const csvContent = fs.readFileSync(sourceVersion.file_path, "utf-8");
+      const lines = csvContent.split("\n"); // 注意：这里简单分割，未处理换行符在引号内的情况
+
       if (lines.length < 2) {
-        return { success: false, error: '数据文件为空或格式错误' };
+        return { success: false, error: "数据文件为空或格式错误" };
       }
 
-      const headers = lines[0].split(',').map((h: string) => h.trim().replace(/"/g, ''));
-      
+      const headers = lines[0].split(",").map((h: string) => h.trim().replace(/"/g, ""));
+
       // 4. 获取所有异常值详情
       const outliers = this.outlierRepo.getAllOutlierDetails(resultId);
-      
+
       // 5. 构建异常值映射: rowIndex -> columnName -> true
       const outlierMap = new Map<number, Set<string>>();
       for (const outlier of outliers) {
@@ -909,7 +1594,7 @@ export class OutlierDetectionService {
 
         // 简单 CSV 解析：处理逗号分割，并去除字段两端的引号
         // 注意：这仍然不支持字段内部包含逗号的复杂 CSV 情况
-        const values = line.split(','); 
+        const values = line.split(",");
         const rowOutliers = outlierMap.get(i);
 
         const newValues = values.map((val: string, index: number) => {
@@ -921,7 +1606,7 @@ export class OutlierDetectionService {
 
           // 先清理缺失值表示
           if (isMissingValue(cleanVal)) {
-            return '';
+            return "";
           }
 
           // 再清理异常值
@@ -929,7 +1614,7 @@ export class OutlierDetectionService {
             const colName = headers[index];
             // 使用小写进行匹配
             if (rowOutliers.has(colName.toLowerCase())) {
-              return ''; // 置空异常值
+              return ""; // 置空异常值
             }
           }
 
@@ -939,25 +1624,25 @@ export class OutlierDetectionService {
           return val;
         });
 
-        newLines.push(newValues.join(','));
+        newLines.push(newValues.join(","));
         if (rowOutliers) processedCount++;
       }
 
       // 7. 保存新文件
       const parsedPath = path.parse(sourceVersion.file_path);
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const newFileName = `${parsedPath.name}_filtered_${timestamp}${parsedPath.ext}`;
       const newFilePath = path.join(parsedPath.dir, newFileName);
 
-      fs.writeFileSync(newFilePath, newLines.join('\n'));
+      fs.writeFileSync(newFilePath, newLines.join("\n"));
 
       // 8. 创建新版本记录
       const newVersionIdResult = this.datasetRepo.createDatasetVersion({
         dataset_id: result.dataset_id,
         parent_version_id: result.version_id,
-        stage_type: 'FILTERED',
+        stage_type: "FILTERED",
         file_path: newFilePath,
-        remark: `异常值过滤 (结果 #${resultId})`
+        remark: `异常值过滤 (结果 #${resultId})`,
       });
 
       if (!newVersionIdResult.success) {
@@ -974,17 +1659,16 @@ export class OutlierDetectionService {
         total_cols: headers.length,
         total_missing_count: 0, // 需要重新计算，暂时置0
         total_outlier_count: 0,
-        column_stats_json: '{}'
+        column_stats_json: "{}",
       });
 
       // 10. 更新检测结果状态
       this.outlierRepo.updateDetectionResult(resultId, {
-        status: 'APPLIED',
-        generated_version_id: newVersionId
+        status: "APPLIED",
+        generated_version_id: newVersionId,
       });
 
       return { success: true, data: { versionId: newVersionId } };
-
     } catch (error: any) {
       return { success: false, error: `应用过滤失败: ${error.message}` };
     }
@@ -998,17 +1682,17 @@ export class OutlierDetectionService {
     try {
       const result = this.outlierRepo.getOutlierResultById(resultId);
       if (!result) {
-        return { success: false, error: '检测结果不存在' };
+        return { success: false, error: "检测结果不存在" };
       }
 
-      if (result.status !== 'APPLIED') {
-        return { success: false, error: '该结果未应用过滤或状态不正确' };
+      if (result.status !== "APPLIED") {
+        return { success: false, error: "该结果未应用过滤或状态不正确" };
       }
 
       // 更新状态回 COMPLETED
       // 注意：这里我们不删除生成的版本，因为需求说"已生成的版本文件将保留"
       const success = this.outlierRepo.updateDetectionResult(resultId, {
-        status: 'COMPLETED'
+        status: "COMPLETED",
         // generated_version_id 不清空，留作记录？或者清空断开关联？
         // 根据 "撤销过滤...状态" 通常意味着 UI 上可以再次点击 "过滤"
         // 如果保留 generated_version_id，可能需要 UI 适配。
@@ -1017,7 +1701,7 @@ export class OutlierDetectionService {
       });
 
       if (!success) {
-        return { success: false, error: '更新状态失败' };
+        return { success: false, error: "更新状态失败" };
       }
 
       return { success: true };
@@ -1042,34 +1726,34 @@ export class OutlierDetectionService {
     // 基础阈值验证
     if (thresholds.min_threshold !== undefined && thresholds.max_threshold !== undefined) {
       if (thresholds.min_threshold > thresholds.max_threshold) {
-        return '最小阈值不能大于最大阈值';
+        return "最小阈值不能大于最大阈值";
       }
     }
 
     // 物理阈值验证
     if (thresholds.physical_min !== undefined && thresholds.physical_max !== undefined) {
       if (thresholds.physical_min > thresholds.physical_max) {
-        return '物理最小值不能大于物理最大值';
+        return "物理最小值不能大于物理最大值";
       }
     }
 
     // 警告阈值验证
     if (thresholds.warning_min !== undefined && thresholds.warning_max !== undefined) {
       if (thresholds.warning_min > thresholds.warning_max) {
-        return '警告最小值不能大于警告最大值';
+        return "警告最小值不能大于警告最大值";
       }
     }
 
     // 层级验证: physical <= warning <= threshold
     if (thresholds.physical_min !== undefined && thresholds.warning_min !== undefined) {
       if (thresholds.physical_min > thresholds.warning_min) {
-        return '物理最小值应小于等于警告最小值';
+        return "物理最小值应小于等于警告最小值";
       }
     }
 
     if (thresholds.warning_min !== undefined && thresholds.min_threshold !== undefined) {
       if (thresholds.warning_min > thresholds.min_threshold) {
-        return '警告最小值应小于等于阈值最小值';
+        return "警告最小值应小于等于阈值最小值";
       }
     }
 

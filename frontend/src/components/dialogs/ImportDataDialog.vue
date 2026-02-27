@@ -1,47 +1,24 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-// 第三步 上传文件
-import type { UploadInstance } from "element-plus";
+import { computed, onUnmounted, ref } from "vue";
 import { ElMessage } from "element-plus";
-import {
-  UploadFilled,
-  TrendCharts,
-  Odometer,
-  Sunny,
-  Pouring,
-  Lightning,
-  Document,
-  Plus,
-  Setting,
-  Refresh,
-} from "@element-plus/icons-vue";
-// import type {ElectronWindow} from "@shared/types/window";
-import type { TableColumns } from "@pureadmin/table";
-import PureTable from "@pureadmin/table";
-import { useProjectStore } from "@/stores/useProjectStore";
+import { UploadFilled, Plus, Delete, CircleCheck, CircleClose, Loading } from "@element-plus/icons-vue";
+import { useCategoryStore } from "@/stores/useCategoryStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
+import type { ImportTaskProgress } from "@shared/types/projectInterface";
 
 // 对话框状态
 const dialogVisible = ref(false);
-const loading = ref(false);
-const currentStep = ref(0);
-const stepForm = ref([
-  {
-    title: "选择数据类型",
-  },
-  {
-    title: "上传文件",
-  },
-  {
-    title: "配置参数",
-  },
-]);
-const projectStore = useProjectStore();
+const currentStep = ref(0); // 0: 配置, 1: 文件
+const isImporting = ref(false);
+const importFinished = ref(false);
+const progressItems = ref<ImportTaskProgress[]>([]);
+
+const categoryStore = useCategoryStore();
 const datasetStore = useDatasetStore();
 const settingsStore = useSettingsStore();
-// 第四步 确定缺失值类型
+// ── 缺失值配置 ──
 const missingTypesList = ref([
   {
     value: "nan",
@@ -81,625 +58,327 @@ const missingTypesList = ref([
   },
 ]);
 
-// 表单需要的所有数据
-const datasetName = ref("");
-const selectedDataType = ref("flux"); // 默认选中第一个数据类型
-const selectedFile = ref<File>();
-const missingValueTypes = ref(missingTypesList.value.map(t => t.value)); // 选中的缺失值类型
-// 文件处理状态
-const fileProcessing = ref(false);
+// ── 选择数据类型 ──
+const selectedDataType = ref("flux");
 
-const canCloseDialog = computed(() => !loading.value && !fileProcessing.value);
-const canGoPrev = computed(() => currentStep.value > 0 && canCloseDialog.value);
-const canGoNext = computed(() => {
-  if (!canCloseDialog.value || currentStep.value >= stepForm.value.length - 1) return false;
-  if (currentStep.value === 1) {
-    return Boolean(datasetName.value.trim()) && Boolean(selectedFile.value);
-  }
-  return true;
-});
-const canImport = computed(() => {
-  return (
-    currentStep.value === stepForm.value.length - 1 &&
-    canCloseDialog.value &&
-    Boolean(projectStore.currentProject) &&
-    Boolean(datasetName.value.trim()) &&
-    Boolean(selectedDataType.value) &&
-    Boolean(selectedFile.value) &&
-    columns.value.length > 0 &&
-    missingValueTypes.value.length > 0
-  );
-});
-const currentStepDesc = computed(() => {
-  if (currentStep.value === 0) return "先选择数据类型，后续将按类型组织导入和分析流程。";
-  if (currentStep.value === 1) return "填写数据集名称并上传文件，系统会自动解析预览。";
-  return "确认数据预览与缺失值配置，然后执行导入。";
-});
-const selectedFileSizeText = computed(() => {
-  if (!selectedFile.value) return "0 B";
-  const size = selectedFile.value.size;
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-});
-
-// 获取用户系统时区
-const getSystemTimezone = (): string => {
-  try {
-    // 获取用户系统时区
-    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    console.log("检测到用户系统时区:", userTimezone);
-
-    // 转换为我们支持的格式
-    const timezoneMap: Record<string, string> = {
-      "Asia/Shanghai": "UTC+8",
-      "Asia/Hong_Kong": "UTC+8",
-      "Asia/Taipei": "UTC+8",
-      "Asia/Seoul": "UTC+9",
-      "Asia/Tokyo": "UTC+9",
-      "Asia/Singapore": "UTC+8",
-      "Asia/Kuala_Lumpur": "UTC+8",
-      "Asia/Bangkok": "UTC+7",
-      "Asia/Jakarta": "UTC+7",
-      "Asia/Manila": "UTC+8",
-      "Australia/Sydney": "UTC+10",
-      "Australia/Melbourne": "UTC+10",
-      "Australia/Perth": "UTC+8",
-      "Pacific/Auckland": "UTC+12",
-      "America/New_York": "UTC-5",
-      "America/Chicago": "UTC-6",
-      "America/Denver": "UTC-7",
-      "America/Los_Angeles": "UTC-8",
-      "Europe/London": "UTC+0",
-      "Europe/Paris": "UTC+1",
-      "Europe/Berlin": "UTC+1",
-      "Europe/Moscow": "UTC+3",
-    };
-
-    const detectedTimezone = timezoneMap[userTimezone] || "UTC+8"; // 默认北京时间
-    console.log("转换为应用程序时区格式:", detectedTimezone);
-    return detectedTimezone;
-  } catch (error) {
-    console.warn("无法获取系统时区，使用默认时区:", error);
-    return "UTC+8"; // 默认北京时间
-  }
-};
-
-// 第二步 选择数据类型
-const dataOptions = [
-  {
-    value: "flux",
-    label: "通量数据",
-    description: "碳/水等通量观测数据",
-    icon: TrendCharts,
-  },
-  {
-    value: "aqi",
-    label: "空气质量数据",
-    description: "大气污染物数据",
-    icon: Odometer,
-  },
-  {
-    value: "nai",
-    label: "负氧离子数据",
-    description: "负氧离子浓度监测数据",
-    icon: Lightning,
-  },
-  {
-    value: "sapflow",
-    label: "茎流数据",
-    description: "茎流量",
-    icon: Pouring,
-  },
-  {
-    value: "micrometeorology",
-    label: "微气象数据",
-    description: "微气象数据",
-    icon: Sunny,
-  },
-];
-
-// 表格相关数据
-const tableData = ref([]);
-const columns = ref<TableColumns[]>([]);
-const totalRowCount = ref<number>(0);
-
-const uploadRef = ref<UploadInstance | null>(null);
-const fileList = ref<any[]>([]); //用于控制上传组件显示的文件列表
-
-// 第四步 确定缺失值类型
+// ── 选中的缺失值类型 ──
+const missingValueTypes = ref(missingTypesList.value.map(t => t.value));
 const isAdding = ref(false);
 const optionName = ref("");
-// 优化列定义，确保每列有合理宽度
-const optimizedColumns = computed(() => {
-  return columns.value.map(column => {
-    // 原始列定义复制
-    const optimizedColumn = { ...column };
 
-    // 如果是对象，添加width和minWidth属性
-    if (typeof optimizedColumn === "object") {
-      // 根据列标题长度动态设置最小宽度
-      const titleLength = optimizedColumn.label?.toString().length || 0;
-      const minColWidth = Math.max(100, titleLength * 12); // 最小100px
+// ── 文件列表 ──
+interface FileEntry {
+  uid: string;
+  file: File;
+  name: string;
+  path: string;
+  sizeText: string;
+}
+const fileEntries = ref<FileEntry[]>([]);
 
-      // 设置列宽属性 - 移除固定width以允许自适应
-      // optimizedColumn.width = minColWidth;
-      optimizedColumn.minWidth = minColWidth;
-
-      // @ts-ignore
-      optimizedColumn.cellStyle = {
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-      };
-
-      // 添加tooltip，当文本被截断时显示完整内容
-      optimizedColumn.showOverflowTooltip = true;
-    }
-
-    return optimizedColumn;
-  });
+// ── 计算属性 ──
+const canClose = computed(() => !isImporting.value);
+const canGoPrev = computed(() => currentStep.value > 0 && !isImporting.value);
+const canGoNext = computed(
+  () =>
+    currentStep.value === 0 &&
+    !isImporting.value &&
+    fileEntries.value.length > 0 &&
+    fileEntries.value.every(e => e.name.trim().length > 0)
+);
+const canImport = computed(() => {
+  return (
+    currentStep.value === 1 &&
+    !isImporting.value &&
+    Boolean(categoryStore.currentCategory) &&
+    fileEntries.value.length > 0 &&
+    fileEntries.value.every(e => e.name.trim().length > 0)
+  );
 });
+const completedCount = computed(() => progressItems.value.filter(p => p.status === "completed").length);
+const failedCount = computed(() => progressItems.value.filter(p => p.status === "failed").length);
 
-/**
- * 点击增加缺失值类型
- */
+const statusLabel = (status: string): string => {
+  const map: Record<string, string> = { pending: "等待中", processing: "处理中...", completed: "完成", failed: "失败" };
+  return map[status] || status;
+};
+// ── 缺失值管理 ──
 const onAddOption = () => {
   isAdding.value = true;
 };
-/**
- * 确认添加缺失值类型
- */
 const onConfirm = async () => {
   if (optionName.value) {
-    // Check if it already exists
-    const exists = missingTypesList.value.some(item => item.value === optionName.value);
-
-    if (!exists) {
-      missingTypesList.value.push({
-        label: optionName.value,
-        value: optionName.value,
-      });
-      // Save to settings
+    if (!missingTypesList.value.some(item => item.value === optionName.value)) {
+      missingTypesList.value.push({ label: optionName.value, value: optionName.value });
       await settingsStore.addCustomMissingType(optionName.value);
     }
-
-    // Select it if not already selected
     if (!missingValueTypes.value.includes(optionName.value)) {
       missingValueTypes.value.push(optionName.value);
     }
-
     clearInputOption();
   }
 };
-/**
- * 清空添加的缺失值类型
- */
 const clearInputOption = () => {
   optionName.value = "";
   isAdding.value = false;
 };
-const prevStep = () => {
-  if (canGoPrev.value) {
-    currentStep.value--;
+const toggleMissingType = (value: string) => {
+  const idx = missingValueTypes.value.indexOf(value);
+  if (idx >= 0) {
+    missingValueTypes.value.splice(idx, 1);
+  } else {
+    missingValueTypes.value.push(value);
   }
+};
+
+// ── 步骤导航 ──
+const prevStep = () => {
+  if (canGoPrev.value) currentStep.value--;
 };
 const nextStep = () => {
-  if (!canGoNext.value) {
-    if (currentStep.value === 1) {
-      if (!datasetName.value.trim()) {
-        ElMessage.warning("请先填写数据集名称");
-        return;
-      }
-      if (!selectedFile.value) {
-        ElMessage.warning("请先上传数据文件");
-        return;
-      }
-    }
+  if (canGoNext.value) currentStep.value++;
+};
+// ── 文件处理 ──
+const formatSize = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+const handleFilesAdded = (file: any) => {
+  const ext = (file.name as string).split(".").pop()?.toLowerCase();
+  if (!["csv", "xlsx", "xls"].includes(ext || "")) {
+    ElMessage.error("只支持 CSV、Excel (xlsx/xls) 文件");
     return;
   }
-  currentStep.value++;
+  // @ts-ignore
+  const path = window.electronAPI.getFilePath(file.raw || file);
+  fileEntries.value.push({
+    uid: `${Date.now()}-${Math.random()}`,
+    file: file.raw || file,
+    name: (file.name as string).replace(/\.[^/.]+$/, ""),
+    path,
+    sizeText: formatSize((file.raw?.size ?? file.size ?? 0) as number),
+  });
 };
-/**
- * 提交导入选项
- */
-const submitImportOption = async () => {
-  console.log("submitImportOption");
-  const missingFields: string[] = [];
+const removeFileEntry = (uid: string) => {
+  fileEntries.value = fileEntries.value.filter(e => e.uid !== uid);
+};
 
-  if (!projectStore.currentProject) {
-    missingFields.push("项目");
+// ── IPC 进度监听 ──
+const progressListener = ((_event: any, progress: ImportTaskProgress) => {
+  const idx = progressItems.value.findIndex(p => p.taskIndex === progress.taskIndex && p.batchId === progress.batchId);
+  if (idx >= 0) {
+    progressItems.value[idx] = { ...progress };
+  } else {
+    progressItems.value.push({ ...progress });
   }
-
-  if (!datasetName.value.trim()) {
-    missingFields.push("数据集名称");
+  const batchItems = progressItems.value.filter(p => p.batchId === progress.batchId);
+  if (
+    progress.total > 0 &&
+    batchItems.length >= progress.total &&
+    batchItems.every(p => p.status === "completed" || p.status === "failed")
+  ) {
+    importFinished.value = true;
+    isImporting.value = false;
+    categoryStore.loadCategories();
   }
+}) as (...args: any[]) => void;
 
-  if (!selectedDataType.value) {
-    missingFields.push("数据类型");
-  }
-
-  if (!selectedFile.value) {
-    missingFields.push("上传文件");
-  }
-
-  // 可根据需要判断 missingValueTypes 是否必须
-  if (missingValueTypes.value.length === 0) {
-    missingFields.push("缺失值类型");
-  }
-
-  if (missingFields.length > 0) {
-    ElMessage.error(`请填写以下必填项：${missingFields.join("、")}`);
-    return;
-  }
-
-  // 设置 loading 状态，防止重复提交
-  loading.value = true;
-
+// ── 批量导入 ──
+const submitImport = async () => {
+  if (!canImport.value || !categoryStore.currentCategory) return;
+  isImporting.value = true;
+  importFinished.value = false;
+  progressItems.value = [];
+  window.electronAPI.on(API_ROUTES.DATASETS.IMPORT_PROGRESS, progressListener);
   try {
-    const pureData = {
-      projectId: projectStore.currentProject!.id,
-      importOption: {
-        datasetName: String(datasetName.value).trim(),
-        type: String(selectedDataType.value),
-        file: {
-          name: String(selectedFile.value!.name),
-          size: String(selectedFile.value!.size),
-          // @ts-ignore
-          path: window.electronAPI.getFilePath(selectedFile.value!),
-        },
-        missingValueTypes: missingValueTypes.value.map(v => String(v)),
-        rows: Number(totalRowCount.value),
-        columns: columns.value
-          .map(col => col.label)
-          .filter((label): label is string => typeof label === "string")
-          .map(str => String(str)),
-        sourceTimezone: getSystemTimezone(),
-      },
-    };
-
-    // 让 UI 更新 loading 状态后再执行导入
-    await new Promise(resolve => setTimeout(resolve, 0));
-
-    const result = await datasetStore.importData(pureData.importOption);
-    if (result) {
-      ElMessage.success("数据导入成功");
-      close(); // 关闭对话框
-    } else {
-      ElMessage.error("数据导入失败，请稍后重试");
-    }
-  } catch (error) {
-    console.error("数据导入失败:", error);
-    ElMessage.error("数据导入失败，请稍后重试");
-  } finally {
-    loading.value = false;
-  }
-};
-
-// 文件选择处理
-const handleFileChange = (file: any) => {
-  if (file.raw) {
-    const fileType = file.name.split(".").pop()?.toLowerCase();
-    if (!["csv", "xlsx", "xls"].includes(fileType || "")) {
-      ElMessage.error("只支持CSV,Excel(xlsx/xls)文件");
-      handleRemove();
-      return;
-    }
-    selectedFile.value = file.raw;
-    // @ts-ignore
-    const filePath = window.electronAPI.getFilePath(file.raw);
-    // 更新文件列表
-    fileList.value = [
-      {
-        name: file.name,
-        size: file.size,
-        raw: file.raw,
-        uid: file.uid,
-        path: filePath,
-      },
-    ];
-    if (!datasetName.value.trim()) {
-      datasetName.value = file.name.replace(/\.[^/.]+$/, "");
-    }
-    processFile(file.raw, fileType || "");
-  }
-};
-/**
- * 处理上传的文件
- * @param file 文件本体
- * @param fileType 文件类型（csv或excel）
- */
-const processFile = async (file: File, fileType: string) => {
-  fileProcessing.value = true;
-  tableData.value = [];
-  columns.value = [];
-  totalRowCount.value = 0;
-
-  try {
-    // 使用 Promise 包装 FileReader，避免回调嵌套
-    const fileContent = await new Promise<string | ArrayBuffer>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = e => {
-        if (e.target?.result) {
-          resolve(e.target.result);
-        } else {
-          reject(new Error("读取文件失败"));
-        }
-      };
-      reader.onerror = () => reject(new Error("读取文件失败"));
-
-      if (fileType === "csv") {
-        reader.readAsText(file);
-      } else {
-        reader.readAsArrayBuffer(file);
-      }
+    await datasetStore.batchImportData({
+      categoryId: categoryStore.currentCategory.id,
+      dataType: selectedDataType.value,
+      missingValueTypes: missingValueTypes.value.map(v => String(v)),
+      files: fileEntries.value.map(e => ({
+        datasetName: e.name.trim(),
+        file: { name: e.file.name, size: String(e.file.size), path: e.path },
+      })),
     });
-
-    // 使用 nextTick 让 UI 更新后再调用 IPC
-    await new Promise(resolve => setTimeout(resolve, 0));
-
-    const type = fileType === "csv" ? "csv" : "excel";
-    const result = await window.electronAPI.invoke(API_ROUTES.FILES.PARSE_PREVIEW, {
-      fileType: type,
-      fileContent: fileContent,
-      maxRows: 20,
-    });
-
-    if (!result.success) {
-      throw new Error(result.error || "解析文件失败");
-    }
-
-    columns.value = result.data.columns;
-    tableData.value = result.data.tableData;
-    totalRowCount.value = result.data.totalRows;
   } catch (err: any) {
-    console.log("处理文件时出错:", err);
-    ElMessage.error(err.message || "处理文件时出错");
-  } finally {
-    fileProcessing.value = false;
+    ElMessage.error(err.message || "批量导入启动失败");
+    isImporting.value = false;
+    importFinished.value = false;
+    window.electronAPI.removeListener(API_ROUTES.DATASETS.IMPORT_PROGRESS, progressListener);
   }
 };
 
-// 超出文件限制处理
-const handleExceed = () => {
-  ElMessage.warning("只能上传一个文件");
-};
-
-// 打开对话框
+// ── 对话框控制 ──
 const open = async () => {
   dialogVisible.value = true;
-
-  // Load custom missing types
   const customTypes = await settingsStore.getCustomMissingTypes();
-  if (customTypes && customTypes.length > 0) {
-    // Add only new ones
-    customTypes.forEach(type => {
-      // Add to list if not exists
-      if (!missingTypesList.value.some(item => item.value === type)) {
-        missingTypesList.value.push({
-          label: type,
-          value: type,
-        });
+  if (customTypes?.length) {
+    customTypes.forEach((type: string) => {
+      if (!missingTypesList.value.some(i => i.value === type)) {
+        missingTypesList.value.push({ label: type, value: type });
       }
-
-      // Select it if not already selected (ensure it's default selected)
       if (!missingValueTypes.value.includes(type)) {
         missingValueTypes.value.push(type);
       }
     });
   }
 };
-
-// 移除文件处理
-const handleRemove = () => {
-  selectedFile.value = undefined;
-  fileList.value = [];
-  columns.value = [];
-  tableData.value = [];
-  totalRowCount.value = 0;
-};
-
-// 关闭对话框
 const close = () => {
-  if (!canCloseDialog.value) return;
+  if (!canClose.value) return;
   dialogVisible.value = false;
-  // 清除导入选项
-  datasetName.value = "";
-  selectedDataType.value = "flux";
-  selectedFile.value = undefined;
-  missingValueTypes.value = missingTypesList.value.map(t => t.value);
-  fileList.value = [];
-  columns.value = [];
-  tableData.value = [];
-  totalRowCount.value = 0;
-  fileProcessing.value = false;
-  loading.value = false;
-  currentStep.value = 0;
 };
-
-// 关闭时重置状态
 const handleClosed = () => {
-  selectedFile.value = undefined;
-  loading.value = false;
-  if (uploadRef.value) {
-    uploadRef.value.clearFiles();
-  }
+  window.electronAPI.removeListener(API_ROUTES.DATASETS.IMPORT_PROGRESS, progressListener);
+  currentStep.value = 0;
+  selectedDataType.value = "flux";
+  fileEntries.value = [];
+  progressItems.value = [];
+  isImporting.value = false;
+  importFinished.value = false;
+  missingValueTypes.value = missingTypesList.value.map(t => t.value);
 };
 
-// 导出方法给父组件
-defineExpose({
-  open,
-  close,
+onUnmounted(() => {
+  window.electronAPI.removeListener(API_ROUTES.DATASETS.IMPORT_PROGRESS, progressListener);
 });
+
+defineExpose({ open, close });
 </script>
 
 <template>
   <el-dialog
     v-model="dialogVisible"
-    width="750px"
-    class="fixed-steps-dialog"
+    width="680px"
+    class="batch-import-dialog"
     destroy-on-close
-    :close-on-click-modal="canCloseDialog"
-    :close-on-press-escape="canCloseDialog"
-    :show-close="canCloseDialog"
+    :close-on-click-modal="canClose"
+    :close-on-press-escape="canClose"
+    :show-close="canClose"
     @closed="handleClosed">
     <template #header>
       <div class="dialog-header">
         <div class="dialog-header-icon">入</div>
         <div class="dialog-header-text">
-          <div class="dialog-title">导入数据</div>
-          <div class="dialog-subtitle">按步骤完成类型选择、文件上传和参数配置</div>
+          <div class="dialog-title">批量导入数据</div>
+          <div class="dialog-subtitle">上传多个文件并配置缺失值，一次批量导入</div>
         </div>
       </div>
     </template>
 
-    <el-steps class="dialog-steps" :active="currentStep" finish-status="success" align-center>
-      <el-step title="选择数据类型" />
-      <el-step title="上传文件" />
-      <el-step title="配置参数" />
+    <el-steps
+      v-if="!isImporting && !importFinished"
+      class="dialog-steps"
+      :active="currentStep"
+      finish-status="success"
+      align-center>
+      <el-step title="文件" />
+      <el-step title="缺失值" />
     </el-steps>
-    <div class="step-desc">{{ currentStepDesc }}</div>
 
     <div class="dialog-content-wrapper">
-      <div v-if="currentStep === 0" class="step-container fade-in">
-        <div class="data-type-grid">
-          <div
-            v-for="(option, index) in dataOptions"
-            :key="index"
-            class="data-type-card"
-            :class="{ 'is-active': selectedDataType === option.value }"
-            @click="selectedDataType = option.value">
-            <div class="card-icon">
-              <el-icon><component :is="option.icon" /></el-icon>
-            </div>
-
-            <div class="card-content">
-              <h3 class="card-title">{{ option.label }}</h3>
-              <p class="card-desc">{{ option.description }}</p>
-            </div>
-
-            <div class="card-radio">
-              <div v-if="selectedDataType === option.value" class="radio-inner"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="currentStep === 1" class="step-container fade-in">
-        <div class="input-group">
-          <div class="input-label">数据集名称</div>
-          <el-input
-            v-model="datasetName"
-            placeholder="请输入数据集名称"
-            clearable
-            size="large"
-            class="custom-input"
-            :maxlength="50"
-            show-word-limit />
-        </div>
+      <!-- Step 0: 多文件上传 -->
+      <div v-if="!isImporting && !importFinished && currentStep === 0" class="step-container fade-in">
         <el-upload
-          ref="uploadRef"
-          class="upload-demo custom-upload"
+          class="multi-upload"
           action="#"
           :auto-upload="false"
-          :limit="1"
-          drag
-          :file-list="fileList"
-          :on-change="handleFileChange"
-          :on-exceed="handleExceed"
-          :on-remove="handleRemove">
+          :show-file-list="false"
+          multiple
+          :on-change="handleFilesAdded"
+          drag>
           <div class="upload-content">
             <div class="upload-icon-wrapper">
               <el-icon class="el-icon--upload"><upload-filled /></el-icon>
             </div>
             <div class="upload-text">
-              <h3>点击或拖拽文件到此处上传</h3>
-              <p>支持 CSV, Excel (xlsx/xls) 格式文件</p>
-              <p class="upload-limit">单次最大 50MB</p>
+              <h3>点击或拖拽文件到此处</h3>
+              <p>支持多选，支持 CSV、Excel (xlsx/xls)</p>
             </div>
           </div>
         </el-upload>
-        <div v-if="selectedFile" class="selected-file-tip">
-          <span>{{ selectedFile.name }}</span>
-          <span>{{ selectedFileSizeText }}</span>
-        </div>
-        <!-- 文件处理中的加载提示 -->
-        <div v-if="fileProcessing" class="file-processing-overlay">
-          <div class="processing-content">
-            <el-icon class="processing-icon is-loading"><Refresh /></el-icon>
-            <span>正在解析文件...</span>
+        <div v-if="fileEntries.length > 0" class="file-list">
+          <div v-for="entry in fileEntries" :key="entry.uid" class="file-row">
+            <div class="file-row-info">
+              <span class="file-row-filename">{{ entry.file.name }}</span>
+              <span class="file-row-size">{{ entry.sizeText }}</span>
+            </div>
+            <el-input
+              v-model="entry.name"
+              placeholder="数据集名称"
+              size="small"
+              class="file-row-name-input"
+              :maxlength="50" />
+            <el-button circle size="small" class="file-row-remove" @click="removeFileEntry(entry.uid)">
+              <el-icon><Delete /></el-icon>
+            </el-button>
           </div>
+        </div>
+        <div v-else class="empty-file-hint">尚未添加文件，请拖拽或点击上传</div>
+      </div>
+
+      <!-- Step 1: 缺失值配置 -->
+      <div v-if="!isImporting && !importFinished && currentStep === 1" class="step-container fade-in">
+        <div class="section-label">缺失值标识</div>
+        <p class="missing-hint">点击标签切换选中状态，选中的标识将在导入时被识别为缺失值</p>
+        <div class="missing-chips">
+          <span
+            v-for="item in missingTypesList"
+            :key="item.value"
+            class="missing-chip"
+            :class="{ 'is-active': missingValueTypes.includes(item.value) }"
+            @click="toggleMissingType(item.value)">
+            {{ item.label || "空值" }}
+          </span>
+          <span v-if="!isAdding" class="missing-chip is-add" @click="onAddOption">
+            <el-icon style="font-size: 10px; vertical-align: -1px"><Plus /></el-icon>&nbsp;新增
+          </span>
+        </div>
+        <div v-if="isAdding" class="add-option-inline">
+          <el-input
+            v-model="optionName"
+            placeholder="输入新的缺失值标识"
+            size="small"
+            class="option-input-inline"
+            @keyup.enter="onConfirm" />
+          <el-button type="primary" size="small" color="#10b981" @click="onConfirm">确认</el-button>
+          <el-button size="small" @click="clearInputOption">取消</el-button>
         </div>
       </div>
 
-      <div v-if="currentStep === 2" class="fade-in">
-        <div class="step-content flex-column">
-          <div class="info-card overview-card">
-            <!-- 表格预览部分 -->
-            <div class="preview-container">
-              <div v-if="columns.length > 0" class="table-container">
-                <!-- 表格样式优化 -->
-                <pure-table
-                  :data="tableData"
-                  :columns="optimizedColumns"
-                  height="240"
-                  stripe
-                  class="data-preview-table"
-                  :header-cell-style="{
-                    backgroundColor: '#f8fafc',
-                    color: '#4b5563',
-                    fontWeight: '600',
-                  }" />
-              </div>
-
-              <!-- 无数据时显示的提示 -->
-              <div v-else-if="!fileProcessing" class="empty-preview">
-                <el-icon class="preview-icon">
-                  <document />
-                </el-icon>
-                <span>请上传文件以预览数据</span>
-              </div>
-            </div>
-          </div>
-          <!-- 参数配置区域 -->
-          <div class="info-card">
-            <div class="section-header">
-              <el-icon class="header-icon"><Setting /></el-icon>
-              <span class="header-title">配置参数</span>
-            </div>
-            <div class="config-body">
-              <div class="config-item">
-                <label class="config-label">缺失值表示:</label>
-                <div class="config-content">
-                  <el-select v-model="missingValueTypes" placeholder="缺失值示例" class="full-width-input" multiple>
-                    <el-option
-                      v-for="item in missingTypesList"
-                      :key="item.value"
-                      :label="item.label"
-                      :value="item.value" />
-                    <template #footer>
-                      <el-button v-if="!isAdding" text bg size="small" @click="onAddOption" class="btn-text-primary">
-                        <el-icon class="btn-icon">
-                          <plus />
-                        </el-icon>
-                        新增示例
-                      </el-button>
-                      <div v-else class="add-option-container">
-                        <el-input
-                          v-model="optionName"
-                          class="option-input mb-2"
-                          placeholder="输入新示例"
-                          size="small" />
-                        <div class="button-group">
-                          <el-button type="primary" size="small" color="#10b981" @click="onConfirm">确认</el-button>
-                          <el-button size="small" @click="clearInputOption">取消</el-button>
-                        </div>
-                      </div>
-                    </template>
-                  </el-select>
-                </div>
-              </div>
-            </div>
+      <!-- 导入进度 -->
+      <div v-if="isImporting || importFinished" class="progress-container fade-in">
+        <div class="progress-header">
+          <span class="progress-title">导入进度</span>
+          <span class="progress-summary">
+            <span class="progress-done">{{ completedCount }} 成功</span>
+            <span v-if="failedCount > 0" class="progress-fail"> · {{ failedCount }} 失败</span>
+            <span class="progress-total"> / {{ fileEntries.length }} 个文件</span>
+          </span>
+        </div>
+        <div class="progress-list">
+          <div
+            v-for="(item, idx) in progressItems.length
+              ? progressItems
+              : fileEntries.map((e, i) => ({
+                  taskIndex: i,
+                  batchId: '',
+                  datasetName: e.name,
+                  status: 'pending' as const,
+                  error: undefined,
+                  total: fileEntries.length,
+                }))"
+            :key="idx"
+            class="progress-row"
+            :class="`is-${item.status}`">
+            <el-icon class="progress-row-icon">
+              <CircleCheck v-if="item.status === 'completed'" />
+              <CircleClose v-else-if="item.status === 'failed'" />
+              <Loading v-else-if="item.status === 'processing'" class="is-spinning" />
+              <span v-else class="pending-dot">·</span>
+            </el-icon>
+            <span class="progress-row-name">{{ item.datasetName }}</span>
+            <span class="progress-row-msg">{{ item.error || statusLabel(item.status) }}</span>
           </div>
         </div>
       </div>
@@ -707,24 +386,23 @@ defineExpose({
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button class="btn-secondary" :disabled="!canCloseDialog" @click="close">取消</el-button>
-        <el-button class="btn-secondary" :disabled="!canGoPrev" @click="prevStep">上一步</el-button>
-        <el-button class="btn-secondary" :disabled="!canGoNext" @click="nextStep">下一步</el-button>
-        <el-button
-          type="primary"
-          class="btn-primary"
-          :loading="loading"
-          :disabled="!canImport"
-          @click="submitImportOption">
-          确认导入
+        <el-button class="btn-secondary" :disabled="!canClose" @click="close">
+          {{ importFinished ? "关闭" : "取消" }}
         </el-button>
+        <template v-if="!isImporting && !importFinished">
+          <el-button class="btn-secondary" :disabled="!canGoPrev" @click="prevStep">上一步</el-button>
+          <el-button class="btn-secondary" :disabled="!canGoNext" @click="nextStep">下一步</el-button>
+          <el-button type="primary" class="btn-primary" :disabled="!canImport" @click="submitImport"
+            >开始导入</el-button
+          >
+        </template>
       </div>
     </template>
   </el-dialog>
 </template>
 
 <style>
-.fixed-steps-dialog.el-dialog {
+.batch-import-dialog.el-dialog {
   --dlg-surface: #f8fafc;
   --dlg-surface-elevated: #ffffff;
   --dlg-border: #e2e8f0;
@@ -738,13 +416,13 @@ defineExpose({
   background: var(--dlg-surface-elevated);
   display: flex !important;
   flex-direction: column !important;
-  height: 700px !important;
-  max-height: 90vh !important;
+  height: auto !important;
+  max-height: 85vh !important;
   margin-top: 5vh !important;
   --el-dialog-padding-primary: 0;
 }
 
-.fixed-steps-dialog .el-dialog__header {
+.batch-import-dialog .el-dialog__header {
   margin: 0;
   padding: 0;
   border-bottom: 1px solid var(--dlg-border);
@@ -752,32 +430,15 @@ defineExpose({
   flex-shrink: 0;
   margin-right: 0;
 }
-
-.fixed-steps-dialog .el-dialog__headerbtn {
+.batch-import-dialog .el-dialog__headerbtn {
   top: 16px;
   right: 16px;
 }
-
-.fixed-steps-dialog .el-dialog__headerbtn .el-dialog__close {
-  font-size: 18px;
-  color: #9ca3af;
-  transition: all 0.2s;
-}
-
-.fixed-steps-dialog .el-dialog__headerbtn:hover .el-dialog__close {
-  color: var(--dlg-accent);
-}
-
-.fixed-steps-dialog .el-dialog__body {
+.batch-import-dialog .el-dialog__body {
   padding: 0 !important;
-  flex: 1 !important;
-  height: auto !important;
-  overflow: hidden !important;
-  display: flex !important;
-  flex-direction: column !important;
+  overflow-y: auto !important;
 }
-
-.fixed-steps-dialog .el-dialog__footer {
+.batch-import-dialog .el-dialog__footer {
   padding: 12px 20px 16px;
   border-top: 1px solid var(--dlg-border);
   background: var(--dlg-surface);
@@ -792,7 +453,6 @@ defineExpose({
   gap: 10px;
   padding: 16px 20px;
 }
-
 .dialog-header-icon {
   width: 28px;
   height: 28px;
@@ -806,14 +466,12 @@ defineExpose({
   align-items: center;
   justify-content: center;
 }
-
 .dialog-title {
   color: #1e293b;
   font-size: 16px;
   font-weight: 700;
   line-height: 1.2;
 }
-
 .dialog-subtitle {
   margin-top: 2px;
   color: #64748b;
@@ -823,30 +481,15 @@ defineExpose({
 .dialog-steps {
   width: 100%;
   padding: 12px 20px 4px;
-  margin-bottom: 0;
   flex-shrink: 0;
 }
-
-.step-desc {
-  margin: 0 20px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  background: #f8fafc;
-  color: #64748b;
-  font-size: 12px;
-}
-
 .dialog-content-wrapper {
-  padding: 10px 20px;
-  flex: 1;
-  overflow-y: auto;
+  padding: 10px 20px 16px;
 }
 
 .fade-in {
   animation: fadeIn 0.2s ease-out;
 }
-
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -862,23 +505,19 @@ defineExpose({
   color: #059669;
   border-color: #059669;
 }
-
 :deep(.el-step__head.is-process .el-step__icon) {
   background: #f0fdf4;
   border: 1px solid #10b981;
   box-shadow: none;
 }
-
 :deep(.el-step__title.is-process) {
   color: #047857;
   font-weight: 600;
 }
-
 :deep(.el-step__head.is-success) {
   color: #059669;
   border-color: #059669;
 }
-
 :deep(.el-step__title.is-success) {
   color: #059669;
   font-weight: 600;
@@ -887,48 +526,51 @@ defineExpose({
 .step-container {
   padding: 2px 0;
   width: 100%;
-  position: relative;
+}
+.section-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
 }
 
 .data-type-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
+  margin-bottom: 4px;
 }
-
-@media (max-width: 740px) {
+@media (max-width: 640px) {
   .data-type-grid {
-    grid-template-columns: repeat(1, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 }
-
 .data-type-card {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px;
+  padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid #e2e8f0;
-  background: #ffffff;
+  background: #fff;
   cursor: pointer;
   transition: all 0.2s ease;
-  min-height: 82px;
+  min-height: 72px;
 }
-
 .data-type-card:hover {
   border-color: #cbd5e1;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
 }
-
 .data-type-card.is-active {
   background: #f8fffb;
   border-color: #86efac;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.1);
 }
-
 .card-icon {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   flex-shrink: 0;
   border-radius: 8px;
   border: 1px solid #e2e8f0;
@@ -939,348 +581,376 @@ defineExpose({
   color: #64748b;
   transition: all 0.2s;
 }
-
 .data-type-card:hover .card-icon {
   background: #f0fdf4;
   border-color: #bbf7d0;
   color: #059669;
 }
-
 .data-type-card.is-active .card-icon {
   background: #d1fae5;
   border-color: #86efac;
   color: #047857;
 }
-
 .card-content {
   flex: 1;
   min-width: 0;
-  padding-right: 8px;
 }
-
 .card-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: #1e293b;
-  margin: 0 0 4px 0;
+  margin: 0 0 2px 0;
 }
-
 .card-desc {
-  font-size: 12px;
+  font-size: 11px;
   color: #64748b;
   margin: 0;
 }
-
 .card-radio {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   border: 1px solid #cbd5e1;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #ffffff;
+  background: #fff;
   flex-shrink: 0;
   transition: all 0.2s;
 }
-
 .data-type-card.is-active .card-radio {
   border-color: #10b981;
-  background-color: #10b981;
+  background: #10b981;
 }
-
 .radio-inner {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: #ffffff;
+  background: #fff;
 }
 
-.input-label {
-  font-size: 13px;
+.missing-hint {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 0 0 10px 0;
+  line-height: 1.5;
+}
+.missing-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+.missing-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  font-size: 12px;
+  color: #64748b;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+  font-family: "Courier New", monospace;
+}
+.missing-chip:hover {
+  border-color: #a7f3d0;
+  color: #059669;
+  background: #f0fdf4;
+}
+.missing-chip.is-active {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+  color: #047857;
   font-weight: 600;
-  color: #334155;
-  margin-bottom: 8px;
+}
+.missing-chip.is-add {
+  border-style: dashed;
+  color: #94a3b8;
+  font-family: inherit;
+}
+.missing-chip.is-add:hover {
+  border-color: #10b981;
+  color: #10b981;
+  background: #f0fdf4;
+  border-style: solid;
+}
+.add-option-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.option-input-inline {
+  flex: 1;
 }
 
-.input-group {
-  margin-bottom: 14px;
-}
-
-.custom-upload {
-  margin-top: 6px;
-}
-
-.custom-input :deep(.el-input__wrapper) {
-  border-radius: 8px;
-  box-shadow: 0 0 0 1px #e2e8f0 inset;
-  transition: all 0.2s;
-}
-
-.custom-input :deep(.el-input__wrapper:hover) {
-  box-shadow: 0 0 0 1px #cbd5e1 inset;
-}
-
-.custom-input :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px #10b981 inset !important;
-}
-
-.custom-upload :deep(.el-upload-dragger) {
+/* ── 文件列表 ── */
+.multi-upload :deep(.el-upload-dragger) {
   padding: 16px;
   height: auto;
-  min-height: 150px;
+  min-height: 110px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 1px dashed #cbd5e1;
   border-radius: 10px;
   background: #f8fafc;
-  transition: all 0.2s ease;
+  transition: all 0.2s;
 }
-
-.custom-upload :deep(.el-upload-dragger:hover) {
+.multi-upload :deep(.el-upload-dragger:hover) {
   border-color: #86efac;
   background: #f0fdf4;
 }
-
 .upload-content {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
 }
-
 .upload-icon-wrapper {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  background: #ffffff;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: #fff;
   border: 1px solid #e2e8f0;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   transition: all 0.2s;
 }
-
-.custom-upload :deep(.el-upload-dragger:hover) .upload-icon-wrapper {
+.multi-upload :deep(.el-upload-dragger:hover) .upload-icon-wrapper {
   background: #d1fae5;
   border-color: #86efac;
 }
-
-.custom-upload .el-icon--upload {
-  font-size: 20px;
+.multi-upload .el-icon--upload {
+  font-size: 18px;
   color: #94a3b8;
   margin: 0;
   transition: color 0.2s;
 }
-
-.custom-upload :deep(.el-upload-dragger:hover) .el-icon--upload {
+.multi-upload :deep(.el-upload-dragger:hover) .el-icon--upload {
   color: #10b981;
 }
-
 .upload-text h3 {
-  font-size: 14px;
-  font-weight: 600;
-  color: #334155;
-  margin: 0 0 4px 0;
-}
-
-.upload-text p {
-  font-size: 12px;
-  color: #64748b;
-  margin: 0 0 2px 0;
-}
-
-.upload-limit {
-  font-size: 11px !important;
-  color: #94a3b8 !important;
-  margin-top: 6px !important;
-}
-
-.selected-file-tip {
-  margin-top: 14px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  color: #64748b;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.info-card {
-  background: #ffffff;
-  border-radius: 10px;
-  border: 1px solid #e5e7eb;
-  overflow: hidden;
-  margin-bottom: 10px;
-}
-
-.overview-card {
-  background: #ffffff !important;
-  border: 1px solid #e2e8f0 !important;
-  padding: 8px !important;
-}
-
-.preview-container {
-  padding: 0;
-  background: #fff;
-}
-
-.data-preview-table {
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-}
-
-.config-item {
-  display: flex;
-  align-items: center;
-  background-color: #f8fafc;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 10px;
-  transition: all 0.2s;
-  gap: 12px;
-}
-
-.config-item:hover {
-  border-color: #cbd5e1;
-}
-
-.config-label {
-  font-weight: 500;
-  color: #374151;
-  white-space: nowrap;
-}
-
-.config-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.full-width-input {
-  width: 100%;
-}
-
-.config-body {
-  padding: 10px;
-}
-
-.section-header {
-  padding: 10px;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.header-icon {
-  color: #10b981;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-}
-
-.header-title {
   font-size: 13px;
   font-weight: 600;
   color: #334155;
+  margin: 0 0 3px 0;
+}
+.upload-text p {
+  font-size: 11px;
+  color: #64748b;
+  margin: 0;
 }
 
-.file-processing-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(255, 255, 255, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-  border-radius: 10px;
-}
-
-.processing-content {
+.file-list {
+  margin-top: 10px;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.file-row {
+  display: flex;
   align-items: center;
-  gap: 12px;
-  color: #10b981;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+.file-row-info {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 160px;
+}
+.file-row-filename {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-row-size {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+}
+.file-row-name-input {
+  flex: 1;
+}
+.file-row-remove {
+  flex-shrink: 0;
+  color: #94a3b8;
+  border-color: #e2e8f0 !important;
+}
+.file-row-remove:hover {
+  color: #ef4444 !important;
+  border-color: #fca5a5 !important;
 }
 
-.processing-icon {
-  font-size: 24px;
+.empty-file-hint {
+  margin-top: 10px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13px;
+  padding: 16px;
 }
 
-.processing-icon.is-loading {
+/* ── 进度视图 ── */
+.progress-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+.progress-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+}
+.progress-summary {
+  font-size: 12px;
+  color: #64748b;
+}
+.progress-done {
+  color: #059669;
+  font-weight: 600;
+}
+.progress-fail {
+  color: #ef4444;
+  font-weight: 600;
+}
+.progress-total {
+  color: #94a3b8;
+}
+
+.progress-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.progress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  transition: all 0.2s;
+}
+.progress-row.is-completed {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+.progress-row.is-failed {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+.progress-row.is-processing {
+  border-color: #bfdbfe;
+  background: #f0f9ff;
+}
+.progress-row-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.is-completed .progress-row-icon {
+  color: #059669;
+}
+.is-failed .progress-row-icon {
+  color: #ef4444;
+}
+.is-processing .progress-row-icon {
+  color: #3b82f6;
+}
+.pending-dot {
+  color: #94a3b8;
+  font-size: 18px;
+  line-height: 1;
+}
+.is-spinning {
   animation: spin 1s linear infinite;
 }
-
-:deep(::-webkit-scrollbar) {
-  width: 8px;
-  height: 8px;
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.progress-row-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.progress-row-msg {
+  font-size: 11px;
+  color: #64748b;
+  flex-shrink: 0;
+}
+.is-completed .progress-row-msg {
+  color: #059669;
+}
+.is-failed .progress-row-msg {
+  color: #ef4444;
 }
 
-:deep(::-webkit-scrollbar-track) {
-  background: #f1f1f1;
-  border-radius: 4px;
-}
-
-:deep(::-webkit-scrollbar-thumb) {
-  background: #d1d5db;
-  border-radius: 4px;
-}
-
-:deep(::-webkit-scrollbar-thumb:hover) {
-  background: #9ca3af;
-}
-
+/* ── 底部按钮 ── */
 .dialog-footer {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
 }
-
 .dialog-footer .el-button {
-  height: 36px;
-  min-width: 110px;
-  padding: 0 18px;
+  height: 34px;
+  min-width: 88px;
+  padding: 0 16px;
   border-radius: 8px;
   font-weight: 600;
 }
-
 .btn-secondary {
   border: 1px solid #cbd5e1 !important;
-  background: #ffffff !important;
+  background: #fff !important;
   color: #334155 !important;
 }
-
 .btn-secondary:hover {
   border-color: #a7f3d0 !important;
   color: #059669 !important;
   background: #ecfdf5 !important;
 }
-
 .btn-primary {
   background: #10b981 !important;
   border: 1px solid #10b981 !important;
-  color: #ffffff !important;
+  color: #fff !important;
 }
-
 .btn-primary:hover {
   background: #059669 !important;
   border-color: #059669 !important;
 }
-
 .btn-primary.is-disabled {
   background: #9ca3af !important;
   border-color: #9ca3af !important;
-  color: #ffffff !important;
 }
 </style>

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { formatLocalWithTZ } from "@/utils/timeUtils";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import {
@@ -17,14 +16,14 @@ import {
   PieChart,
   InfoFilled,
 } from "@element-plus/icons-vue";
-import { useProjectStore } from "@/stores/useProjectStore";
+import { useCategoryStore } from "@/stores/useCategoryStore";
 import emitter from "@/utils/eventBus";
 import ProjectInfoCard from "./components/ProjectInfoCard.vue";
 import DatasetInfoCard from "./components/DatasetInfoCard.vue";
 import UserGuideModal from "./components/UserGuideModal.vue";
 
 const router = useRouter();
-const projectStore = useProjectStore();
+const categoryStore = useCategoryStore();
 
 // Data processing steps
 const processSteps = ref([
@@ -69,15 +68,14 @@ const formatBytes = (bytes?: number): string => {
 
 // Computed statistics based on real data
 const quickStats = computed(() => {
-  const project = projectStore.currentProject;
-  const datasets = project?.datasets || [];
+  const category = categoryStore.currentCategory;
+  const datasets = (category?.datasets || []) as any[];
 
-  const totalSize = datasets.reduce((sum, d) => {
+  const totalSize = datasets.reduce((sum: number, d: any) => {
     return sum + (d.totalSizeBytes || d.originalFileSizeBytes || 0);
   }, 0);
 
-  const totalFiles = datasets.reduce((sum, d) => {
-    // Use dataset version count instead of directory file count
+  const totalFiles = datasets.reduce((sum: number, d: any) => {
     return sum + (d.versionCount || 0);
   }, 0);
 
@@ -99,14 +97,14 @@ const quickStats = computed(() => {
     {
       title: "版本数",
       value: totalFiles.toString(),
-      tooltip: "版本数 = 每个数据集的处理/版本个数（例如每次处理/导出会产生一个版本）",
+      tooltip: "版本数 = 每个数据集的处理/版本个数",
       trend: "up",
       color: "orange",
       icon: "Monitor",
     },
     {
-      title: "最后更新",
-      value: project?.lastUpdated ? formatLocalWithTZ(project.lastUpdated) : "-",
+      title: "创建时间",
+      value: category?.createdAt ? new Date(category.createdAt).toLocaleDateString() : "-",
       trend: "neutral",
       color: "purple",
       icon: "PieChart",
@@ -115,8 +113,8 @@ const quickStats = computed(() => {
 });
 
 // Event handlers
-const handleCreateProject = () => {
-  emitter.emit("open-create-project-dialog");
+const handleCreateCategory = () => {
+  emitter.emit("open-create-category-dialog");
 };
 
 const navigateToStep = (route: string) => {
@@ -124,7 +122,7 @@ const navigateToStep = (route: string) => {
 };
 
 const quickViewData = () => {
-  const datasets = projectStore.currentProject?.datasets || [];
+  const datasets = (categoryStore.currentCategory?.datasets || []) as any[];
   if (datasets.length > 0) {
     ElMessage.info(`正在查看数据集: ${datasets[0].name}`);
     router.push(`/data-view?dataset=${datasets[0].id}`);
@@ -140,7 +138,7 @@ const showGuide = () => {
 </script>
 
 <template>
-  <div v-if="projectStore.hasProjects" class="home-container">
+  <div v-if="categoryStore.hasCategories" class="home-container">
     <!-- Top Project Info -->
     <ProjectInfoCard />
 
@@ -262,11 +260,11 @@ const showGuide = () => {
         您还没有创建任何站点。<br />
         创建第一个站点以开始管理生态数据。
       </p>
-      <el-button type="primary" size="large" @click="handleCreateProject" class="create-button">
+      <el-button type="primary" size="large" @click="handleCreateCategory" class="create-button">
         <el-icon class="button-icon">
           <Plus />
         </el-icon>
-        创建站点
+        新建分类
       </el-button>
       <div class="empty-features">
         <div class="feature-item">

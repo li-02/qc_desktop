@@ -17,38 +17,34 @@ import {
   Setting,
 } from "@element-plus/icons-vue";
 import DatasetVersionTree from "@/components/sidebar/DatasetVersionTree.vue";
-import { useProjectStore } from "@/stores/useProjectStore";
+import { useCategoryStore } from "@/stores/useCategoryStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import SettingsDialog from "@/components/dialogs/SettingsDialog.vue";
 
-const projectStore = useProjectStore();
+const categoryStore = useCategoryStore();
 const datasetStore = useDatasetStore();
 const settingsStore = useSettingsStore();
 
-// 设置对话框引用
 const settingsDialogRef = ref<InstanceType<typeof SettingsDialog> | null>(null);
-
-// 打开设置对话框
 const openSettingsDialog = () => {
   settingsDialogRef.value?.open();
 };
 
 // 侧边栏状态
 const isCollapsed = ref(false);
-const expandedProjects = ref<Set<string>>(new Set());
+const expandedCategories = ref<Set<string>>(new Set());
 const expandedDatasets = ref<Set<string>>(new Set());
 const isBatchMode = ref(false);
-const selectedProjectIds = ref<Set<string>>(new Set());
+const selectedCategoryIds = ref<Set<string>>(new Set());
 
 // 排序状态
 const sortType = ref<"date" | "name">("date");
 const sortOrder = ref<"asc" | "desc">("asc");
 
-// 排序后的项目列表
-const sortedProjects = computed(() => {
-  const projects = [...projectStore.projects];
-  return projects.sort((a, b) => {
+const sortedCategories = computed(() => {
+  const cats = [...categoryStore.categories];
+  return cats.sort((a, b) => {
     if (sortType.value === "date") {
       return sortOrder.value === "asc" ? a.createdAt - b.createdAt : b.createdAt - a.createdAt;
     } else {
@@ -57,97 +53,80 @@ const sortedProjects = computed(() => {
   });
 });
 
-// 处理排序命令
 const handleSortCommand = (command: string) => {
   const [type, order] = command.split("-");
   sortType.value = type as "date" | "name";
   sortOrder.value = order as "asc" | "desc";
 };
 
-// 批量删除处理
+// 批量模式
 const toggleBatchMode = () => {
   isBatchMode.value = !isBatchMode.value;
-  selectedProjectIds.value.clear();
+  selectedCategoryIds.value.clear();
 };
 
 const isAllSelected = computed(() => {
-  return sortedProjects.value.length > 0 && selectedProjectIds.value.size === sortedProjects.value.length;
+  return sortedCategories.value.length > 0 && selectedCategoryIds.value.size === sortedCategories.value.length;
 });
 
 const toggleSelectAll = (val: any) => {
   if (val) {
-    sortedProjects.value.forEach(p => selectedProjectIds.value.add(p.id));
+    sortedCategories.value.forEach(c => selectedCategoryIds.value.add(c.id));
   } else {
-    selectedProjectIds.value.clear();
+    selectedCategoryIds.value.clear();
   }
 };
 
-const toggleProjectSelection = (projectId: string) => {
-  if (selectedProjectIds.value.has(projectId)) {
-    selectedProjectIds.value.delete(projectId);
+const toggleCategorySelection = (categoryId: string) => {
+  if (selectedCategoryIds.value.has(categoryId)) {
+    selectedCategoryIds.value.delete(categoryId);
   } else {
-    selectedProjectIds.value.add(projectId);
+    selectedCategoryIds.value.add(categoryId);
   }
 };
 
 const handleBatchDelete = async () => {
-  if (selectedProjectIds.value.size === 0) return;
-
+  if (selectedCategoryIds.value.size === 0) return;
   try {
     await ElMessageBox.confirm(
-      `确定要删除选中的 ${selectedProjectIds.value.size} 个项目吗? 此操作不可恢复。`,
-      "批量删除项目",
-      {
-        confirmButtonText: "确定",
-        cancelButtonText: "取消",
-        type: "warning",
-      }
+      `确定要删除选中的 ${selectedCategoryIds.value.size} 个分类吗? 此操作不可恢复。`,
+      "批量删除分类",
+      { confirmButtonText: "确定", cancelButtonText: "取消", type: "warning" }
     );
-
-    await projectStore.batchDeleteProjects(Array.from(selectedProjectIds.value));
-    selectedProjectIds.value.clear();
+    await categoryStore.batchDeleteCategories(Array.from(selectedCategoryIds.value));
+    selectedCategoryIds.value.clear();
     isBatchMode.value = false;
   } catch (error) {
-    if (error !== "cancel") {
-      console.error(error);
-    }
+    if (error !== "cancel") console.error(error);
   }
 };
 
-// 路由相关
 const router = useRouter();
-
-// 侧边栏控制
 const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value;
 };
 
-// 项目展开控制
-const toggleProjectExpanded = (projectId: string) => {
-  if (expandedProjects.value.has(projectId)) {
-    expandedProjects.value.delete(projectId);
+// 分类展开控制
+const toggleCategoryExpanded = (categoryId: string) => {
+  if (expandedCategories.value.has(categoryId)) {
+    expandedCategories.value.delete(categoryId);
   } else {
-    expandedProjects.value.add(projectId);
+    expandedCategories.value.add(categoryId);
   }
 };
-// 展开所有项目
-const expandAllProjects = () => {
-  expandedProjects.value.clear();
-  projectStore.projects.forEach(project => {
-    if (project.datasets?.length > 0) {
-      expandedProjects.value.add(project.id);
-    }
+
+const expandAllCategories = () => {
+  expandedCategories.value.clear();
+  categoryStore.categories.forEach(c => {
+    if (c.datasets?.length > 0) expandedCategories.value.add(c.id);
   });
 };
 
-// 折叠所有项目
-const collapseAllProjects = () => {
-  expandedProjects.value.clear();
+const collapseAllCategories = () => {
+  expandedCategories.value.clear();
 };
 
-const isProjectExpanded = (projectId: string): boolean => {
-  return expandedProjects.value.has(projectId);
-};
+const isCategoryExpanded = (categoryId: string): boolean => expandedCategories.value.has(categoryId);
 
 // 数据集展开控制
 const toggleDatasetExpanded = (datasetId: string) => {
@@ -158,27 +137,22 @@ const toggleDatasetExpanded = (datasetId: string) => {
   }
 };
 
-const isDatasetExpanded = (datasetId: string): boolean => {
-  return expandedDatasets.value.has(datasetId);
+const isDatasetExpanded = (datasetId: string): boolean => expandedDatasets.value.has(datasetId);
+
+// 分类选择
+const selectCategory = (categoryId: string) => {
+  categoryStore.setCurrentCategory(categoryId);
+  router.push("/");
 };
 
-// 项目选择
-const selectProject = (projectId: string) => {
-  const project = projectStore.projects.find(p => p.id === projectId);
-  if (project) {
-    projectStore.setCurrentProject(projectId);
-    router.push("/");
-  }
-};
-
-const handleProjectClick = (projectId: string) => {
-  selectProject(projectId);
-  toggleProjectExpanded(projectId);
+const handleCategoryClick = (categoryId: string) => {
+  selectCategory(categoryId);
+  toggleCategoryExpanded(categoryId);
 };
 
 // 处理版本选择
-const handleVersionSelect = async (projectId: string, datasetId: string, versionId: number) => {
-  projectStore.setCurrentProject(projectId);
+const handleVersionSelect = async (categoryId: string, datasetId: string, versionId: number) => {
+  categoryStore.setCurrentCategory(categoryId);
   if (datasetStore.currentDataset?.id !== datasetId) {
     await datasetStore.setCurrentDataset(datasetId);
   }
@@ -186,77 +160,56 @@ const handleVersionSelect = async (projectId: string, datasetId: string, version
   router.push("/data-view");
 };
 
-// 创建新项目
-const createNewProject = () => {
-  emitter.emit("open-create-project-dialog");
+// 新建分类
+const createNewCategory = () => {
+  emitter.emit("open-create-category-dialog");
 };
 
-// 处理导入数据
-const handleImportData = (projectId?: string) => {
-  if (projectId) {
-    projectStore.setCurrentProject(projectId);
+// 导入数据
+const handleImportData = (categoryId?: string) => {
+  if (categoryId) {
+    categoryStore.setCurrentCategory(categoryId);
   }
-
-  if (!projectStore.currentProject) {
-    ElMessage.warning("请先选择一个项目");
+  if (!categoryStore.currentCategory) {
+    ElMessage.warning("请先选择一个分类");
     return;
   }
-
   emitter.emit("open-import-data-dialog");
 };
 
-// 确认删除项目
-const confirmDeleteProject = (projectId: string) => {
-  const project = projectStore.projects.find(p => p.id === projectId);
-  if (!project) return;
-
-  ElMessageBox.confirm(`确定要删除项目 "${project.name}" 吗? 此操作不可恢复。`, "删除项目", {
+// 删除分类
+const confirmDeleteCategory = (categoryId: string) => {
+  const category = categoryStore.categories.find(c => c.id === categoryId);
+  if (!category) return;
+  ElMessageBox.confirm(`确定要删除分类 "${category.name}" 吗? 此操作不可恢复。`, "删除分类", {
     confirmButtonText: "确定",
     cancelButtonText: "取消",
     type: "warning",
   })
     .then(async () => {
-      await projectStore.deleteProject(project.id);
+      await categoryStore.deleteCategory(category.id);
     })
-    .catch(() => {
-      // 用户取消
-    });
+    .catch(() => {});
 };
 
-// 确认删除数据集
-const confirmDeleteDataset = (projectId: string, datasetId: string) => {
-  const project = projectStore.projects.find(p => p.id === projectId);
-  const dataset = project?.datasets?.find(d => d.id === datasetId);
+// 删除数据集
+const confirmDeleteDataset = (categoryId: string, datasetId: string) => {
+  const category = categoryStore.categories.find(c => c.id === categoryId);
+  const dataset = category?.datasets?.find((d: any) => d.id === datasetId);
   if (!dataset) return;
-
   ElMessageBox.confirm(`确定要删除数据集 "${dataset.name}" 吗? 此操作不可恢复。`, "删除数据集", {
     confirmButtonText: "确定",
     cancelButtonText: "取消",
     type: "warning",
   })
     .then(async () => {
-      await datasetStore.deleteDataset(projectId, datasetId);
+      await datasetStore.deleteDataset(categoryId, datasetId);
       ElMessage.success("数据集删除成功");
     })
-    .catch(() => {
-      // 用户取消
-    });
+    .catch(() => {});
 };
 
 // 工具函数
-const getProjectIcon = (siteInfo: any): string => {
-  const altitude = parseFloat(siteInfo.altitude);
-  if (altitude > 1000) return "🏔️";
-  if (altitude > 500) return "🌲";
-  if (altitude > 100) return "🏕️";
-  return "🌊";
-};
-
-const formatCoordinate = (value: string, direction: string): string => {
-  const num = parseFloat(value);
-  return `${Math.abs(num).toFixed(1)}°${direction}`;
-};
-
 const formatBytes = (bytes: number): string => {
   if (!bytes || bytes <= 0) return "0 B";
   if (bytes < 1024) return `${bytes} B`;
@@ -265,17 +218,16 @@ const formatBytes = (bytes: number): string => {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 };
 
-const getTotalFiles = (project: any): number => {
-  const datasets = Array.isArray(project?.datasets) ? project.datasets : [];
+const getTotalFiles = (category: any): number => {
+  const datasets = Array.isArray(category?.datasets) ? category.datasets : [];
   return datasets.reduce((sum: number, d: any) => {
     const fc = typeof d?.fileCount === "number" ? d.fileCount : 0;
-    // 如果后端暂未返回 fileCount，则至少按 1 个原始文件计
     return sum + (fc > 0 ? fc : d?.originalFile ? 1 : 0);
   }, 0);
 };
 
-const getTotalSize = (project: any): string => {
-  const datasets = Array.isArray(project?.datasets) ? project.datasets : [];
+const getTotalSize = (category: any): string => {
+  const datasets = Array.isArray(category?.datasets) ? category.datasets : [];
   const totalBytes = datasets.reduce((sum: number, d: any) => {
     if (typeof d?.totalSizeBytes === "number" && d.totalSizeBytes > 0) return sum + d.totalSizeBytes;
     if (typeof d?.originalFileSizeBytes === "number" && d.originalFileSizeBytes > 0)
@@ -286,13 +238,7 @@ const getTotalSize = (project: any): string => {
 };
 
 const getDatasetIcon = (type: string): string => {
-  const iconMap: Record<string, string> = {
-    flux: "📊",
-    micrometeorology: "🌡️",
-    aqi: "🌫️",
-    sapflow: "🌊",
-    nai: "⚡",
-  };
+  const iconMap: Record<string, string> = { flux: "📊", micrometeorology: "🌡️", aqi: "🌫️", sapflow: "🌊", nai: "⚡" };
   return iconMap[type] || "📄";
 };
 
@@ -307,19 +253,19 @@ const getDatasetTypeLabel = (type: string): string => {
   return labelMap[type] || type.toUpperCase();
 };
 
-// 监听导入成功，自动展开项目
 const handleImportSuccess = () => {
-  if (projectStore.currentProject) {
-    expandedProjects.value.add(projectStore.currentProject.id);
+  if (categoryStore.currentCategory) {
+    expandedCategories.value.add(categoryStore.currentCategory.id);
+    categoryStore.loadCategories();
   }
 };
 
 onMounted(async () => {
-  await projectStore.loadProjects();
-  if (!projectStore.currentProject && sortedProjects.value.length > 0) {
-    selectProject(sortedProjects.value[0].id);
+  await categoryStore.loadCategories();
+  if (!categoryStore.currentCategory && sortedCategories.value.length > 0) {
+    selectCategory(sortedCategories.value[0].id);
   }
-  settingsStore.initSettings(); // 初始化系统设置
+  settingsStore.initSettings();
   emitter.on("data-imported", handleImportSuccess);
 });
 
@@ -357,13 +303,13 @@ onUnmounted(() => {
         </el-icon>
       </button>
 
-      <!-- 项目管理区域 -->
+      <!-- 分类管理区域 -->
       <div class="projects-section">
         <div class="section-header" v-show="!isCollapsed">
           <div class="section-title-wrap">
-            <div class="section-title">项目管理</div>
-            <span v-if="isBatchMode && selectedProjectIds.size > 0" class="selected-badge">
-              已选 {{ selectedProjectIds.size }}
+            <div class="section-title">分类管理</div>
+            <span v-if="isBatchMode && selectedCategoryIds.size > 0" class="selected-badge">
+              已选 {{ selectedCategoryIds.size }}
             </span>
           </div>
 
@@ -372,13 +318,12 @@ onUnmounted(() => {
             <el-checkbox class="batch-select-all" :model-value="isAllSelected" @change="toggleSelectAll" size="small"
               >全选</el-checkbox
             >
-
             <button
               class="action-btn delete-btn"
               @click="handleBatchDelete"
               title="删除选中"
-              :disabled="selectedProjectIds.size === 0"
-              :style="{ color: selectedProjectIds.size > 0 ? '#dc2626' : '#9ca3af' }">
+              :disabled="selectedCategoryIds.size === 0"
+              :style="{ color: selectedCategoryIds.size > 0 ? '#dc2626' : '#9ca3af' }">
               <el-icon><Delete /></el-icon>
             </button>
             <button class="action-btn" @click="toggleBatchMode" title="退出批量模式">
@@ -388,7 +333,7 @@ onUnmounted(() => {
 
           <!-- 正常模式操作栏 -->
           <div v-else class="section-actions">
-            <button class="action-btn" @click="projectStore.loadProjects" title="刷新项目列表">
+            <button class="action-btn" @click="categoryStore.loadCategories" title="刷新分类列表">
               <el-icon><Refresh /></el-icon>
             </button>
             <el-dropdown trigger="click" @command="handleSortCommand">
@@ -404,128 +349,113 @@ onUnmounted(() => {
                     >创建时间 (倒序)</el-dropdown-item
                   >
                   <el-dropdown-item command="name-asc" :class="{ active: sortType === 'name' && sortOrder === 'asc' }"
-                    >项目名称 (正序)</el-dropdown-item
+                    >分类名称 (正序)</el-dropdown-item
                   >
                   <el-dropdown-item command="name-desc" :class="{ active: sortType === 'name' && sortOrder === 'desc' }"
-                    >项目名称 (倒序)</el-dropdown-item
+                    >分类名称 (倒序)</el-dropdown-item
                   >
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
-            <button class="action-btn" @click="expandAllProjects" title="展开所有项目">
+            <button class="action-btn" @click="expandAllCategories" title="展开所有分类">
               <el-icon><ArrowDown /></el-icon>
             </button>
-            <button class="action-btn" @click="collapseAllProjects" title="折叠所有项目">
+            <button class="action-btn" @click="collapseAllCategories" title="折叠所有分类">
               <el-icon><ArrowUp /></el-icon>
             </button>
             <button class="action-btn" @click="toggleBatchMode" title="批量管理">
               <el-icon><Files /></el-icon>
             </button>
-            <button class="action-btn" @click="createNewProject" title="新建项目">
+            <button class="action-btn" @click="createNewCategory" title="新建分类">
               <el-icon><Plus /></el-icon>
             </button>
           </div>
         </div>
 
-        <!-- 项目列表 -->
+        <!-- 分类列表 -->
         <div class="projects-list" v-show="!isCollapsed">
           <!-- 空状态 -->
-          <div v-if="!projectStore.hasProjects" class="empty-state">
+          <div v-if="!categoryStore.hasCategories" class="empty-state">
             <div class="empty-icon">📂</div>
             <div class="empty-text">
-              还没有创建任何项目<br />
+              还没有创建任何分类<br />
               开始您的生态监测之旅
             </div>
-            <button class="empty-action" @click="createNewProject">创建第一个项目</button>
+            <button class="empty-action" @click="createNewCategory">创建第一个分类</button>
           </div>
 
-          <!-- 项目列表 -->
+          <!-- 分类列表 -->
           <div v-else class="projects-container">
             <div
-              v-for="project in sortedProjects"
-              :key="project.id"
+              v-for="category in sortedCategories"
+              :key="category.id"
               :class="[
                 'project-item',
-                {
-                  active: projectStore.currentProject?.id === project.id,
-                  'batch-mode': isBatchMode,
-                },
+                { active: categoryStore.currentCategory?.id === category.id, 'batch-mode': isBatchMode },
               ]"
-              @click="isBatchMode ? toggleProjectSelection(project.id) : handleProjectClick(project.id)">
+              @click="isBatchMode ? toggleCategorySelection(category.id) : handleCategoryClick(category.id)">
               <!-- 批量选择复选框 -->
               <div v-if="isBatchMode" class="project-checkbox">
                 <el-checkbox
-                  :model-value="selectedProjectIds.has(project.id)"
-                  @change="toggleProjectSelection(project.id)"
+                  :model-value="selectedCategoryIds.has(category.id)"
+                  @change="toggleCategorySelection(category.id)"
                   @click.stop />
               </div>
 
-              <!-- 项目头部 -->
+              <!-- 分类头部 -->
               <div class="project-header">
-                <!-- 展开/收起按钮 (左侧) -->
                 <button
                   class="project-expand-caret"
-                  :class="{
-                    expanded: isProjectExpanded(project.id),
-                    invisible: !project.datasets?.length,
-                  }"
-                  @click.stop="toggleProjectExpanded(project.id)">
+                  :class="{ expanded: isCategoryExpanded(category.id), invisible: !category.datasets?.length }"
+                  @click.stop="toggleCategoryExpanded(category.id)">
                   <el-icon><CaretRight /></el-icon>
                 </button>
 
                 <div class="project-main">
-                  <div class="project-icon">
-                    {{ getProjectIcon(project.siteInfo) }}
-                  </div>
-
+                  <div class="project-icon">📁</div>
                   <div class="project-info">
-                    <div class="project-name">{{ project.name }}</div>
+                    <div class="project-name">{{ category.name }}</div>
                     <div class="project-meta">
-                      <span>{{ formatCoordinate(project.siteInfo.longitude, "E") }}</span>
-                      <span>•</span>
-                      <span>{{ formatCoordinate(project.siteInfo.latitude, "N") }}</span>
-                      <span>•</span>
-                      <span>{{ project.siteInfo.altitude }}m</span>
+                      <span>{{ category.datasets?.length || 0 }} 个数据集</span>
                     </div>
                   </div>
                 </div>
 
                 <div class="project-right">
                   <div class="project-actions">
-                    <button class="project-action-btn" @click.stop="handleImportData(project.id)" title="上传数据集">
+                    <button class="project-action-btn" @click.stop="handleImportData(category.id)" title="导入数据集">
                       <el-icon><Plus /></el-icon>
                     </button>
                     <button
                       class="project-action-btn delete-btn"
-                      @click.stop="confirmDeleteProject(project.id)"
-                      title="删除项目">
+                      @click.stop="confirmDeleteCategory(category.id)"
+                      title="删除分类">
                       <el-icon><Delete /></el-icon>
                     </button>
                   </div>
                 </div>
               </div>
 
-              <!-- 项目统计 -->
+              <!-- 分类统计 -->
               <div class="project-stats">
                 <div class="stat-item">
                   <div class="stat-icon datasets"></div>
-                  <span>{{ project.datasets?.length || 0 }} 数据集</span>
+                  <span>{{ category.datasets?.length || 0 }} 数据集</span>
                 </div>
                 <div class="stat-item">
                   <div class="stat-icon files"></div>
-                  <span>{{ getTotalFiles(project) }} 文件</span>
+                  <span>{{ getTotalFiles(category) }} 文件</span>
                 </div>
                 <div class="stat-item">
                   <div class="stat-icon size"></div>
-                  <span>{{ getTotalSize(project) }}</span>
+                  <span>{{ getTotalSize(category) }}</span>
                 </div>
               </div>
 
               <!-- 数据集列表 -->
-              <div :class="['datasets-list', { expanded: isProjectExpanded(project.id) }]">
-                <div v-if="project.datasets?.length > 0" class="datasets-container">
-                  <div v-for="dataset in project.datasets" :key="dataset.id" class="dataset-wrapper">
-                    <!-- 数据集主行 -->
+              <div :class="['datasets-list', { expanded: isCategoryExpanded(category.id) }]">
+                <div v-if="category.datasets?.length > 0" class="datasets-container">
+                  <div v-for="dataset in category.datasets" :key="dataset.id" class="dataset-wrapper">
                     <div
                       :class="[
                         'dataset-item',
@@ -536,7 +466,6 @@ onUnmounted(() => {
                       ]"
                       @click.stop="toggleDatasetExpanded(dataset.id)">
                       <div class="dataset-header">
-                        <!-- 展开/收起按钮 -->
                         <button
                           class="dataset-expand-btn"
                           :class="{ expanded: isDatasetExpanded(dataset.id) }"
@@ -548,26 +477,22 @@ onUnmounted(() => {
                         <div class="dataset-type">{{ getDatasetTypeLabel(dataset.type) }}</div>
                         <button
                           class="dataset-delete-btn"
-                          @click.stop="confirmDeleteDataset(project.id, dataset.id)"
+                          @click.stop="confirmDeleteDataset(category.id, dataset.id)"
                           title="删除数据集">
                           <el-icon><Delete /></el-icon>
                         </button>
                       </div>
                     </div>
-
-                    <!-- 版本树 -->
                     <DatasetVersionTree
                       :dataset-id="dataset.id"
                       :is-expanded="isDatasetExpanded(dataset.id)"
-                      @select-version="versionId => handleVersionSelect(project.id, dataset.id, versionId)" />
+                      @select-version="versionId => handleVersionSelect(category.id, dataset.id, versionId)" />
                   </div>
                 </div>
-
-                <!-- 无数据集提示 -->
                 <div v-else class="datasets-empty">
                   <div class="datasets-empty-icon">📄</div>
                   <div class="datasets-empty-text">暂无数据集</div>
-                  <button class="datasets-empty-action" @click.stop="handleImportData(project.id)">
+                  <button class="datasets-empty-action" @click.stop="handleImportData(category.id)">
                     导入第一个数据集
                   </button>
                 </div>
@@ -575,6 +500,18 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- 底部导航 -->
+      <div class="sidebar-footer" v-show="!isCollapsed">
+        <button
+          class="sidebar-nav-btn"
+          :class="{ active: $route.path === '/workflow' }"
+          @click="router.push('/workflow')"
+          title="自动化工作流">
+          <span class="nav-icon">🔄</span>
+          <span class="nav-text">自动化工作流</span>
+        </button>
       </div>
     </div>
 
@@ -602,10 +539,10 @@ onUnmounted(() => {
 
       <!-- 内容区域 -->
       <div class="content-area">
-        <router-view v-if="projectStore.currentProject || $route.path === '/'" />
+        <router-view v-if="categoryStore.currentCategory || $route.path === '/' || $route.path === '/workflow'" />
         <div v-else class="content-empty">
-          <el-empty description="请先选择一个项目" :image-size="128">
-            <el-button type="primary" @click="createNewProject">新建项目</el-button>
+          <el-empty description="请先选择一个分类" :image-size="128">
+            <el-button type="primary" @click="createNewCategory">新建分类</el-button>
           </el-empty>
         </div>
       </div>
@@ -1602,5 +1539,49 @@ onUnmounted(() => {
   100% {
     transform: rotate(360deg);
   }
+}
+
+/* 侧边栏底部导航 */
+.sidebar-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--sb-border);
+  flex-shrink: 0;
+}
+
+.sidebar-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--sb-border);
+  border-radius: 10px;
+  background: var(--sb-surface-elevated);
+  color: var(--sb-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sidebar-nav-btn:hover {
+  background: var(--sb-accent-soft);
+  color: var(--sb-accent);
+  border-color: #a7f3d0;
+}
+
+.sidebar-nav-btn.active {
+  background: var(--sb-accent-soft);
+  color: var(--sb-accent);
+  border-color: var(--sb-accent);
+  font-weight: 600;
+}
+
+.sidebar-nav-btn .nav-icon {
+  font-size: 16px;
+}
+
+.sidebar-nav-btn .nav-text {
+  white-space: nowrap;
 }
 </style>

@@ -17,13 +17,21 @@ import {
   Download,
   Edit,
   Connection,
+  View,
 } from "@element-plus/icons-vue";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import type { DatasetInfo } from "@shared/types/projectInterface";
-import type { ColumnSetting, OutlierResult, OutlierDetail } from "@shared/types/database";
+import type {
+  ColumnSetting,
+  OutlierResult,
+  OutlierDetail,
+  DetectionMethod,
+  ThresholdTemplateEntry,
+} from "@shared/types/database";
 import OutlierChart from "../charts/OutlierChart.vue";
 import VersionManager from "../VersionManager.vue";
+import TemplateManager from "./TemplateManager.vue";
 
 const datasetStore = useDatasetStore();
 const outlierStore = useOutlierDetectionStore();
@@ -44,6 +52,7 @@ const panelLoading = computed(() => props.loading || outlierStore.loading);
 // View State
 const activeView = ref<"config" | "result">("config");
 const showVersionDrawer = ref(false);
+const showTemplateManager = ref(false);
 const currentVersion = computed(() => datasetStore.currentVersion);
 
 const handleVersionSwitch = async (versionId: number) => {
@@ -82,6 +91,27 @@ const currentSelectedColumn = ref("");
 // 重命名状态
 const editingResultId = ref<number | null>(null);
 const editingName = ref("");
+
+// 检测方法选择状态
+const selectedMethodId = ref<string>("THRESHOLD_STATIC");
+const methodParamsForm = ref<Record<string, any>>({});
+
+const selectedMethod = computed(() => {
+  return outlierStore.availableMethods.find(m => m.id === selectedMethodId.value) || null;
+});
+
+const isThresholdMethod = computed(() => selectedMethodId.value === "THRESHOLD_STATIC");
+
+const selectMethod = (method: DetectionMethod) => {
+  if (!method.isAvailable) return;
+  selectedMethodId.value = method.id;
+  // 初始化参数默认值
+  const defaults: Record<string, any> = {};
+  for (const p of method.params) {
+    defaults[p.key] = p.default;
+  }
+  methodParamsForm.value = defaults;
+};
 
 // 本地状态
 const searchText = ref("");
@@ -123,6 +153,10 @@ const templateOptions = computed(() => {
   }));
 });
 
+const configuredColumnCount = computed(() => {
+  return outlierStore.columnThresholds.filter(c => c.min_threshold !== null || c.max_threshold !== null).length;
+});
+
 // 方法
 const loadData = async () => {
   if (!datasetInfo.value?.id) return;
@@ -131,6 +165,7 @@ const loadData = async () => {
     outlierStore.loadColumnThresholds(datasetInfo.value.id),
     outlierStore.loadDetectionMethods(),
     outlierStore.loadThresholdTemplates(),
+    outlierStore.loadUserTemplates(),
     loadDetectionResults(),
   ]);
 };
@@ -151,26 +186,27 @@ const switchToConfig = () => {
 const executeDetection = async () => {
   if (!datasetInfo.value?.id) return;
 
+  const method = selectedMethodId.value;
+
   // 确定要检测的列
   let targetColumnNames: string[] | undefined = undefined;
 
   if (selectedColumns.value.length > 0) {
-    // 如果用户选择了列，只检测选中的列
     const selectedCols = outlierStore.columnThresholds.filter(c => selectedColumns.value.includes(c.id));
     targetColumnNames = selectedCols.map(c => c.column_name);
 
-    // 检查选中的列是否有配置阈值
-    const hasConfigured = selectedCols.some(c => c.min_threshold !== null || c.max_threshold !== null);
-    if (!hasConfigured) {
-      ElMessage.warning("选中的列未配置阈值");
-      return;
+    // 静态阈值方法需要检查阈值配置
+    if (method === "THRESHOLD_STATIC") {
+      const hasConfigured = selectedCols.some(c => c.min_threshold !== null || c.max_threshold !== null);
+      if (!hasConfigured) {
+        ElMessage.warning("选中的列未配置阈值");
+        return;
+      }
     }
-  } else {
-    // 如果未选择列，检测所有配置了阈值的列
+  } else if (method === "THRESHOLD_STATIC") {
     const configuredColumns = outlierStore.columnThresholds.filter(
       c => c.min_threshold !== null || c.max_threshold !== null
     );
-
     if (configuredColumns.length === 0) {
       ElMessage.warning("请先为至少一个列配置阈值");
       return;
@@ -179,7 +215,6 @@ const executeDetection = async () => {
 
   try {
     executing.value = true;
-    // 使用版本 ID
     const versionId = currentVersion.value?.id;
     if (!versionId) {
       ElMessage.warning("未能获取当前数据版本");
@@ -187,15 +222,24 @@ const executeDetection = async () => {
       return;
     }
 
-    const result = await outlierStore.executeThresholdDetection(
-      String(datasetInfo.value.id),
-      String(versionId),
-      targetColumnNames
-    );
+    let result: any;
+    if (method === "THRESHOLD_STATIC") {
+      result = await outlierStore.executeThresholdDetection(
+        String(datasetInfo.value.id),
+        String(versionId),
+        targetColumnNames
+      );
+    } else {
+      result = await outlierStore.executeDetection(
+        String(datasetInfo.value.id),
+        String(versionId),
+        method,
+        methodParamsForm.value,
+        targetColumnNames
+      );
+    }
 
     if (result) {
-      // 这里的逻辑需要调整，因为 viewResult 会重新解析
-      // 我们可以先加载列表，然后自动选择最新的一项
       await loadDetectionResults();
       if (detectionResults.value.length > 0) {
         await viewResult(detectionResults.value[0]);
@@ -533,12 +577,127 @@ const applyTemplate = async (templateName: string) => {
 
   try {
     await ElMessageBox.confirm(
-      `确定要应用"${templateName === "standard" ? "标准" : "严格"}"模板吗？这将覆盖匹配列的现有阈值配置。`,
+      `确定要应用“${templateName === "standard" ? "标准" : "严格"}”模板吗？这将覆盖匹配列的现有阈值配置。`,
       "应用模板",
       { confirmButtonText: "确定", cancelButtonText: "取消", type: "warning", customClass: "qc-message-box" }
     );
 
     await outlierStore.applyThresholdTemplate(datasetInfo.value.id, templateName);
+  } catch {
+    // 用户取消
+  }
+};
+
+const handleTemplateCommand = async (command: string) => {
+  if (command === "__save__") {
+    await handleSaveAsTemplate();
+  } else if (command === "__manage__") {
+    showTemplateManager.value = true;
+  } else if (command.startsWith("user:")) {
+    const templateId = parseInt(command.replace("user:", ""));
+    await handleApplyUserTemplate(templateId);
+  } else {
+    await applyTemplate(command);
+  }
+};
+
+const handleSaveAsTemplate = async () => {
+  if (!datasetInfo.value?.id) return;
+
+  if (configuredColumnCount.value === 0) {
+    ElMessage.warning("当前没有已配置阈值的列，无法保存为模板");
+    return;
+  }
+
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `将当前 ${configuredColumnCount.value} 列的阈值配置保存为模板`,
+      "保存为模板",
+      {
+        confirmButtonText: "保存",
+        cancelButtonText: "取消",
+        inputPlaceholder: "输入模板名称",
+        inputValidator: (val: string) => {
+          if (!val || !val.trim()) return "模板名称不能为空";
+          return true;
+        },
+        customClass: "qc-message-box",
+      }
+    );
+
+    if (value) {
+      await outlierStore.saveAsTemplate(datasetInfo.value.id, value.trim());
+    }
+  } catch {
+    // 用户取消
+  }
+};
+
+const handleApplyUserTemplate = async (templateId: number) => {
+  if (!datasetInfo.value?.id) return;
+
+  const template = outlierStore.userTemplates.find(t => t.id === templateId);
+  if (!template) return;
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要应用"${template.name}"模板吗？这将覆盖匹配列的现有阈值配置。\n模板包含 ${template.columnCount} 列配置。`,
+      "应用模板",
+      { confirmButtonText: "确定", cancelButtonText: "取消", type: "warning", customClass: "qc-message-box" }
+    );
+
+    await outlierStore.applyUserTemplate(datasetInfo.value.id, templateId);
+  } catch {
+    // 用户取消
+  }
+};
+
+// ==================== 模板预览 ====================
+const showTemplatePreview = ref(false);
+const previewTemplateName = ref("");
+const previewTemplateData = ref<Record<string, ThresholdTemplateEntry>>({});
+
+const handlePreviewBuiltinTemplate = (templateKey: string, event: Event) => {
+  event.stopPropagation();
+  const templates = outlierStore.thresholdTemplates;
+  const data = templates[templateKey];
+  if (!data) return;
+  previewTemplateName.value =
+    templateKey === "standard" ? "标准模板" : templateKey === "strict" ? "严格模板" : templateKey;
+  previewTemplateData.value = data as Record<string, ThresholdTemplateEntry>;
+  showTemplatePreview.value = true;
+};
+
+const handlePreviewUserTemplate = (templateId: number, event: Event) => {
+  event.stopPropagation();
+  const template = outlierStore.userTemplates.find(t => t.id === templateId);
+  if (!template) return;
+  previewTemplateName.value = template.name;
+  previewTemplateData.value = template.thresholds;
+  showTemplatePreview.value = true;
+};
+
+const previewTemplateEntries = computed(() => {
+  return Object.entries(previewTemplateData.value).map(([name, entry]) => ({
+    name,
+    min: entry.min,
+    max: entry.max,
+    unit: entry.unit || "-",
+  }));
+});
+
+const handleDeleteUserTemplate = async (templateId: number, event: Event) => {
+  event.stopPropagation();
+
+  try {
+    await ElMessageBox.confirm("确定要删除这个模板吗？", "删除模板", {
+      confirmButtonText: "确定",
+      cancelButtonText: "取消",
+      type: "warning",
+      customClass: "qc-message-box",
+    });
+
+    await outlierStore.deleteUserTemplate(templateId);
   } catch {
     // 用户取消
   }
@@ -577,24 +736,6 @@ const toggleSelectAll = () => {
   } else {
     selectedColumns.value = filteredColumns.value.map(c => c.id);
   }
-};
-
-const getThresholdStatus = (column: ColumnSetting) => {
-  if (column.min_threshold !== null || column.max_threshold !== null) {
-    return "configured";
-  }
-  return "not-configured";
-};
-
-const getThresholdStatusText = (column: ColumnSetting) => {
-  const status = getThresholdStatus(column);
-  if (status === "configured") {
-    const parts = [];
-    if (column.min_threshold !== null) parts.push(`≥${column.min_threshold}`);
-    if (column.max_threshold !== null) parts.push(`≤${column.max_threshold}`);
-    return parts.join(", ");
-  }
-  return "未配置";
 };
 
 const getMissingCount = (columnName: string) => {
@@ -728,20 +869,76 @@ onMounted(() => {
             <div class="view-header">
               <div class="header-title">
                 <h2>阈值配置与检测</h2>
-                <span class="header-desc">为每个变量设置有效数据范围，超出范围的值将被标记为异常</span>
+                <span class="header-desc">
+                  {{
+                    isThresholdMethod
+                      ? "为每个变量设置有效数据范围，超出范围的值将被标记为异常"
+                      : `使用 ${selectedMethod?.name || ""} 对选中列进行统计异常检测`
+                  }}
+                </span>
               </div>
               <div class="header-actions">
                 <el-button class="action-btn" plain @click="showVersionDrawer = true">
                   <el-icon><Connection /></el-icon> 版本谱系
                 </el-button>
-                <el-dropdown @command="applyTemplate" :disabled="outlierStore.saving">
+                <el-dropdown @command="handleTemplateCommand" :disabled="outlierStore.saving">
                   <el-button class="action-btn" plain>
                     <el-icon><Setting /></el-icon> 模板
                   </el-button>
                   <template #dropdown>
                     <el-dropdown-menu>
+                      <el-dropdown-item disabled style="font-size: 12px; color: #909399; font-weight: 500"
+                        >内置模板</el-dropdown-item
+                      >
                       <el-dropdown-item v-for="opt in templateOptions" :key="opt.value" :command="opt.value">
-                        {{ opt.label }}
+                        <div class="template-dropdown-item">
+                          <span>{{ opt.label }}</span>
+                          <el-icon
+                            class="template-preview-icon"
+                            @click="handlePreviewBuiltinTemplate(opt.value, $event)"
+                            ><View
+                          /></el-icon>
+                        </div>
+                      </el-dropdown-item>
+                      <template v-if="outlierStore.userTemplates.length > 0">
+                        <el-dropdown-item divided disabled style="font-size: 12px; color: #909399; font-weight: 500"
+                          >我的模板</el-dropdown-item
+                        >
+                        <el-dropdown-item
+                          v-for="tpl in outlierStore.userTemplates"
+                          :key="'user:' + tpl.id"
+                          :command="'user:' + tpl.id">
+                          <div
+                            style="
+                              display: flex;
+                              align-items: center;
+                              justify-content: space-between;
+                              width: 100%;
+                              min-width: 160px;
+                            ">
+                            <span
+                              >{{ tpl.name }}
+                              <span style="color: #909399; font-size: 11px">({{ tpl.columnCount }}列)</span></span
+                            >
+                            <span
+                              style="display: flex; align-items: center; gap: 4px; flex-shrink: 0; margin-left: 12px">
+                              <el-icon class="template-preview-icon" @click="handlePreviewUserTemplate(tpl.id, $event)"
+                                ><View
+                              /></el-icon>
+                              <el-icon
+                                style="color: #f56c6c; cursor: pointer; font-size: 14px"
+                                @click="handleDeleteUserTemplate(tpl.id, $event)"
+                                ><Close
+                              /></el-icon>
+                            </span>
+                          </div>
+                        </el-dropdown-item>
+                      </template>
+                      <el-dropdown-item divided command="__save__">
+                        <el-icon style="margin-right: 4px"><Plus /></el-icon> 保存当前为模板
+                      </el-dropdown-item>
+                      <el-dropdown-item command="__manage__">
+                        <el-icon style="margin-right: 4px"><Setting /></el-icon> 管理模板
                       </el-dropdown-item>
                     </el-dropdown-menu>
                   </template>
@@ -759,52 +956,125 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- 筛选区域 -->
-            <div class="filter-section">
-              <div class="filter-left">
-                <el-input v-model="searchText" placeholder="搜索列名..." class="search-input" clearable>
-                  <template #prefix>
-                    <el-icon><Search /></el-icon>
-                  </template>
-                </el-input>
-                <el-checkbox
-                  :model-value="selectedColumns.length === filteredColumns.length && filteredColumns.length > 0"
-                  :indeterminate="selectedColumns.length > 0 && selectedColumns.length < filteredColumns.length"
-                  @change="toggleSelectAll">
-                  全选
-                </el-checkbox>
-              </div>
-              <div class="filter-right">
-                <transition name="fade">
-                  <el-button
-                    v-if="selectedColumns.length > 0"
-                    size="small"
-                    type="danger"
-                    plain
-                    round
-                    @click="batchClearThresholds">
-                    清除选中 ({{ selectedColumns.length }})
-                  </el-button>
-                </transition>
-              </div>
-            </div>
-
             <!-- 阈值配置表格与方法说明 -->
             <div class="threshold-table-container">
               <el-scrollbar>
+                <!-- ① 检测方法选择 (始终在最上方) -->
+                <div class="methods-section">
+                  <div class="section-header-small">
+                    <div class="section-title">选择检测方法</div>
+                    <span v-if="selectedMethod" class="selected-method-hint">
+                      当前: <strong>{{ selectedMethod.name }}</strong>
+                    </span>
+                  </div>
+                  <div class="methods-grid">
+                    <div
+                      v-for="method in outlierStore.availableMethods"
+                      :key="method.id"
+                      class="method-card"
+                      :class="{
+                        'method-unavailable': !method.isAvailable,
+                        'method-selected': selectedMethodId === method.id,
+                      }"
+                      @click="selectMethod(method)">
+                      <div class="method-header">
+                        <span class="method-name">{{ method.name }}</span>
+                        <span class="method-category" :class="method.category">
+                          {{
+                            method.category === "threshold"
+                              ? "阈值"
+                              : method.category === "statistical"
+                                ? "统计"
+                                : method.category === "ml"
+                                  ? "机器学习"
+                                  : method.category
+                          }}
+                        </span>
+                      </div>
+                      <div class="method-description">{{ method.description }}</div>
+                      <div class="method-footer">
+                        <div v-if="method.requiresPython" class="method-badge python">Python</div>
+                        <div v-if="selectedMethodId === method.id" class="method-check-icon">✓</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- ② 参数配置面板 (非静态阈值方法时显示) -->
+                  <transition name="fade">
+                    <div v-if="!isThresholdMethod && selectedMethod" class="method-params-panel">
+                      <div class="params-title">{{ selectedMethod.name }} 参数配置</div>
+                      <div class="params-grid">
+                        <div v-for="param in selectedMethod.params" :key="param.key" class="param-item">
+                          <label class="param-label">
+                            {{ param.label }}
+                            <el-tooltip v-if="param.tooltip" :content="param.tooltip" placement="top">
+                              <span class="param-tip">?</span>
+                            </el-tooltip>
+                          </label>
+                          <el-input-number
+                            v-if="param.type === 'number'"
+                            v-model="methodParamsForm[param.key]"
+                            size="small"
+                            :min="param.min"
+                            :max="param.max"
+                            :step="param.step || 1"
+                            :controls="true"
+                            class="param-input" />
+                          <el-switch
+                            v-else-if="param.type === 'boolean'"
+                            v-model="methodParamsForm[param.key]"
+                            size="small" />
+                        </div>
+                      </div>
+                      <div class="params-hint">勾选下方列表中要检测的列，然后点击右上角「开始检测」</div>
+                    </div>
+                  </transition>
+                </div>
+
+                <!-- ③ 筛选区域 -->
+                <div class="filter-section">
+                  <div class="filter-left">
+                    <el-input v-model="searchText" placeholder="搜索列名..." class="search-input" clearable>
+                      <template #prefix>
+                        <el-icon><Search /></el-icon>
+                      </template>
+                    </el-input>
+                    <el-checkbox
+                      :model-value="selectedColumns.length === filteredColumns.length && filteredColumns.length > 0"
+                      :indeterminate="selectedColumns.length > 0 && selectedColumns.length < filteredColumns.length"
+                      @change="toggleSelectAll">
+                      全选
+                    </el-checkbox>
+                  </div>
+                  <div class="filter-right">
+                    <span v-if="!isThresholdMethod && selectedColumns.length > 0" class="selected-cols-tag">
+                      已选 {{ selectedColumns.length }} 列
+                    </span>
+                    <transition name="fade">
+                      <el-button
+                        v-if="selectedColumns.length > 0 && isThresholdMethod"
+                        size="small"
+                        type="danger"
+                        plain
+                        round
+                        @click="batchClearThresholds">
+                        清除选中 ({{ selectedColumns.length }})
+                      </el-button>
+                    </transition>
+                  </div>
+                </div>
+
+                <!-- ④ 列表格 -->
                 <div class="table-wrapper">
                   <table class="threshold-table">
                     <thead>
                       <tr>
                         <th class="col-checkbox"></th>
                         <th class="col-name">列名</th>
-                        <th class="col-status">状态</th>
-                        <th class="col-missing">缺失值</th>
-                        <th class="col-threshold">最小阈值</th>
-                        <th class="col-threshold">最大阈值</th>
-
-                        <th class="col-unit">单位</th>
-                        <th class="col-actions">操作</th>
+                        <th v-if="isThresholdMethod" class="col-threshold">最小阈值</th>
+                        <th v-if="isThresholdMethod" class="col-threshold">最大阈值</th>
+                        <th v-if="isThresholdMethod" class="col-unit">单位</th>
+                        <th v-if="isThresholdMethod" class="col-actions">操作</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -821,79 +1091,71 @@ onMounted(() => {
                             <span v-if="column.variable_type" class="variable-type">{{ column.variable_type }}</span>
                           </div>
                         </td>
-                        <td class="col-status">
-                          <div class="status-badge" :class="getThresholdStatus(column)">
-                            {{ getThresholdStatusText(column) }}
-                          </div>
-                        </td>
-                        <td class="col-missing">
-                          <span
-                            class="missing-count"
-                            :class="{ 'has-missing': (getMissingCount(column.column_name) || 0) > 0 }">
-                            {{ getMissingCount(column.column_name) ?? "-" }}
-                          </span>
-                        </td>
-
-                        <!-- 编辑模式 -->
-                        <template v-if="editingColumn === column.id">
-                          <td class="col-threshold">
-                            <el-input-number
-                              v-model="editForm.min_threshold"
-                              size="small"
-                              :controls="false"
-                              placeholder="最小值"
-                              class="edit-input" />
-                          </td>
-                          <td class="col-threshold">
-                            <el-input-number
-                              v-model="editForm.max_threshold"
-                              size="small"
-                              :controls="false"
-                              placeholder="最大值"
-                              class="edit-input" />
-                          </td>
-
-                          <td class="col-unit">
-                            <el-input v-model="editForm.unit" size="small" placeholder="单位" class="edit-input" />
-                          </td>
-                          <td class="col-actions">
-                            <div class="action-buttons">
+                        <!-- 阈值列: 仅静态阈值方法时显示 -->
+                        <template v-if="isThresholdMethod">
+                          <!-- 编辑模式 -->
+                          <template v-if="editingColumn === column.id">
+                            <td class="col-threshold">
+                              <el-input-number
+                                v-model="editForm.min_threshold"
+                                size="small"
+                                :controls="false"
+                                placeholder="最小值"
+                                class="edit-input" />
+                            </td>
+                            <td class="col-threshold">
+                              <el-input-number
+                                v-model="editForm.max_threshold"
+                                size="small"
+                                :controls="false"
+                                placeholder="最大值"
+                                class="edit-input" />
+                            </td>
+                            <td class="col-unit">
+                              <el-input v-model="editForm.unit" size="small" placeholder="单位" class="edit-input" />
+                            </td>
+                            <td class="col-actions">
+                              <div class="action-buttons">
+                                <el-button
+                                  size="small"
+                                  type="success"
+                                  circle
+                                  :loading="outlierStore.saving"
+                                  @click="saveColumnThreshold">
+                                  <el-icon><Check /></el-icon>
+                                </el-button>
+                                <el-button size="small" circle @click="cancelEditing">
+                                  <el-icon><Close /></el-icon>
+                                </el-button>
+                              </div>
+                            </td>
+                          </template>
+                          <!-- 显示模式 -->
+                          <template v-else>
+                            <td class="col-threshold">
+                              <span :class="{ 'value-set': column.min_threshold !== null }">
+                                {{ formatNumber(column.min_threshold) }}
+                              </span>
+                            </td>
+                            <td class="col-threshold">
+                              <span :class="{ 'value-set': column.max_threshold !== null }">
+                                {{ formatNumber(column.max_threshold) }}
+                              </span>
+                            </td>
+                            <td class="col-unit">
+                              <span class="unit-text">{{ column.unit || "-" }}</span>
+                            </td>
+                            <td class="col-actions">
                               <el-button
                                 size="small"
-                                type="success"
-                                circle
-                                :loading="outlierStore.saving"
-                                @click="saveColumnThreshold">
-                                <el-icon><Check /></el-icon>
+                                type="primary"
+                                link
+                                class="edit-btn"
+                                @click="startEditing(column)">
+                                编辑
                               </el-button>
-                              <el-button size="small" circle @click="cancelEditing">
-                                <el-icon><Close /></el-icon>
-                              </el-button>
-                            </div>
-                          </td>
-                        </template>
-
-                        <!-- 显示模式 -->
-                        <template v-else>
-                          <td class="col-threshold">
-                            <span :class="{ 'value-set': column.min_threshold !== null }">
-                              {{ formatNumber(column.min_threshold) }}
-                            </span>
-                          </td>
-                          <td class="col-threshold">
-                            <span :class="{ 'value-set': column.max_threshold !== null }">
-                              {{ formatNumber(column.max_threshold) }}
-                            </span>
-                          </td>
-
-                          <td class="col-unit">
-                            <span class="unit-text">{{ column.unit || "-" }}</span>
-                          </td>
-                          <td class="col-actions">
-                            <el-button size="small" type="primary" link class="edit-btn" @click="startEditing(column)">
-                              编辑
-                            </el-button>
-                          </td>
+                            </td>
+                          </template>
                         </template>
                       </tr>
                     </tbody>
@@ -902,37 +1164,6 @@ onMounted(() => {
                   <div v-if="filteredColumns.length === 0" class="empty-table">
                     <div class="empty-icon">🔍</div>
                     <div class="empty-text">未找到匹配的列</div>
-                  </div>
-                </div>
-
-                <!-- 检测方法说明 (移动到这里) -->
-                <div class="methods-section">
-                  <div class="section-header-small">
-                    <div class="section-title">可用检测方法</div>
-                  </div>
-                  <div class="methods-grid">
-                    <div
-                      v-for="method in outlierStore.availableMethods"
-                      :key="method.id"
-                      class="method-card"
-                      :class="{ 'method-unavailable': !method.isAvailable }">
-                      <div class="method-header">
-                        <span class="method-name">{{ method.name }}</span>
-                        <span class="method-category" :class="method.category">
-                          {{
-                            method.category === "threshold"
-                              ? "阈值"
-                              : method.category === "statistical"
-                                ? "统计"
-                                : method.category === "ml"
-                                  ? "机器学习"
-                                  : method.category
-                          }}
-                        </span>
-                      </div>
-                      <div class="method-description">{{ method.description }}</div>
-                      <div v-if="method.requiresPython" class="method-badge python">Python</div>
-                    </div>
                   </div>
                 </div>
               </el-scrollbar>
@@ -1086,6 +1317,48 @@ onMounted(() => {
         <div class="no-data-subtitle">请从左侧选择一个数据集</div>
       </div>
     </div>
+    <!-- 模板预览对话框 -->
+    <el-dialog
+      v-model="showTemplatePreview"
+      :title="`模板预览 — ${previewTemplateName}`"
+      width="520px"
+      destroy-on-close
+      append-to-body
+      class="template-preview-dialog">
+      <div class="template-preview-content">
+        <div class="template-preview-summary">
+          共 <strong>{{ previewTemplateEntries.length }}</strong> 列配置
+        </div>
+        <el-scrollbar max-height="400px">
+          <table class="template-preview-table">
+            <thead>
+              <tr>
+                <th>列名</th>
+                <th>最小值</th>
+                <th>最大值</th>
+                <th>单位</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="entry in previewTemplateEntries" :key="entry.name">
+                <td class="preview-col-name">{{ entry.name }}</td>
+                <td class="preview-value">{{ entry.min }}</td>
+                <td class="preview-value">{{ entry.max }}</td>
+                <td class="preview-unit">{{ entry.unit }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </el-scrollbar>
+      </div>
+    </el-dialog>
+
+    <!-- Template Manager Drawer -->
+    <TemplateManager
+      :visible="showTemplateManager"
+      :dataset-id="datasetInfo?.id"
+      @update:visible="showTemplateManager = $event"
+      @template-applied="loadData" />
+
     <!-- Version Manager Drawer -->
     <el-drawer v-model="showVersionDrawer" title="数据版本管理" size="450px" destroy-on-close append-to-body>
       <VersionManager
@@ -1414,12 +1687,16 @@ onMounted(() => {
 
 /* 筛选区域 */
 .filter-section {
-  padding: 16px 24px;
+  padding: 12px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-shrink: 0;
-  background: #f8fafc;
+  background: #ffffff;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  position: sticky;
+  top: 0;
+  z-index: 5;
 }
 
 .filter-left {
@@ -1449,6 +1726,7 @@ onMounted(() => {
 
 .table-wrapper {
   padding: 0 24px 16px;
+  overflow-x: auto;
 }
 
 /* 强制滚动条充满容器 */
@@ -1458,14 +1736,13 @@ onMounted(() => {
 }
 
 .threshold-table-container :deep(.el-scrollbar__wrap) {
-  overflow-x: auto;
+  overflow-x: hidden;
 }
 
 .threshold-table-container :deep(.el-scrollbar__view) {
   display: flex;
   flex-direction: column;
   min-height: 100%;
-  min-width: fit-content;
 }
 
 .threshold-table {
@@ -1519,10 +1796,6 @@ onMounted(() => {
   width: auto;
   min-width: 120px;
   max-width: 300px;
-}
-.col-status {
-  width: 90px;
-  min-width: 90px;
 }
 .col-missing {
   width: 80px;
@@ -1634,14 +1907,9 @@ onMounted(() => {
 
 /* 方法区域容器 - 内部样式 */
 .methods-section {
-  padding: 16px 24px;
+  padding: 12px 16px;
   flex-shrink: 0;
-  background: #f8fafc;
-  border-top: 1px solid #e2e8f0;
-}
-
-.section-header-small {
-  margin-bottom: 16px;
+  background: #ffffff;
 }
 
 .section-title {
@@ -1663,18 +1931,19 @@ onMounted(() => {
 
 .methods-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
 }
 
 .method-card {
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 16px;
+  border-radius: 8px;
+  padding: 12px;
   transition: all 0.2s ease;
   position: relative;
   overflow: hidden;
+  cursor: pointer;
 }
 
 .method-card:hover {
@@ -1683,17 +1952,28 @@ onMounted(() => {
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
+.method-card.method-selected {
+  border-color: #10b981;
+  background: #f0fdf4;
+  box-shadow: 0 0 0 1px #10b981;
+}
+
+.method-card.method-unavailable {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .method-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .method-name {
-  font-weight: 700;
+  font-weight: 600;
   color: #1e293b;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .method-category {
@@ -1719,13 +1999,18 @@ onMounted(() => {
 .method-description {
   font-size: 12px;
   color: #64748b;
-  line-height: 1.5;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
+  line-height: 1.4;
+  white-space: nowrap;
   overflow: hidden;
-  margin-bottom: 8px;
+  text-overflow: ellipsis;
+  margin-bottom: 6px;
+}
+
+.method-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2px;
 }
 
 .method-badge {
@@ -1736,6 +2021,119 @@ onMounted(() => {
   background: #f3f4f6;
   color: #6b7280;
   border: 1px solid #e5e7eb;
+}
+
+.method-check-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #10b981;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  margin-left: auto;
+}
+
+.selected-method-hint {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.selected-method-hint strong {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.section-header-small {
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.method-params-panel {
+  margin-top: 16px;
+  padding: 16px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.params-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 12px;
+}
+
+.params-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.param-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 160px;
+}
+
+.param-label {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.param-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #64748b;
+  font-size: 10px;
+  cursor: help;
+}
+
+.param-input {
+  width: 160px;
+}
+
+.params-hint {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #10b981;
+  font-weight: 500;
+  padding: 8px 12px;
+  background: rgba(16, 185, 129, 0.06);
+  border-radius: 6px;
+  border-left: 3px solid #10b981;
+}
+
+.selected-cols-tag {
+  font-size: 12px;
+  color: #10b981;
+  font-weight: 600;
+  padding: 4px 10px;
+  background: rgba(16, 185, 129, 0.08);
+  border-radius: 12px;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 
 /* 结果详情视图 */
@@ -2090,5 +2488,91 @@ onMounted(() => {
 
 .stat-item.has-outliers .stat-bar-fill {
   background: linear-gradient(90deg, #f87171, #ef4444);
+}
+
+/* 模板下拉项 */
+.template-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-width: 140px;
+}
+
+.template-preview-icon {
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 14px;
+  transition: color 0.2s ease;
+}
+
+.template-preview-icon:hover {
+  color: #10b981;
+}
+
+/* 模板预览对话框 (append-to-body, 需要 :deep 或 :global) */
+</style>
+
+<style>
+.template-preview-dialog .template-preview-content {
+  padding: 0 4px;
+}
+
+.template-preview-dialog .template-preview-summary {
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 12px;
+}
+
+.template-preview-dialog .template-preview-summary strong {
+  color: #10b981;
+}
+
+.template-preview-dialog .template-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.template-preview-dialog .template-preview-table thead th {
+  text-align: left;
+  padding: 8px 12px;
+  font-weight: 600;
+  color: #6b7280;
+  font-size: 12px;
+  border-bottom: 2px solid #e2e8f0;
+  background: #f8fafc;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.template-preview-dialog .template-preview-table tbody tr {
+  transition: background 0.15s ease;
+}
+
+.template-preview-dialog .template-preview-table tbody tr:hover {
+  background: #f0fdf4;
+}
+
+.template-preview-dialog .template-preview-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.template-preview-dialog .preview-col-name {
+  font-weight: 600;
+  color: #1e293b;
+  font-family: "Courier New", monospace;
+}
+
+.template-preview-dialog .preview-value {
+  color: #374151;
+  font-family: "Courier New", monospace;
+}
+
+.template-preview-dialog .preview-unit {
+  color: #9ca3af;
+  font-size: 12px;
 }
 </style>

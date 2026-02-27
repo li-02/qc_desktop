@@ -4,15 +4,16 @@ import type {
   DatasetBaseInfo,
   DatasetInfo,
   ImportOption,
+  BatchImportRequest,
   DatasetVersionInfo,
   VersionStatsInfo,
 } from "@shared/types/projectInterface";
-import { useProjectStore } from "./useProjectStore";
+import { useCategoryStore } from "./useCategoryStore";
 import { ElMessage } from "element-plus";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
 
 export const useDatasetStore = defineStore("dataset", () => {
-  const projectStore = useProjectStore();
+  const categoryStore = useCategoryStore();
 
   // 状态
   const datasets = ref<DatasetBaseInfo[]>([]);
@@ -27,32 +28,32 @@ export const useDatasetStore = defineStore("dataset", () => {
   const datasetsSortedByDate = computed(() => {
     return [...datasets.value].sort((a, b) => a.createdAt - b.createdAt);
   });
-  const currentProjectDatasets = computed(() => {
-    if (!projectStore.currentProject) return [];
-    return datasets.value.filter(d => d.belongTo === projectStore.currentProject?.id);
+  const currentCategoryDatasets = computed(() => {
+    if (!categoryStore.currentCategory) return [];
+    return datasets.value.filter(d => d.belongTo === categoryStore.currentCategory?.id);
   });
   const currentDatasetMissingMarkers = computed(() => {
     return currentDataset.value?.missingValueTypes || [];
   });
 
   // Actions
-  const loadDatasets = async (projectId?: string) => {
-    const targetProjectId = projectId || projectStore.currentProject?.id;
-    if (!targetProjectId) {
+  const loadDatasets = async (categoryId?: string) => {
+    const targetCategoryId = categoryId || categoryStore.currentCategory?.id;
+    if (!targetCategoryId) {
       datasets.value = [];
       currentDataset.value = null;
       return;
     }
     try {
       loading.value = true;
-      const project = projectStore.projects.find(p => p.id === targetProjectId);
-      if (project) {
-        datasets.value = project.datasets.map((d: any) => ({
+      const category = categoryStore.categories.find(c => c.id === targetCategoryId);
+      if (category) {
+        datasets.value = category.datasets.map((d: any) => ({
           id: d.id,
           name: d.name,
           type: d.type,
           createdAt: d.createdAt,
-          belongTo: targetProjectId,
+          belongTo: targetCategoryId,
           dirPath: d.dirPath,
           originalFile: d.originalFile,
         }));
@@ -80,8 +81,8 @@ export const useDatasetStore = defineStore("dataset", () => {
   };
 
   const setCurrentDataset = async (datasetId: string) => {
-    if (projectStore.currentProject && datasetId) {
-      currentDataset.value = await getCurrentDatasetInfo(projectStore.currentProject.id, datasetId);
+    if (categoryStore.currentCategory && datasetId) {
+      currentDataset.value = await getCurrentDatasetInfo(categoryStore.currentCategory.id, datasetId);
       // [DEBUG] 诊断缺失值标记问题
       console.log(
         "[setCurrentDataset] missingValueTypes=",
@@ -130,9 +131,9 @@ export const useDatasetStore = defineStore("dataset", () => {
     }
   };
 
-  const getCurrentDatasetInfo = async (projectId: string, datasetId: string): Promise<DatasetInfo | null> => {
+  const getCurrentDatasetInfo = async (categoryId: string, datasetId: string): Promise<DatasetInfo | null> => {
     const pureData = {
-      projectId: String(projectId),
+      categoryId: String(categoryId),
       datasetId: String(datasetId),
     };
     const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.GET_INFO, pureData);
@@ -144,14 +145,14 @@ export const useDatasetStore = defineStore("dataset", () => {
   };
 
   const importData = async (importOptions: ImportOption) => {
-    if (!window.electronAPI || !projectStore.currentProject) {
+    if (!window.electronAPI || !categoryStore.currentCategory) {
       throw new Error("无法导入数据：缺少必要条件");
     }
 
     try {
       loading.value = true;
       const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.IMPORT, {
-        projectId: projectStore.currentProject.id,
+        categoryId: categoryStore.currentCategory.id,
         importOption: {
           datasetName: importOptions.datasetName,
           type: importOptions.type,
@@ -163,7 +164,7 @@ export const useDatasetStore = defineStore("dataset", () => {
       });
 
       if (result.success) {
-        await projectStore.loadProjects();
+        await categoryStore.loadCategories();
         await loadDatasets();
         return true;
       } else {
@@ -177,31 +178,43 @@ export const useDatasetStore = defineStore("dataset", () => {
     }
   };
 
+  const batchImportData = async (request: BatchImportRequest): Promise<{ batchId: string }> => {
+    if (!window.electronAPI) {
+      throw new Error("无法批量导入数据：electron API 不可用");
+    }
+    const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.BATCH_IMPORT, request);
+    if (result.success) {
+      return result.data;
+    } else {
+      throw new Error(result.error || "批量导入失败");
+    }
+  };
+
   const updateMissingMarkers = async (markers: string[]) => {
-    if (!projectStore.currentProject || !currentDataset.value) {
+    if (!categoryStore.currentCategory || !currentDataset.value) {
       throw new Error("无法更新缺失值标记：缺少必要条件");
     }
     const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.UPDATE, {
-      projectId: projectStore.currentProject.id,
+      categoryId: categoryStore.currentCategory.id,
       datasetId: currentDataset.value.id,
       updates: { missingValueTypes: markers },
     });
     if (result.success) {
       // 更新本地状态
-      currentDataset.value = await getCurrentDatasetInfo(projectStore.currentProject.id, currentDataset.value.id);
+      currentDataset.value = await getCurrentDatasetInfo(categoryStore.currentCategory.id, currentDataset.value.id);
     } else {
       throw new Error(result.error || "更新缺失值标记失败");
     }
   };
 
-  const deleteDataset = async (projectId: string, datasetId: string) => {
-    if (!window.electronAPI || !projectStore.currentProject) {
+  const deleteDataset = async (categoryId: string, datasetId: string) => {
+    if (!window.electronAPI || !categoryStore.currentCategory) {
       throw new Error("无法删除数据集：缺少必要条件");
     }
     try {
       loading.value = true;
       const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.DELETE, {
-        projectId,
+        categoryId,
         datasetId,
       });
 
@@ -209,7 +222,7 @@ export const useDatasetStore = defineStore("dataset", () => {
         if (currentDataset.value?.id === datasetId) {
           currentDataset.value = null;
         }
-        await projectStore.loadProjects();
+        await categoryStore.loadCategories();
         await loadDatasets();
         ElMessage.success("数据集删除成功");
         return true;
@@ -251,17 +264,17 @@ export const useDatasetStore = defineStore("dataset", () => {
     }
   };
 
-  // 监听当前项目变化，自动加载数据集
+  // 监听当前分类变化，自动加载数据集
   watch(
-    () => projectStore.currentProject,
-    newProject => {
-      if (newProject) {
-        // 切换项目时，清除当前选中的数据集
+    () => categoryStore.currentCategory,
+    newCategory => {
+      if (newCategory) {
+        // 切换分类时，清除当前选中的数据集
         currentDataset.value = null;
         versions.value = [];
         currentVersion.value = null;
         currentVersionStats.value = null;
-        loadDatasets(newProject.id);
+        loadDatasets(newCategory.id);
       } else {
         datasets.value = [];
         currentDataset.value = null;
@@ -281,7 +294,7 @@ export const useDatasetStore = defineStore("dataset", () => {
     // 计算属性
     hasDatasets,
     datasetsSortedByDate,
-    currentProjectDatasets,
+    currentCategoryDatasets,
     currentDatasetMissingMarkers,
     // Actions
     loadDatasets,
@@ -289,6 +302,7 @@ export const useDatasetStore = defineStore("dataset", () => {
     setCurrentVersion,
     loadVersions: loadDatasetVersions,
     importData,
+    batchImportData,
     updateMissingMarkers,
     deleteDataset,
     exportVersion,

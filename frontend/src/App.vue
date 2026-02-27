@@ -2,11 +2,10 @@
 import { onMounted, onUnmounted } from "vue";
 import GlobalDialogs from "./components/dialogs/index.vue";
 // import emitter from "./utils/eventBus";
-import { useProjectStore } from "./stores/useProjectStore";
-// import {cleanupProjectStore, setupProjectStore} from "./stores/projectStore";
-const projectStore = useProjectStore();
+import { useCategoryStore } from "./stores/useCategoryStore";
+const categoryStore = useCategoryStore();
 onMounted(() => {
-  projectStore.loadProjects();
+  categoryStore.loadCategories();
   // 设置项目状态管理
   // setupProjectStore();
 
@@ -47,7 +46,12 @@ body {
 }
 
 /* 标题规范 */
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   margin: 0;
   font-family: inherit;
   font-weight: 600;
@@ -55,13 +59,24 @@ h1, h2, h3, h4, h5, h6 {
   color: #111827;
 }
 
-h1 { font-size: 24px; }
-h2 { font-size: 20px; }
-h3 { font-size: 18px; }
-h4 { font-size: 16px; }
+h1 {
+  font-size: 24px;
+}
+h2 {
+  font-size: 20px;
+}
+h3 {
+  font-size: 18px;
+}
+h4 {
+  font-size: 16px;
+}
 
 /* 基础表单组件字体统一 */
-button, input, select, textarea {
+button,
+input,
+select,
+textarea {
   font-family: inherit;
 }
 
@@ -216,7 +231,7 @@ button, input, select, textarea {
   --el-messagebox-title-color: #1f2937;
   --el-messagebox-content-color: #4b5563;
   --el-messagebox-border-radius: 20px;
-  
+
   /* 核心样式覆盖 */
   width: 480px !important;
   max-width: 90vw !important;
@@ -280,7 +295,7 @@ button, input, select, textarea {
   border-top: none !important;
   display: flex;
   justify-content: flex-end;
-  gap: 12px; 
+  gap: 12px;
 }
 
 /* 按钮通用样式 */

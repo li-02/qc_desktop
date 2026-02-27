@@ -539,9 +539,6 @@ onBeforeUnmount(() => {
               <span class="history-method" :title="getResultDisplayName(result)">{{
                 getResultDisplayName(result)
               }}</span>
-              <el-tag size="small" :type="getStatusType(result.status)" effect="light" round>
-                {{ getStatusText(result.status) }}
-              </el-tag>
             </div>
             <div class="history-item-stats">
               <span class="stat-item">碳通量分割</span>

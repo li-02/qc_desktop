@@ -3,18 +3,18 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { computed } from "vue";
 import { useRouter } from "vue-router";
 import { Refresh, Plus, Delete, Odometer, Cloudy, Flag, Histogram, Document } from "@element-plus/icons-vue";
-import { useProjectStore } from "@/stores/useProjectStore";
+import { useCategoryStore } from "@/stores/useCategoryStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import emitter from "@/utils/eventBus";
 
 const router = useRouter();
-const projectStore = useProjectStore();
+const categoryStore = useCategoryStore();
 const datasetStore = useDatasetStore();
 
-const datasets = computed(() => projectStore.currentProject?.datasets || []);
+const datasets = computed(() => categoryStore.currentCategory?.datasets || []);
 
 const selectDataset = (dataset: any) => {
-  if (projectStore.currentProject) {
+  if (categoryStore.currentCategory) {
     datasetStore.setCurrentDataset(dataset.id);
     router.push(`/data-view?dataset=${dataset.id}`);
   }
@@ -25,12 +25,12 @@ const handleImportData = () => {
 };
 
 const handleRefresh = async () => {
-  await projectStore.loadProjects();
+  await categoryStore.loadCategories();
   ElMessage.success("数据集已刷新");
 };
 
 const handleDelete = async (dataset: any) => {
-  if (!projectStore.currentProject) return;
+  if (!categoryStore.currentCategory) return;
 
   try {
     await ElMessageBox.confirm(`确定要删除数据集 "${dataset.name}" 吗? 此操作不可恢复。`, "删除数据集", {
@@ -39,7 +39,7 @@ const handleDelete = async (dataset: any) => {
       type: "warning",
     });
 
-    await datasetStore.deleteDataset(projectStore.currentProject.id, dataset.id);
+    await datasetStore.deleteDataset(categoryStore.currentCategory.id, dataset.id);
   } catch (error) {
     if (error !== "cancel") {
       console.error(error);

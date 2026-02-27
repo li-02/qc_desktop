@@ -1,42 +1,15 @@
 <script setup lang="ts">
 import { DataAnalysis } from "@element-plus/icons-vue";
-import { useProjectStore } from "@/stores/useProjectStore";
+import { useCategoryStore } from "@/stores/useCategoryStore";
 import { computed } from "vue";
 
-const projectStore = useProjectStore();
-const projectName = computed(() => projectStore.currentProject?.name);
-const latitude = computed(() => {
-  if (!projectStore.currentProject) return "未知";
-  let lat: number | string = projectStore.currentProject.siteInfo.latitude;
-  //lat 从string->number
-  if (typeof lat === "string") {
-    const parsedLat = parseFloat(lat);
-    if (!isNaN(parsedLat)) {
-      lat = parsedLat;
-    } else {
-      return "未知";
-    }
-  }
-  const direction = Number(lat) >= 0 ? "N" : "S";
-  return `${Math.abs(Number(lat))}° ${direction}`;
+const categoryStore = useCategoryStore();
+const categoryName = computed(() => categoryStore.currentCategory?.name || "");
+const datasetCount = computed(() => categoryStore.currentCategory?.datasets?.length || 0);
+const createdAt = computed(() => {
+  const ts = categoryStore.currentCategory?.createdAt;
+  return ts ? new Date(ts).toLocaleDateString() : "";
 });
-const longitude = computed(() => {
-  if (!projectStore.currentProject) return "未知";
-  let lon: number | string = projectStore.currentProject.siteInfo.longitude;
-  //lon 从string->number
-  if (typeof lon === "string") {
-    const parsedLon = parseFloat(lon);
-    if (!isNaN(parsedLon)) {
-      lon = parsedLon;
-    } else {
-      return "未知";
-    }
-  }
-  const direction = Number(lon) >= 0 ? "E" : "W";
-  return `${Math.abs(Number(lon))}° ${direction}`;
-});
-const altitude = computed(() => projectStore.currentProject?.siteInfo.altitude || 0);
-const datasetCount = computed(() => projectStore.currentProject?.datasets.length || 0);
 </script>
 
 <template>
@@ -49,8 +22,8 @@ const datasetCount = computed(() => projectStore.currentProject?.datasets.length
         </el-icon>
       </div>
       <div class="project-details">
-        <h1 class="project-name">{{ projectName }}</h1>
-        <p class="project-meta">经纬度: {{ longitude }}, {{ latitude }} &nbsp;|&nbsp; 海拔: {{ altitude }}米</p>
+        <h1 class="project-name">{{ categoryName }}</h1>
+        <p class="project-meta">创建于: {{ createdAt }}</p>
       </div>
     </div>
 

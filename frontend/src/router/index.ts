@@ -23,6 +23,11 @@ const routes: Array<RouteRecordRaw> = [
         name: "DataProcessing",
         component: DataProcessingPage,
       },
+      {
+        path: "workflow",
+        name: "Workflow",
+        component: () => import("../views/workflow/index.vue"),
+      },
     ],
   },
   // 404 页面

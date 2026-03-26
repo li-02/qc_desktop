@@ -25,4 +25,20 @@ dist-ssr
 
 projects
 data
-# 开发文档
+
+开发文档
+docs
+
+.claude
+.agents
+.cursor
+.idea
+.ropeproject
+.sisyphus
+.vscode
+.windsurf
+
+__pycache__/
+*.pyc
+*.bak
+*.orig

@@ -15,6 +15,7 @@ import {
   Files,
   Close,
   Setting,
+  Edit,
 } from "@element-plus/icons-vue";
 import DatasetVersionTree from "@/components/sidebar/DatasetVersionTree.vue";
 import { useCategoryStore } from "@/stores/useCategoryStore";
@@ -163,6 +164,11 @@ const handleVersionSelect = async (categoryId: string, datasetId: string, versio
 // 新建分类
 const createNewCategory = () => {
   emitter.emit("open-create-category-dialog");
+};
+
+// 编辑分类
+const editCategory = (categoryId: string, categoryName: string) => {
+  emitter.emit("open-edit-category-dialog", { id: categoryId, name: categoryName });
 };
 
 // 导入数据
@@ -426,6 +432,9 @@ onUnmounted(() => {
                     <button class="project-action-btn" @click.stop="handleImportData(category.id)" title="导入数据集">
                       <el-icon><Plus /></el-icon>
                     </button>
+                    <button class="project-action-btn" @click.stop="editCategory(category.id, category.name)" title="编辑分类">
+                      <el-icon><Edit /></el-icon>
+                    </button>
                     <button
                       class="project-action-btn delete-btn"
                       @click.stop="confirmDeleteCategory(category.id)"
@@ -512,6 +521,14 @@ onUnmounted(() => {
           <span class="nav-icon">🔄</span>
           <span class="nav-text">自动化工作流</span>
         </button>
+        <button
+          class="sidebar-nav-btn"
+          :class="{ active: $route.path === '/data-source' }"
+          @click="router.push('/data-source')"
+          title="数据源管理">
+          <span class="nav-icon">🔌</span>
+          <span class="nav-text">数据源管理</span>
+        </button>
       </div>
     </div>
 
@@ -539,7 +556,7 @@ onUnmounted(() => {
 
       <!-- 内容区域 -->
       <div class="content-area">
-        <router-view v-if="categoryStore.currentCategory || $route.path === '/' || $route.path === '/workflow'" />
+        <router-view v-if="categoryStore.currentCategory || $route.path === '/' || $route.path === '/workflow' || $route.path === '/data-source'" />
         <div v-else class="content-empty">
           <el-empty description="请先选择一个分类" :image-size="128">
             <el-button type="primary" @click="createNewCategory">新建分类</el-button>

@@ -28,9 +28,6 @@ const chartType = ref<"scatter" | "heatmap">("scatter");
 const chartLoading = ref(false);
 const csvData = ref<any>(null);
 const columnStatistics = ref<any>(null);
-const correlationLoading = ref(false);
-const correlationHeaders = ref<string[]>([]);
-const correlationMatrix = ref<{ name: string; values: number[] }[]>([]);
 
 // 异常检测结果
 const outlierResults = ref<OutlierResult[]>([]);
@@ -110,14 +107,6 @@ const handleVersionSwitch = async (versionId: number) => {
   await datasetStore.setCurrentVersion(versionId);
   showVersionDrawer.value = false;
   ElMessage.success("已切换数据版本");
-};
-
-const getCorrelationColor = (value: number) => {
-  const absValue = Math.abs(value);
-  if (absValue >= 0.7) return "strong";
-  if (absValue >= 0.4) return "moderate";
-  if (absValue >= 0.2) return "weak";
-  return "none";
 };
 
 const getColumnStats = (columnName: string) => {
@@ -236,24 +225,6 @@ const updateChartType = () => {
   };
 
   ElMessage.success(`已切换到${chartTypeNames[chartType.value] || "图表"}视图`);
-};
-
-const calculateCorrelation = async () => {
-  correlationLoading.value = true;
-  try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // 清空相关性数据，不进行自动计算
-    correlationHeaders.value = [];
-    correlationMatrix.value = [];
-
-    ElMessage.info("请前往'相关性分析'页面进行详细分析");
-  } catch (error) {
-    ElMessage.error("操作失败");
-  } finally {
-    correlationLoading.value = false;
-  }
 };
 
 // 监听选中列的变化，自动加载数据

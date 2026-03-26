@@ -72,6 +72,7 @@ export interface FluxPartitioningResult {
   newVersionId?: number;
   methodId: FluxPartitioningMethodId;
   methodName: string;
+  name?: string;
   columnMapping: Record<string, string>;
   siteInfo: Record<string, number>;
   options?: Record<string, any>;
@@ -108,6 +109,7 @@ export interface FluxPartitioningResultRow {
   new_version_id: number | null;
   method_id: string;
   method_name: string;
+  name: string | null;
   column_mapping: string; // JSON
   site_info: string; // JSON
   options: string | null; // JSON

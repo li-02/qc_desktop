@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
 import { ElMessage, ElNotification, ElMessageBox } from "element-plus";
-import { Download, Refresh, InfoFilled, Setting, Delete, Connection } from "@element-plus/icons-vue";
+import { Download, Refresh, InfoFilled, Setting, Delete, Connection, Edit, Rank } from "@element-plus/icons-vue";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import type { CorrelationResult } from "@shared/types/database";
 import CorrelationAnalysisChart from "../charts/CorrelationAnalysisChart.vue";
@@ -16,11 +16,6 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
 });
-
-// Emits
-const emit = defineEmits<{
-  refresh: [];
-}>();
 
 const datasetStore = useDatasetStore();
 
@@ -46,6 +41,10 @@ const handleVersionSwitch = async (versionId: number) => {
 const analysisHistory = ref<CorrelationResult[]>([]);
 const selectedHistoryIds = ref<number[]>([]);
 const loadingHistory = ref(false);
+const editingResultId = ref<number | null>(null);
+const editingName = ref("");
+const dragIndex = ref<number | null>(null);
+const dragOverIndex = ref<number | null>(null);
 
 // 计算属性
 const datasetColumns = computed(() => {
@@ -67,7 +66,7 @@ const datasetColumns = computed(() => {
     .filter(col => numericColumns.includes(col))
     .map(col => ({
       value: col,
-      label: getColumnLabel(col),
+      label: col,
     }));
 });
 
@@ -84,20 +83,7 @@ const correlationMethodOptions = computed(() => [
   { value: "kendall", label: "肯德尔等级相关", description: "衡量序列相关性" },
 ]);
 
-// 获取列的中文标签
-const getColumnLabel = (columnName: string) => {
-  const labelMap: Record<string, string> = {
-    RH: "相对湿度(%)",
-    NEE_VUT_REF: "净生态系统交换",
-    TS_F_MDS_1: "土壤温度(°C)",
-    SWC_F_MDS_1: "土壤含水量",
-    VPD_F_MDS: "水汽压差(Pa)",
-    TA_F_MDS: "空气温度(°C)",
-    NETRAD: "净辐射(W/m²)",
-    SW_IN_F: "短波入射辐射(W/m²)",
-  };
-  return labelMap[columnName] || columnName;
-};
+
 
 // 读取CSV数据
 const loadCsvData = async () => {
@@ -223,6 +209,82 @@ const batchDeleteHistory = async () => {
   }
 };
 
+const getHistoryDisplayName = (item: CorrelationResult) => {
+  if (item.name) return item.name;
+  try {
+    const cols = JSON.parse(item.columns);
+    if (cols.length <= 2) return `${item.method} - ${cols.join(', ')}`;
+    return `${item.method} - ${cols.slice(0, 2).join(', ')}...`;
+  } catch {
+    return item.method;
+  }
+};
+
+const startRenaming = (item: CorrelationResult, event: Event) => {
+  event.stopPropagation();
+  editingResultId.value = item.id;
+  editingName.value = getHistoryDisplayName(item);
+};
+
+const saveRenaming = async () => {
+  if (!editingResultId.value) return;
+  const name = editingName.value.trim();
+  if (!name) {
+    cancelRenaming();
+    return;
+  }
+  try {
+    await (window as any).electronAPI.invoke("correlation/rename-result", {
+      id: editingResultId.value,
+      name,
+    });
+    const target = analysisHistory.value.find(r => r.id === editingResultId.value);
+    if (target) target.name = name;
+  } catch (error: any) {
+    ElMessage.error(error.message || "重命名失败");
+  }
+  cancelRenaming();
+};
+
+const cancelRenaming = () => {
+  editingResultId.value = null;
+  editingName.value = "";
+};
+
+const onDragStart = (index: number) => {
+  dragIndex.value = index;
+};
+
+const onDragOver = (index: number, event: DragEvent) => {
+  event.preventDefault();
+  dragOverIndex.value = index;
+};
+
+const onDrop = async (index: number) => {
+  if (dragIndex.value === null || dragIndex.value === index) {
+    dragIndex.value = null;
+    dragOverIndex.value = null;
+    return;
+  }
+  const list = [...analysisHistory.value];
+  const [moved] = list.splice(dragIndex.value, 1);
+  list.splice(index, 0, moved);
+  analysisHistory.value = list;
+  dragIndex.value = null;
+  dragOverIndex.value = null;
+  const orders = list.map((r, i) => ({ id: r.id, sortOrder: i }));
+  try {
+    await (window as any).electronAPI.invoke("correlation/reorder-results", { orders });
+  } catch (error: any) {
+    ElMessage.error(error.message || "排序失败");
+  }
+};
+
+const onDragEnd = () => {
+  dragIndex.value = null;
+  dragOverIndex.value = null;
+};
+
 // 查看历史结果
 const viewHistoryResult = (result: CorrelationResult) => {
   try {
@@ -238,10 +300,6 @@ const viewHistoryResult = (result: CorrelationResult) => {
     console.error("解析历史记录失败", e);
     ElMessage.error("解析历史记录失败");
   }
-};
-
-const formatTime = (timeStr: string) => {
-  return new Date(timeStr).toLocaleString();
 };
 
 const toggleHistorySelection = (id: number) => {
@@ -556,7 +614,17 @@ onMounted(() => {
       </div>
 
       <div class="history-list">
-        <div v-for="item in analysisHistory" :key="item.id" class="history-item">
+        <div
+          v-for="(item, index) in analysisHistory"
+          :key="item.id"
+          class="history-item"
+          :class="{ 'history-item--drag-over': dragOverIndex === index }"
+          draggable="true"
+          @dragstart="onDragStart(index)"
+          @dragover="onDragOver(index, $event)"
+          @drop="onDrop(index)"
+          @dragend="onDragEnd">
+          <el-icon class="drag-handle"><Rank /></el-icon>
           <div class="history-checkbox">
             <el-checkbox
               :model-value="selectedHistoryIds.includes(item.id)"
@@ -564,14 +632,28 @@ onMounted(() => {
           </div>
           <div class="history-content" @click="viewHistoryResult(item)">
             <div class="history-main">
-              <span class="history-method">{{ item.method }}</span>
+              <template v-if="editingResultId === item.id">
+                <div class="history-name-edit" @click.stop>
+                  <input
+                    v-model="editingName"
+                    class="history-name-input"
+                    @keyup.enter="saveRenaming"
+                    @keyup.escape="cancelRenaming"
+                    @blur="saveRenaming"
+                    autofocus
+                  />
+                </div>
+              </template>
+              <template v-else>
+                <span class="history-method" :title="getHistoryDisplayName(item)">{{ getHistoryDisplayName(item) }}</span>
+              </template>
               <span class="history-size">样本: {{ item.sample_size }}</span>
-            </div>
-            <div class="history-meta">
-              {{ formatTime(item.executed_at) }}
             </div>
           </div>
           <div class="history-actions">
+            <el-button type="primary" link size="small" @click.stop="startRenaming(item, $event)">
+              <el-icon><Edit /></el-icon>
+            </el-button>
             <el-button type="danger" link size="small" @click.stop="deleteHistoryItem(item.id)">
               <el-icon><Delete /></el-icon>
             </el-button>
@@ -789,6 +871,22 @@ onMounted(() => {
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
+.history-item--drag-over {
+  border-top: 2px solid #3b82f6 !important;
+}
+
+.drag-handle {
+  cursor: grab;
+  color: #9ca3af;
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
 .history-checkbox {
   margin-right: 12px;
 }
@@ -810,6 +908,24 @@ onMounted(() => {
   font-weight: 600;
   color: #1e293b;
   font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-name-edit {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-name-input {
+  width: 100%;
+  padding: 2px 6px;
+  border: 1px solid #3b82f6;
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+  background: #fff;
 }
 
 .history-size {

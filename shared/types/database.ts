@@ -84,6 +84,7 @@ export interface CorrelationResult extends BaseEntity {
   version_id?: number;
   columns: string; // JSON array of column names
   method: "pearson" | "spearman" | "kendall";
+  name?: string;
   result_matrix: string; // JSON matrix
   significance_level?: number;
   sample_size: number;
@@ -247,6 +248,7 @@ export interface ThresholdTemplateRecord extends BaseEntity {
   description?: string;
   template_data: string;
   source_dataset_id?: number;
+  is_builtin: number; // 0=用户模板, 1=内置模板
 }
 
 /**

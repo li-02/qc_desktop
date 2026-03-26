@@ -35,10 +35,11 @@ warnings.filterwarnings('ignore')
 
 def setup_embedded_r_environment():
     """
-    自动检测并配置内嵌的便携式R环境
+    自动检测并配置R环境（优先内嵌便携式R，其次系统安装的R）
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
+    # 1. 检查内嵌的便携式R
     possible_r_paths = [
         os.path.join(script_dir, '..', 'R'),
         os.path.join(script_dir, '..', 'R-Portable'),
@@ -59,7 +60,86 @@ def setup_embedded_r_environment():
             return True
 
     print("  未找到内嵌R环境，尝试使用系统R...")
+
+    # 2. 如果已设置 R_HOME 则直接使用
+    if os.environ.get('R_HOME') and os.path.exists(os.path.join(os.environ['R_HOME'], 'bin')):
+        print(f"  使用已配置的R_HOME: {os.environ['R_HOME']}")
+        _add_r_to_path(os.environ['R_HOME'])
+        _setup_r_libs_user()
+        return True
+
+    # 3. 在 Windows 上从注册表或常见路径查找系统R
+    if sys.platform == 'win32':
+        system_r = _find_system_r_windows()
+        if system_r:
+            os.environ['R_HOME'] = system_r
+            _add_r_to_path(system_r)
+            _setup_r_libs_user()
+            print(f"  使用系统R: {system_r}")
+            return True
+
     return False
+
+
+def _add_r_to_path(r_home):
+    """将R的bin目录添加到PATH"""
+    r_bin = os.path.join(r_home, 'bin')
+    r_bin_path = os.path.join(r_bin, 'x64') if os.path.exists(os.path.join(r_bin, 'x64')) else r_bin
+    current_path = os.environ.get('PATH', '')
+    if r_bin_path not in current_path:
+        os.environ['PATH'] = r_bin_path + os.pathsep + current_path
+
+
+def _setup_r_libs_user():
+    """设置R用户库路径，确保能找到用户安装的R包"""
+    if not os.environ.get('R_LIBS_USER'):
+        user_home = os.path.expanduser('~')
+        # Windows 下 R 用户库的默认路径
+        if sys.platform == 'win32':
+            r_home = os.environ.get('R_HOME', '')
+            # 从R_HOME中提取主版本号 (如 R-4.4.2 -> 4.4)
+            r_version = ''
+            r_base = os.path.basename(r_home)
+            if r_base.startswith('R-'):
+                parts = r_base[2:].split('.')
+                if len(parts) >= 2:
+                    r_version = f"{parts[0]}.{parts[1]}"
+            if r_version:
+                user_lib = os.path.join(user_home, 'R', 'win-library', r_version)
+            else:
+                user_lib = os.path.join(user_home, 'R', 'win-library')
+            os.environ['R_LIBS_USER'] = user_lib
+
+
+def _find_system_r_windows():
+    """在 Windows 上查找系统安装的R"""
+    import winreg
+
+    # 从注册表查找
+    for hive in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
+        for sub_key in [r'SOFTWARE\R-core\R', r'SOFTWARE\R-core\R64']:
+            try:
+                with winreg.OpenKey(hive, sub_key) as key:
+                    install_path, _ = winreg.QueryValueEx(key, 'InstallPath')
+                    if os.path.exists(os.path.join(install_path, 'bin')):
+                        return install_path
+            except (FileNotFoundError, OSError):
+                continue
+
+    # 从常见安装路径查找
+    for prog_dir in [os.environ.get('ProgramFiles', r'C:\Program Files'),
+                     os.environ.get('ProgramFiles(x86)', r'C:\Program Files (x86)')]:
+        r_base = os.path.join(prog_dir, 'R')
+        if os.path.isdir(r_base):
+            # 按版本号倒序排列，优先使用最新版本
+            versions = sorted(
+                [d for d in os.listdir(r_base) if os.path.isdir(os.path.join(r_base, d, 'bin'))],
+                reverse=True
+            )
+            if versions:
+                return os.path.join(r_base, versions[0])
+
+    return None
 
 
 # 在导入rpy2之前设置R环境
@@ -204,7 +284,7 @@ def run_reddyproc_partitioning(df, method, lat_deg, long_deg, timezone_hour,
     if has_ustar:
         var_names.append('Ustar')
 
-    EProc = REddyProc.sEddyProc_new(
+    EProc = REddyProc.sEddyProc.new(
         ro.StrVector(['Site']),
         r_df_posix,
         ro.StrVector(var_names)

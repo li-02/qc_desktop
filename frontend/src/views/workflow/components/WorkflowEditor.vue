@@ -14,12 +14,14 @@
           <WorkflowNodeCard
             :node="node"
             :index="index"
+            :node-execution="workflowStore.getNodeExecution(node.id)"
             :is-running="isNodeRunning(index)"
             :is-completed="isNodeCompleted(index)"
             :is-failed="isNodeFailed(index)"
             @click="$emit('select-node', node)"
             @delete="$emit('delete-node', node.id)"
             @toggle="(enabled) => $emit('toggle-node', node.id, enabled)"
+            @view-result="$emit('view-result', node)"
           />
         </div>
       </div>
@@ -38,7 +40,10 @@
 
 <script setup lang="ts">
 import type { WorkflowNode, WorkflowProgressEvent } from '@shared/types/workflow';
+import { useWorkflowStore } from '@/stores/useWorkflowStore';
 import WorkflowNodeCard from './WorkflowNodeCard.vue';
+
+const workflowStore = useWorkflowStore();
 
 const props = defineProps<{
   nodes: WorkflowNode[];
@@ -52,6 +57,7 @@ defineEmits<{
   (e: 'delete-node', nodeId: number): void;
   (e: 'toggle-node', nodeId: number, enabled: boolean): void;
   (e: 'reorder', nodeIds: number[]): void;
+  (e: 'view-result', node: WorkflowNode): void;
 }>();
 
 const isNodeRunning = (index: number) => {
@@ -61,16 +67,28 @@ const isNodeRunning = (index: number) => {
 };
 
 const isNodeCompleted = (index: number) => {
-  if (!props.executionProgress) return false;
-  return props.executionProgress.currentNodeIndex > index ||
-    (props.executionProgress.currentNodeIndex === index &&
-      props.executionProgress.nodeStatus === 'COMPLETED');
+  if (props.executionProgress) {
+    return props.executionProgress.currentNodeIndex > index ||
+      (props.executionProgress.currentNodeIndex === index &&
+        props.executionProgress.nodeStatus === 'COMPLETED');
+  }
+  // 无实时进度时，降级读取历史执行记录
+  const node = props.nodes[index];
+  if (!node) return false;
+  const exec = workflowStore.getNodeExecution(node.id);
+  return exec?.status === 'COMPLETED';
 };
 
 const isNodeFailed = (index: number) => {
-  if (!props.executionProgress) return false;
-  return props.executionProgress.currentNodeIndex === index &&
-    props.executionProgress.nodeStatus === 'FAILED';
+  if (props.executionProgress) {
+    return props.executionProgress.currentNodeIndex === index &&
+      props.executionProgress.nodeStatus === 'FAILED';
+  }
+  // 无实时进度时，降级读取历史执行记录
+  const node = props.nodes[index];
+  if (!node) return false;
+  const exec = workflowStore.getNodeExecution(node.id);
+  return exec?.status === 'FAILED';
 };
 </script>
 

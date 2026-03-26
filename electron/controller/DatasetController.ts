@@ -369,6 +369,51 @@ export class DatasetController extends BaseController {
   }
 
   /**
+   * 更新版本备注
+   */
+  async updateDatasetVersion(
+    args: { versionId: string; updates: { remark?: string } },
+    event: IpcMainInvokeEvent
+  ) {
+    return this.handleAsync(async () => {
+      if (!args.versionId || typeof args.versionId !== "string") {
+        throw new Error("版本ID不能为空");
+      }
+      if (!args.updates || Object.keys(args.updates).length === 0) {
+        throw new Error("更新内容不能为空");
+      }
+      const cleanUpdates: { remark?: string } = {};
+      if (args.updates.remark !== undefined) {
+        if (typeof args.updates.remark !== "string") {
+          throw new Error("备注必须是字符串");
+        }
+        cleanUpdates.remark = args.updates.remark.trim();
+      }
+      const result = await this.datasetService.updateDatasetVersion(args.versionId.trim(), cleanUpdates);
+      if (!result.success) {
+        throw new Error(result.error || "更新版本失败");
+      }
+      return {};
+    });
+  }
+
+  /**
+   * 删除数据集版本
+   */
+  async deleteDatasetVersion(args: { versionId: string }, event: IpcMainInvokeEvent) {
+    return this.handleAsync(async () => {
+      if (!args.versionId || typeof args.versionId !== "string") {
+        throw new Error("版本ID不能为空");
+      }
+      const result = await this.datasetService.deleteDatasetVersion(args.versionId.trim());
+      if (!result.success) {
+        throw new Error(result.error || "删除版本失败");
+      }
+      return {};
+    });
+  }
+
+  /**
    * 执行缺失值插补
    */
   async performImputation(

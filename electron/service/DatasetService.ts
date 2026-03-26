@@ -450,6 +450,57 @@ export class DatasetService {
     }
   }
 
+  async updateDatasetVersion(versionId: string, updates: { remark?: string }): Promise<ServiceResponse<void>> {
+    try {
+      const vId = parseInt(versionId);
+      if (isNaN(vId)) return { success: false, error: "无效的版本ID" };
+
+      const versionResult = this.datasetRepository.getDatasetVersionById(vId);
+      if (!versionResult.success || !versionResult.data) {
+        return { success: false, error: "未找到版本信息" };
+      }
+
+      const dbUpdates: Partial<Pick<import("@shared/types/database").DatasetVersion, "remark">> = {};
+      if (updates.remark !== undefined) dbUpdates.remark = updates.remark;
+
+      return this.datasetRepository.updateDatasetVersion(vId, dbUpdates);
+    } catch (error: any) {
+      return { success: false, error: `更新版本失败: ${error.message}` };
+    }
+  }
+
+  async deleteDatasetVersion(versionId: string): Promise<ServiceResponse<void>> {
+    try {
+      const vId = parseInt(versionId);
+      if (isNaN(vId)) return { success: false, error: "无效的版本ID" };
+
+      const versionResult = this.datasetRepository.getDatasetVersionById(vId);
+      if (!versionResult.success || !versionResult.data) {
+        return { success: false, error: "未找到版本信息" };
+      }
+
+      const version = versionResult.data;
+
+      // 禁止删除 RAW（原始）版本
+      if (version.stage_type === "RAW" && !version.parent_version_id) {
+        return { success: false, error: "原始版本不可删除" };
+      }
+
+      // 检查是否有子版本（有子版本则不允许删除，避免历史链断裂）
+      const siblingsResult = this.datasetRepository.getVersionsByDatasetId(version.dataset_id);
+      if (siblingsResult.success) {
+        const hasChildren = siblingsResult.data!.some(v => v.parent_version_id === vId);
+        if (hasChildren) {
+          return { success: false, error: "该版本存在衍生版本，请先删除子版本" };
+        }
+      }
+
+      return this.datasetRepository.deleteDatasetVersion(vId);
+    } catch (error: any) {
+      return { success: false, error: `删除版本失败: ${error.message}` };
+    }
+  }
+
   async exportDatasetVersion(versionId: string, targetPath: string): Promise<ServiceResponse<void>> {
     try {
       const vId = parseInt(versionId);

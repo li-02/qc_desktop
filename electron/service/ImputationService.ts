@@ -5,7 +5,6 @@ import type {
   ImputationMethod,
   ImputationMethodParam,
   ImputationResult,
-  ImputationDetail,
   ImputationColumnStat,
   ImputationModel,
   ImputationMethodId,
@@ -149,7 +148,6 @@ export class ImputationService {
 
       // 根据方法类型选择执行路径
       let imputedData: Record<string, any>[];
-      let details: Array<any>;
       let columnStats: Array<any>;
 
       if (this.isDeepLearningMethod(request.methodId)) {
@@ -172,7 +170,6 @@ export class ImputationService {
           }
         );
         imputedData = result.imputedData;
-        details = result.details;
         columnStats = result.columnStats;
       } else if (this.isREddyProcMethod(request.methodId)) {
         // REddyProc MDS 方法
@@ -193,29 +190,6 @@ export class ImputationService {
           }
         );
         imputedData = result.imputedData;
-        details = result.details;
-        columnStats = result.columnStats;
-      } else if (this.isTimeSeriesMethod(request.methodId)) {
-        // 时序模型方法 (ARIMA/SARIMA/ETS)
-        const result = await this.performTimeSeriesImputation(
-          resultId,
-          data,
-          targetColumns,
-          request.methodId,
-          request.params || {},
-          { file_path: version.file_path, dataset_id: request.datasetId },
-          (progress, message, currentColumn) => {
-            this.emitProgress(resultId, {
-              resultId,
-              stage: 'imputing',
-              progress: 20 + progress * 0.6,
-              message,
-              currentColumn,
-            });
-          }
-        );
-        imputedData = result.imputedData;
-        details = result.details;
         columnStats = result.columnStats;
       } else {
         // 基础方法
@@ -236,21 +210,16 @@ export class ImputationService {
           }
         );
         imputedData = result.imputedData;
-        details = result.details;
         columnStats = result.columnStats;
       }
 
-      // 保存详情和统计
+      // 保存统计
       this.emitProgress(resultId, {
         resultId,
         stage: 'saving',
         progress: 80,
         message: '正在保存插补结果...',
       });
-
-      if (details.length > 0) {
-        this.repository.insertDetails(details);
-      }
 
       let totalMissing = 0;
       let totalImputed = 0;
@@ -307,15 +276,6 @@ export class ImputationService {
     onProgress: (progress: number, message: string, currentColumn?: string) => void
   ): Promise<{
     imputedData: Record<string, any>[];
-    details: Array<{
-      resultId: number;
-      columnName: string;
-      rowIndex: number;
-      originalValue: number | null;
-      imputedValue: number;
-      confidence?: number;
-      imputationMethod: string;
-    }>;
     columnStats: Array<{
       resultId: number;
       columnName: string;
@@ -328,17 +288,10 @@ export class ImputationService {
       stdAfter?: number;
       minImputed?: number;
       maxImputed?: number;
+      imputedRowIndices: number[];
+      imputedValues: number[];
     }>;
   }> {
-    const details: Array<{
-      resultId: number;
-      columnName: string;
-      rowIndex: number;
-      originalValue: number | null;
-      imputedValue: number;
-      confidence?: number;
-      imputationMethod: string;
-    }> = [];
     const columnStats: Array<{
       resultId: number;
       columnName: string;
@@ -351,6 +304,8 @@ export class ImputationService {
       stdAfter?: number;
       minImputed?: number;
       maxImputed?: number;
+      imputedRowIndices: number[];
+      imputedValues: number[];
     }> = [];
 
     const totalColumns = targetColumns.length;
@@ -385,6 +340,8 @@ export class ImputationService {
           missingCount: 0,
           imputedCount: 0,
           imputationRate: 0,
+          imputedRowIndices: [],
+          imputedValues: [],
         });
         continue;
       }
@@ -396,22 +353,13 @@ export class ImputationService {
       // 执行插补
       const imputedValues = this.imputeColumn(numericData, methodId, params);
       const imputedOnlyValues: number[] = [];
+      const imputedRowIndices: number[] = [];
 
-      // 记录详情
       for (const idx of missingIndices) {
         const imputedValue = imputedValues[idx];
         if (imputedValue !== null) {
           imputedOnlyValues.push(imputedValue);
-          details.push({
-            resultId,
-            columnName,
-            rowIndex: idx,
-            originalValue: null,
-            imputedValue,
-            confidence: this.calculateConfidence(methodId, imputedValue, validValues),
-            imputationMethod: methodId,
-          });
-          // 更新数据
+          imputedRowIndices.push(idx);
           data[idx][columnName] = imputedValue;
         }
       }
@@ -433,12 +381,14 @@ export class ImputationService {
         stdAfter,
         minImputed: imputedOnlyValues.length > 0 ? Math.min(...imputedOnlyValues) : undefined,
         maxImputed: imputedOnlyValues.length > 0 ? Math.max(...imputedOnlyValues) : undefined,
+        imputedRowIndices,
+        imputedValues: imputedOnlyValues,
       });
     }
 
     onProgress(100, '插补完成');
 
-    return { imputedData: data, details, columnStats };
+    return { imputedData: data, columnStats };
   }
 
   /**
@@ -483,8 +433,11 @@ export class ImputationService {
       case 'POLYNOMIAL':
         imputed = this.imputePolynomial(result, params.degree || 2);
         break;
-      case 'TIMEMIXER_PP':
-        // TimeMixer++ 需要整体数据处理，在 performImputation 中特殊处理
+      case 'ITRANSFORMER':
+      case 'SAITS':
+      case 'BITS':
+      case 'TIMEMIXER':
+        // 深度学习方法需要整体数据处理，在 performImputation 中特殊处理
         // 这里返回原数据，实际插补在 performDeepLearningImputation 中执行
         return result;
       default:
@@ -501,212 +454,17 @@ export class ImputationService {
    * 检查是否为深度学习方法
    */
   private isDeepLearningMethod(methodId: ImputationMethodId): boolean {
-    return ['TIMEMIXER_PP', 'LSTM', 'GRU', 'TRANSFORMER', 'VAE', 'GAIN'].includes(methodId);
+    return ['ITRANSFORMER', 'SAITS', 'BITS', 'TIMEMIXER'].includes(methodId);
   }
 
   /**
    * 检查是否为时序模型方法
    */
-  private isTimeSeriesMethod(methodId: ImputationMethodId): boolean {
-    return ['ARIMA', 'SARIMA', 'ETS'].includes(methodId);
-  }
-
   /**
    * 检查是否为REddyProc方法
    */
   private isREddyProcMethod(methodId: ImputationMethodId): boolean {
     return methodId === 'MDS_REDDYPROC';
-  }
-
-  /**
-   * 执行时序模型插补 (ARIMA/SARIMA/ETS)
-   */
-  private async performTimeSeriesImputation(
-    resultId: number,
-    data: Record<string, any>[],
-    targetColumns: string[],
-    methodId: ImputationMethodId,
-    params: Record<string, any>,
-    version: { file_path: string; dataset_id: number },
-    onProgress: (progress: number, message: string, currentColumn?: string) => void
-  ): Promise<{
-    imputedData: Record<string, any>[];
-    details: Array<{
-      resultId: number;
-      columnName: string;
-      rowIndex: number;
-      originalValue: number | null;
-      imputedValue: number;
-      confidence?: number;
-      imputationMethod: string;
-    }>;
-    columnStats: Array<{
-      resultId: number;
-      columnName: string;
-      missingCount: number;
-      imputedCount: number;
-      imputationRate: number;
-      meanBefore?: number;
-      meanAfter?: number;
-      stdBefore?: number;
-      stdAfter?: number;
-      minImputed?: number;
-      maxImputed?: number;
-    }>;
-  }> {
-    const pythonBridge = PythonBridgeService.getInstance();
-    const details: Array<any> = [];
-    const columnStats: Array<any> = [];
-
-    // 检查 Python 环境
-    onProgress(5, '正在检查 Python 环境...');
-    const pythonStatus = await pythonBridge.detectPython();
-    if (!pythonStatus.available) {
-      throw new Error('Python 环境未找到，请先安装 Python 3.8+');
-    }
-
-    // 获取数据集时间列配置
-    const dataset = this.db.prepare('SELECT time_column FROM sys_dataset WHERE id = ?').get(version.dataset_id) as { time_column?: string } | undefined;
-    const timeColumn = dataset?.time_column || 'record_time';
-
-    // 为每个目标列执行插补
-    for (let colIndex = 0; colIndex < targetColumns.length; colIndex++) {
-      const columnName = targetColumns[colIndex];
-      const progress = 10 + (colIndex / targetColumns.length) * 80;
-      onProgress(progress, `正在插补列: ${columnName}`, columnName);
-
-      // 记录原始缺失值位置
-      const missingIndices: number[] = [];
-      const validValues: number[] = [];
-      data.forEach((row, idx) => {
-        const val = row[columnName];
-        if (val === null || val === undefined || val === '' || Number.isNaN(Number(val))) {
-          missingIndices.push(idx);
-        } else {
-          validValues.push(Number(val));
-        }
-      });
-
-      if (missingIndices.length === 0) {
-        columnStats.push({
-          resultId,
-          columnName,
-          missingCount: 0,
-          imputedCount: 0,
-          imputationRate: 0,
-        });
-        continue;
-      }
-
-      // 计算插补前统计
-      const meanBefore = this.calculateMean(validValues);
-      const stdBefore = this.calculateStd(validValues, meanBefore);
-
-      // 创建临时输入输出文件
-      const tempDir = path.dirname(version.file_path);
-      const tempInputFile = path.join(tempDir, `temp_ts_input_${resultId}_${colIndex}.csv`);
-      const tempOutputFile = path.join(tempDir, `temp_ts_output_${resultId}_${colIndex}.csv`);
-
-      try {
-        // 写入临时输入文件
-        const csvContent = Papa.unparse(data);
-        fs.writeFileSync(tempInputFile, csvContent, 'utf-8');
-
-        // 构建时序模型参数
-        const tsParams: any = {
-          method: methodId as 'ARIMA' | 'SARIMA' | 'ETS',
-          inputFile: tempInputFile,
-          outputFile: tempOutputFile,
-          targetColumn: columnName,
-          timeColumn: timeColumn,
-        };
-
-        // ARIMA/SARIMA 参数
-        if (methodId === 'ARIMA' || methodId === 'SARIMA') {
-          tsParams.autoSelect = params.autoSelect !== false;
-          if (params.p !== undefined) tsParams.p = params.p;
-          if (params.d !== undefined) tsParams.d = params.d;
-          if (params.q !== undefined) tsParams.q = params.q;
-        }
-
-        // SARIMA 季节性参数
-        if (methodId === 'SARIMA') {
-          if (params.P !== undefined) tsParams.P = params.P;
-          if (params.D !== undefined) tsParams.D = params.D;
-          if (params.Q !== undefined) tsParams.Q = params.Q;
-          if (params.s !== undefined) tsParams.s = params.s;
-        }
-
-        // ETS 参数
-        if (methodId === 'ETS') {
-          if (params.trend) tsParams.trend = params.trend;
-          if (params.seasonal) tsParams.seasonal = params.seasonal;
-          if (params.seasonal_periods !== undefined) tsParams.seasonalPeriods = params.seasonal_periods;
-        }
-
-        // 调用 Python 脚本
-        const result = await pythonBridge.runTimeSeriesImputation(tsParams, (pythonProgress) => {
-          const adjustedProgress = progress + (pythonProgress.progress / 100) * (80 / targetColumns.length);
-          onProgress(adjustedProgress, pythonProgress.message, columnName);
-        });
-
-        if (!result.success) {
-          throw new Error(`${methodId} 插补失败: ${result.error}`);
-        }
-
-        // 读取插补结果
-        if (!fs.existsSync(tempOutputFile)) {
-          throw new Error('插补结果文件未生成');
-        }
-
-        const imputedDataRaw = await this.readDataFile(tempOutputFile);
-        const imputedOnlyValues: number[] = [];
-
-        // 更新数据和记录详情
-        for (const idx of missingIndices) {
-          const imputedValue = Number(imputedDataRaw[idx]?.[columnName]);
-          if (!Number.isNaN(imputedValue)) {
-            imputedOnlyValues.push(imputedValue);
-            data[idx][columnName] = imputedValue;
-            details.push({
-              resultId,
-              columnName,
-              rowIndex: idx,
-              originalValue: null,
-              imputedValue,
-              confidence: 0.85, // 时序模型置信度
-              imputationMethod: methodId,
-            });
-          }
-        }
-
-        // 计算插补后统计
-        const allValuesAfter = [...validValues, ...imputedOnlyValues];
-        const meanAfter = this.calculateMean(allValuesAfter);
-        const stdAfter = this.calculateStd(allValuesAfter, meanAfter);
-
-        columnStats.push({
-          resultId,
-          columnName,
-          missingCount: missingIndices.length,
-          imputedCount: imputedOnlyValues.length,
-          imputationRate: imputedOnlyValues.length / missingIndices.length,
-          meanBefore,
-          meanAfter,
-          stdBefore,
-          stdAfter,
-          minImputed: imputedOnlyValues.length > 0 ? Math.min(...imputedOnlyValues) : undefined,
-          maxImputed: imputedOnlyValues.length > 0 ? Math.max(...imputedOnlyValues) : undefined,
-        });
-      } finally {
-        // 清理临时文件
-        if (fs.existsSync(tempInputFile)) fs.unlinkSync(tempInputFile);
-        if (fs.existsSync(tempOutputFile)) fs.unlinkSync(tempOutputFile);
-      }
-    }
-
-    onProgress(100, '插补完成');
-    return { imputedData: data, details, columnStats };
   }
 
   /**
@@ -721,31 +479,9 @@ export class ImputationService {
     onProgress: (progress: number, message: string, currentColumn?: string) => void
   ): Promise<{
     imputedData: Record<string, any>[];
-    details: Array<{
-      resultId: number;
-      columnName: string;
-      rowIndex: number;
-      originalValue: number | null;
-      imputedValue: number;
-      confidence?: number;
-      imputationMethod: string;
-    }>;
-    columnStats: Array<{
-      resultId: number;
-      columnName: string;
-      missingCount: number;
-      imputedCount: number;
-      imputationRate: number;
-      meanBefore?: number;
-      meanAfter?: number;
-      stdBefore?: number;
-      stdAfter?: number;
-      minImputed?: number;
-      maxImputed?: number;
-    }>;
+    columnStats: Array<any>;
   }> {
     const pythonBridge = PythonBridgeService.getInstance();
-    const details: Array<any> = [];
     const columnStats: Array<any> = [];
 
     // 检查 Python/R 环境 (REddyProc需要rpy2和R)
@@ -803,6 +539,8 @@ export class ImputationService {
           missingCount: 0,
           imputedCount: 0,
           imputationRate: 0,
+          imputedRowIndices: [],
+          imputedValues: [],
         });
         continue;
       }
@@ -853,22 +591,14 @@ export class ImputationService {
 
         const imputedDataRaw = await this.readDataFile(tempOutputFile);
         const imputedOnlyValues: number[] = [];
+        const imputedRowIndices: number[] = [];
 
-        // 更新数据和记录详情
         for (const idx of missingIndices) {
           const imputedValue = Number(imputedDataRaw[idx]?.[columnName]);
           if (!Number.isNaN(imputedValue)) {
             imputedOnlyValues.push(imputedValue);
+            imputedRowIndices.push(idx);
             data[idx][columnName] = imputedValue;
-            details.push({
-              resultId,
-              columnName,
-              rowIndex: idx,
-              originalValue: null,
-              imputedValue,
-              confidence: 0.85, // MDS方法置信度
-              imputationMethod: 'MDS_REDDYPROC',
-            });
           }
         }
 
@@ -889,6 +619,8 @@ export class ImputationService {
           stdAfter,
           minImputed: imputedOnlyValues.length > 0 ? Math.min(...imputedOnlyValues) : undefined,
           maxImputed: imputedOnlyValues.length > 0 ? Math.max(...imputedOnlyValues) : undefined,
+          imputedRowIndices,
+          imputedValues: imputedOnlyValues,
         });
       } finally {
         // 清理临时文件
@@ -898,7 +630,7 @@ export class ImputationService {
     }
 
     onProgress(100, 'MDS插补完成');
-    return { imputedData: data, details, columnStats };
+    return { imputedData: data, columnStats };
   }
 
   /**
@@ -914,32 +646,11 @@ export class ImputationService {
     onProgress: (progress: number, message: string, currentColumn?: string) => void
   ): Promise<{
     imputedData: Record<string, any>[];
-    details: Array<{
-      resultId: number;
-      columnName: string;
-      rowIndex: number;
-      originalValue: number | null;
-      imputedValue: number;
-      confidence?: number;
-      imputationMethod: string;
-    }>;
-    columnStats: Array<{
-      resultId: number;
-      columnName: string;
-      missingCount: number;
-      imputedCount: number;
-      imputationRate: number;
-      meanBefore?: number;
-      meanAfter?: number;
-      stdBefore?: number;
-      stdAfter?: number;
-      minImputed?: number;
-      maxImputed?: number;
-    }>;
+    columnStats: Array<any>;
   }> {
-    if (methodId === 'TIMEMIXER_PP') {
+    if (methodId === 'ITRANSFORMER' || methodId === 'SAITS' || methodId === 'BITS' || methodId === 'TIMEMIXER') {
       return this.performTimeMixerPPImputation(
-        resultId, data, targetColumns, params, version, onProgress
+        resultId, data, targetColumns, methodId, params, version, onProgress
       );
     }
 
@@ -953,36 +664,15 @@ export class ImputationService {
     resultId: number,
     data: Record<string, any>[],
     targetColumns: string[],
+    methodId: ImputationMethodId,
     params: Record<string, any>,
     version: { file_path: string; dataset_id: number },
     onProgress: (progress: number, message: string, currentColumn?: string) => void
   ): Promise<{
     imputedData: Record<string, any>[];
-    details: Array<{
-      resultId: number;
-      columnName: string;
-      rowIndex: number;
-      originalValue: number | null;
-      imputedValue: number;
-      confidence?: number;
-      imputationMethod: string;
-    }>;
-    columnStats: Array<{
-      resultId: number;
-      columnName: string;
-      missingCount: number;
-      imputedCount: number;
-      imputationRate: number;
-      meanBefore?: number;
-      meanAfter?: number;
-      stdBefore?: number;
-      stdAfter?: number;
-      minImputed?: number;
-      maxImputed?: number;
-    }>;
+    columnStats: Array<any>;
   }> {
     const pythonBridge = PythonBridgeService.getInstance();
-    const details: Array<any> = [];
     const columnStats: Array<any> = [];
 
     // 检查 Python 环境
@@ -1004,11 +694,11 @@ export class ImputationService {
 
     if (!modelPath) {
       // 尝试从数据库获取关联的模型配置
-      modelConfig = this.getActiveModelFull(version.dataset_id, 'TIMEMIXER_PP');
+      modelConfig = this.getActiveModelFull(version.dataset_id, methodId);
       if (modelConfig?.modelPath) {
         modelPath = modelConfig.modelPath;
       } else {
-        throw new Error('未指定模型文件路径，且数据集没有关联的 TimeMixer++ 模型');
+        throw new Error('未指定模型文件路径，且数据集没有关联的深度学习模型');
       }
     }
 
@@ -1070,6 +760,8 @@ export class ImputationService {
           missingCount: 0,
           imputedCount: 0,
           imputationRate: 0,
+          imputedRowIndices: [],
+          imputedValues: [],
         });
         continue;
       }
@@ -1122,22 +814,14 @@ export class ImputationService {
 
         const imputedDataRaw = await this.readDataFile(tempOutputFile);
         const imputedOnlyValues: number[] = [];
+        const imputedRowIndices: number[] = [];
 
-        // 更新数据和记录详情
         for (const idx of missingIndices) {
           const imputedValue = Number(imputedDataRaw[idx]?.[columnName]);
           if (!Number.isNaN(imputedValue)) {
             imputedOnlyValues.push(imputedValue);
+            imputedRowIndices.push(idx);
             data[idx][columnName] = imputedValue;
-            details.push({
-              resultId,
-              columnName,
-              rowIndex: idx,
-              originalValue: null,
-              imputedValue,
-              confidence: 0.9, // TimeMixer++ 高置信度
-              imputationMethod: 'TIMEMIXER_PP',
-            });
           }
         }
 
@@ -1158,6 +842,8 @@ export class ImputationService {
           stdAfter,
           minImputed: imputedOnlyValues.length > 0 ? Math.min(...imputedOnlyValues) : undefined,
           maxImputed: imputedOnlyValues.length > 0 ? Math.max(...imputedOnlyValues) : undefined,
+          imputedRowIndices,
+          imputedValues: imputedOnlyValues,
         });
       } finally {
         // 清理临时文件
@@ -1167,7 +853,7 @@ export class ImputationService {
     }
 
     onProgress(100, '插补完成');
-    return { imputedData: data, details, columnStats };
+    return { imputedData: data, columnStats };
   }
 
   /**
@@ -1707,28 +1393,6 @@ export class ImputationService {
   }
 
   /**
-   * 获取插补详情
-   */
-  getDetails(resultId: number, columnName?: string, limit = 1000, offset = 0): ImputationDetail[] {
-    const rows = this.repository.getDetailsByResult(resultId, columnName, limit, offset);
-    return rows.map(row => ({
-      id: row.id,
-      resultId: row.result_id,
-      columnName: row.column_name,
-      rowIndex: row.row_index,
-      timePoint: row.time_point || undefined,
-      originalValue: row.original_value,
-      imputedValue: row.imputed_value,
-      confidence: row.confidence || undefined,
-      imputationMethod: row.imputation_method || undefined,
-      neighborValues: row.neighbor_values ? JSON.parse(row.neighbor_values) : undefined,
-      isApplied: row.is_applied === 1,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    }));
-  }
-
-  /**
    * 获取列统计
    */
   getColumnStats(resultId: number): ImputationColumnStat[] {
@@ -1747,6 +1411,8 @@ export class ImputationService {
       minImputed: row.min_imputed || undefined,
       maxImputed: row.max_imputed || undefined,
       avgConfidence: row.avg_confidence || undefined,
+      imputedRowIndices: row.imputed_row_indices ? JSON.parse(row.imputed_row_indices) : undefined,
+      imputedValues: row.imputed_values ? JSON.parse(row.imputed_values) : undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }));
@@ -1759,10 +1425,24 @@ export class ImputationService {
     this.repository.deleteResult(resultId);
   }
 
+  /**
+   * 重命名插补结果
+   */
+  renameResult(resultId: number, name: string): boolean {
+    return this.repository.renameResult(resultId, name);
+  }
+
+  /**
+   * 批量更新排序顺序
+   */
+  reorderResults(orders: { id: number; sortOrder: number }[]): void {
+    this.repository.updateSortOrders(orders);
+  }
+
   // ==================== 结果应用与导出 ====================
 
   /**
-   * 重构数据（原始数据 + 插补详情）
+   * 重构数据（原始数据 + 列统计中的插补点）
    */
   async reconstructData(resultId: number): Promise<Record<string, any>[]> {
     const result = this.getResult(resultId);
@@ -1775,23 +1455,15 @@ export class ImputationService {
     // 读取原始数据
     const data = await this.readDataFile(version.file_path);
 
-    // 获取详情并应用
-    const details = this.getDetails(resultId, undefined, -1);
-
-    // 创建快速查找映射 (rowIndex -> details)
-    const detailsMap = new Map<number, typeof details>();
-    for (const detail of details) {
-      if (!detailsMap.has(detail.rowIndex)) {
-        detailsMap.set(detail.rowIndex, []);
-      }
-      detailsMap.get(detail.rowIndex)?.push(detail);
-    }
-
-    // 应用插补值
-    for (const [rowIndex, rowDetails] of detailsMap) {
-      if (data[rowIndex]) {
-        for (const detail of rowDetails) {
-          data[rowIndex][detail.columnName] = detail.imputedValue;
+    // 从列统计中读取插补点并应用
+    const columnStats = this.getColumnStats(resultId);
+    for (const stat of columnStats) {
+      if (stat.imputedRowIndices && stat.imputedValues) {
+        for (let i = 0; i < stat.imputedRowIndices.length; i++) {
+          const rowIdx = stat.imputedRowIndices[i];
+          if (data[rowIdx] !== undefined) {
+            data[rowIdx][stat.columnName] = stat.imputedValues[i];
+          }
         }
       }
     }
@@ -1868,9 +1540,6 @@ export class ImputationService {
 
     // 6. 更新结果关联
     this.repository.updateResultNewVersion(resultId, newVersionId);
-
-    // 标记详情已应用
-    this.repository.markDetailsApplied(resultId);
 
     return this.db.prepare('SELECT * FROM biz_dataset_version WHERE id = ?').get(newVersionId) as DatasetVersion;
   }
@@ -2031,6 +1700,7 @@ export class ImputationService {
       versionId: row.version_id,
       newVersionId: row.new_version_id || undefined,
       methodId: row.method_id as ImputationMethodId,
+      name: row.name || undefined,
       targetColumns: JSON.parse(row.target_columns),
       methodParams: row.method_params ? JSON.parse(row.method_params) : undefined,
       totalMissing: row.total_missing,

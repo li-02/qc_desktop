@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Setting, VideoPlay, Refresh, InfoFilled, ArrowRight, Plus, Delete } from "@element-plus/icons-vue";
+import { Setting, VideoPlay, Refresh, InfoFilled, ArrowRight, Plus, Delete, Edit, Rank } from "@element-plus/icons-vue";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
+import FluxPartitioningCharts from "../charts/FluxPartitioningCharts.vue";
 
 // ==================== Props & Emits ====================
 interface Props {
@@ -44,6 +45,9 @@ interface PartitioningResult {
   gppStats?: { column: string; mean?: number; std?: number; min?: number; max?: number };
   recoStats?: { column: string; mean?: number; std?: number; min?: number; max?: number };
   errorMessage?: string;
+  name?: string;
+  newVersionId?: number;
+  columnMapping?: Record<string, string>;
 }
 
 const partitioningResults = ref<PartitioningResult[]>([]);
@@ -104,8 +108,81 @@ const deleteResult = async (resultId: number, event?: Event) => {
   }
 };
 
+// === 重命名相关 ===
+const editingResultId = ref<number | null>(null);
+const editingName = ref("");
+
+// === 拖拽排序相关 ===
+const dragIndex = ref<number | null>(null);
+const dragOverIndex = ref<number | null>(null);
+
 const getResultDisplayName = (result: PartitioningResult) => {
-  return `${result.methodName} - ${formatDateTime(result.executedAt)}`;
+  if (result.name) return result.name;
+  return result.methodName;
+};
+
+const startRenaming = (result: PartitioningResult) => {
+  editingResultId.value = result.id;
+  editingName.value = getResultDisplayName(result);
+};
+
+const saveRenaming = async () => {
+  if (!editingResultId.value) return;
+  const name = editingName.value.trim();
+  if (!name) {
+    cancelRenaming();
+    return;
+  }
+  try {
+    await window.electronAPI.invoke(API_ROUTES.FLUX_PARTITIONING.RENAME_RESULT, {
+      id: editingResultId.value,
+      name,
+    });
+    const target = partitioningResults.value.find(r => r.id === editingResultId.value);
+    if (target) target.name = name;
+  } catch (error: any) {
+    ElMessage.error(error.message || "重命名失败");
+  }
+  cancelRenaming();
+};
+
+const cancelRenaming = () => {
+  editingResultId.value = null;
+  editingName.value = "";
+};
+
+const onDragStart = (index: number) => {
+  dragIndex.value = index;
+};
+
+const onDragOver = (index: number, event: DragEvent) => {
+  event.preventDefault();
+  dragOverIndex.value = index;
+};
+
+const onDrop = async (index: number) => {
+  if (dragIndex.value === null || dragIndex.value === index) {
+    dragIndex.value = null;
+    dragOverIndex.value = null;
+    return;
+  }
+  const list = [...partitioningResults.value];
+  const [moved] = list.splice(dragIndex.value, 1);
+  list.splice(index, 0, moved);
+  partitioningResults.value = list;
+  dragIndex.value = null;
+  dragOverIndex.value = null;
+  const orders = list.map((r, i) => ({ id: r.id, sortOrder: i }));
+  try {
+    await window.electronAPI.invoke(API_ROUTES.FLUX_PARTITIONING.REORDER_RESULTS, { orders });
+  } catch (error: any) {
+    ElMessage.error(error.message || "排序失败");
+  }
+};
+
+const onDragEnd = () => {
+  dragIndex.value = null;
+  dragOverIndex.value = null;
 };
 
 const getStatusType = (status: string) => {
@@ -493,6 +570,49 @@ const formatStat = (val?: number) => {
   return val.toFixed(4);
 };
 
+// ==================== 图表数据：传递文件路径给图表组件自行加载 ====================
+const chartFilePath = ref<string>("");
+
+const loadChartFilePath = async (result: PartitioningResult) => {
+  if (result.status !== 'COMPLETED') {
+    chartFilePath.value = "";
+    return;
+  }
+
+  try {
+    const versionsResp = await window.electronAPI.invoke(API_ROUTES.DATASETS.GET_VERSIONS, {
+      datasetId: props.datasetInfo?.id,
+    });
+    if (!versionsResp?.success) {
+      console.warn('[FluxPanel] 获取版本列表失败:', versionsResp?.error);
+      return;
+    }
+
+    let targetVersion = result.newVersionId
+      ? versionsResp.data.find((v: any) => v.id === result.newVersionId)
+      : null;
+    if (!targetVersion) {
+      console.warn(`[FluxPanel] 未找到 newVersionId=${result.newVersionId} 对应版本，尝试查找 QC 版本`);
+      targetVersion = [...versionsResp.data]
+        .reverse()
+        .find((v: any) => v.stageType === 'QC' && v.filePath);
+    }
+    chartFilePath.value = targetVersion?.filePath || "";
+    console.log('[FluxPanel] 图表文件路径:', chartFilePath.value || '(空)');
+  } catch (e: any) {
+    console.error('获取图表文件路径失败:', e);
+    chartFilePath.value = "";
+  }
+};
+
+watch(currentResult, (newResult) => {
+  if (newResult && newResult.status === 'COMPLETED') {
+    loadChartFilePath(newResult);
+  } else {
+    chartFilePath.value = "";
+  }
+});
+
 // ==================== 生命周期 ====================
 onMounted(() => {
   if (props.datasetInfo) {
@@ -524,21 +644,40 @@ onBeforeUnmount(() => {
             <span>暂无分割记录</span>
           </div>
           <div
-            v-for="result in partitioningResults"
+            v-for="(result, index) in partitioningResults"
             :key="result.id"
             class="history-item"
-            :class="{ 'history-item--active': currentResultId === result.id }"
+            :class="{
+              'history-item--active': currentResultId === result.id,
+              'history-item--drag-over': dragOverIndex === index,
+            }"
+            draggable="true"
+            @dragstart="onDragStart(index)"
+            @dragover="onDragOver(index, $event)"
+            @drop="onDrop(index)"
+            @dragend="onDragEnd"
             @click="viewResult(result)">
             <div class="history-item-header">
-              <span class="history-time">{{ formatDateTime(result.executedAt) }}</span>
-              <button class="history-delete-btn" @click.stop="deleteResult(result.id)">
-                <el-icon><Delete /></el-icon>
-              </button>
-            </div>
-            <div class="history-item-content">
-              <span class="history-method" :title="getResultDisplayName(result)">{{
-                getResultDisplayName(result)
-              }}</span>
+              <el-icon class="drag-handle"><Rank /></el-icon>
+              <div v-if="editingResultId === result.id" class="history-name-edit" @click.stop>
+                <input
+                  v-model="editingName"
+                  class="history-name-input"
+                  @keyup.enter="saveRenaming"
+                  @keyup.escape="cancelRenaming"
+                  @blur="saveRenaming"
+                  autofocus
+                />
+              </div>
+              <span v-else class="history-method" :title="getResultDisplayName(result)">{{ getResultDisplayName(result) }}</span>
+              <div class="history-item-actions">
+                <button class="history-action-btn" @click.stop="startRenaming(result)" title="重命名">
+                  <el-icon><Edit /></el-icon>
+                </button>
+                <button class="history-action-btn history-delete-btn" @click.stop="deleteResult(result.id)" title="删除">
+                  <el-icon><Delete /></el-icon>
+                </button>
+              </div>
             </div>
             <div class="history-item-stats">
               <span class="stat-item">碳通量分割</span>
@@ -909,6 +1048,18 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
 
+                <!-- 可视化图表 -->
+                <div v-if="currentResult.status === 'COMPLETED' && chartFilePath" class="config-block" style="border: none; padding: 0; background: transparent">
+                  <FluxPartitioningCharts
+                    :file-path="chartFilePath"
+                  />
+                </div>
+                <div v-else-if="currentResult.status === 'COMPLETED' && !chartFilePath" class="config-block">
+                  <div style="text-align: center; padding: 40px; color: #64748b">
+                    <p>正在加载图表数据...</p>
+                  </div>
+                </div>
+
                 <!-- 错误信息 -->
                 <div
                   v-if="currentResult.errorMessage"
@@ -1070,17 +1221,49 @@ onBeforeUnmount(() => {
 
 .history-item-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 6px;
   margin-bottom: 6px;
 }
 
-.history-time {
-  font-size: 11px;
+.drag-handle {
+  cursor: grab;
   color: #9ca3af;
+  font-size: 14px;
+  flex-shrink: 0;
 }
 
-.history-delete-btn {
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.history-item--drag-over {
+  border-top: 2px solid #3b82f6 !important;
+}
+
+.history-name-edit {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-name-input {
+  width: 100%;
+  padding: 2px 6px;
+  border: 1px solid #3b82f6;
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+  background: #fff;
+}
+
+.history-item-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.history-action-btn {
   padding: 4px;
   background: transparent;
   border: none;
@@ -1090,16 +1273,14 @@ onBeforeUnmount(() => {
   transition: all 0.2s ease;
 }
 
-.history-delete-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+.history-action-btn:hover {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
 }
 
-.history-item-content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
+.history-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.1) !important;
+  color: #ef4444 !important;
 }
 
 .history-method {
@@ -1110,7 +1291,7 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
-  margin-right: 8px;
+  min-width: 0;
 }
 
 .history-item-stats {

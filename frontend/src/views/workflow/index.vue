@@ -15,6 +15,21 @@
         @clone="handleCloneWorkflow" />
     </div>
 
+    <!-- 历史面板（紧挨工作流列表右边） -->
+    <div
+      class="workflow-history-col"
+      v-if="workflowStore.executions.length > 0 && !historyCollapsed">
+      <WorkflowHistoryPanel
+        :executions="workflowStore.executions"
+        :loading-detail="workflowStore.loading"
+        :selected-detail="historyDetail"
+        @close="() => {}"
+        @select-execution="handleSelectHistoryExecution"
+        @view-result="handleHistoryViewResult"
+        @delete-execution="handleDeleteHistoryExecution"
+        @rename-execution="handleRenameHistoryExecution" />
+    </div>
+
     <!-- 中间：流水线编辑器 -->
     <div class="workflow-main">
       <template v-if="workflowStore.currentWorkflow">
@@ -56,7 +71,8 @@
           @select-node="handleSelectNode"
           @delete-node="handleDeleteNode"
           @toggle-node="handleToggleNode"
-          @reorder="handleReorder" />
+          @reorder="handleReorder"
+          @view-result="handleViewResult" />
 
         <!-- 执行进度 -->
         <WorkflowExecutionView
@@ -134,11 +150,14 @@ import WorkflowEditor from "./components/WorkflowEditor.vue";
 import NodeConfigPanel from "./components/NodeConfigPanel.vue";
 import NodeTypeSelector from "./components/NodeTypeSelector.vue";
 import WorkflowExecutionView from "./components/WorkflowExecutionView.vue";
-import type { WorkflowNode, WorkflowNodeType } from "@shared/types/workflow";
+import WorkflowHistoryPanel from "./components/WorkflowHistoryPanel.vue";
+import type { WorkflowNode, WorkflowNodeType, WorkflowExecutionDetail, WorkflowNodeExecution } from "@shared/types/workflow";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
+import { useRouter } from "vue-router";
 
 const workflowStore = useWorkflowStore();
 const datasetStore = useDatasetStore();
+const router = useRouter();
 
 // ==================== 创建表单 ====================
 const showCreateDialog = ref(false);
@@ -194,7 +213,14 @@ const canExecute = computed(() => executeForm.value.datasetId && executeForm.val
 
 // ==================== 工作流选择 ====================
 const handleSelectWorkflow = async (workflowId: number) => {
+  const isSame = workflowStore.currentWorkflow?.workflow.id === workflowId;
+  if (isSame) {
+    historyCollapsed.value = !historyCollapsed.value;
+    return;
+  }
   selectedNode.value = null;
+  historyDetail.value = null;
+  historyCollapsed.value = false;
   await workflowStore.loadWorkflowDetail(workflowId);
 };
 
@@ -282,6 +308,136 @@ const handleReorder = async (nodeIds: number[]) => {
   await workflowStore.reorderNodes(workflowStore.currentWorkflow.workflow.id, nodeIds);
 };
 
+// ==================== 历史面板 ====================
+const historyDetail = ref<WorkflowExecutionDetail | null>(null);
+const historyCollapsed = ref(false);
+// 恢复状态期间抑制 watcher 自动选第一条执行记录
+const isRestoringState = ref(workflowStore.workflowReturnState.active);
+
+// 选中工作流后自动加载最新执行记录详情
+watch(
+  () => workflowStore.executions,
+  (list) => {
+    if (isRestoringState.value) return;
+    if (list.length > 0) {
+      handleSelectHistoryExecution(list[0].id);
+    } else {
+      historyDetail.value = null;
+    }
+  },
+  { immediate: true }
+);
+
+const handleSelectHistoryExecution = async (executionId: number) => {
+  historyDetail.value = null;
+  const result = await window.electronAPI.invoke(
+    API_ROUTES.WORKFLOW.GET_EXECUTION_DETAIL,
+    { executionId }
+  );
+  if (result.success && result.data) {
+    historyDetail.value = result.data;
+  }
+};
+
+const handleDeleteHistoryExecution = async (executionId: number) => {
+  await workflowStore.deleteExecution(executionId);
+  if (historyDetail.value?.execution.id === executionId) {
+    historyDetail.value = null;
+  }
+};
+
+const handleRenameHistoryExecution = async (executionId: number, label: string) => {
+  await workflowStore.renameExecution(executionId, label);
+};
+
+const handleHistoryViewResult = async (ne: WorkflowNodeExecution & { nodeName: string; nodeType: WorkflowNodeType; nodeOrder: number }) => {
+  if (!historyDetail.value) return;
+  const exec = historyDetail.value.execution;
+  const targetTab = getTabForNodeType(ne.nodeType);
+  if (!targetTab) return;
+
+  let businessResultId = '';
+  let outputVersionId = '';
+  if (ne.resultJson) {
+    try {
+      const parsed = JSON.parse(ne.resultJson);
+      if (parsed.businessResultId) businessResultId = String(parsed.businessResultId);
+    } catch {}
+  }
+  if (ne.outputVersionId) outputVersionId = String(ne.outputVersionId);
+
+  const query: any = { datasetId: exec.datasetId, tab: targetTab };
+  if (businessResultId) query.businessResultId = businessResultId;
+  if (outputVersionId) query.versionId = outputVersionId;
+
+  workflowStore.workflowReturnState = {
+    workflowId: workflowStore.currentWorkflow?.workflow.id,
+    active: true,
+    selectedNodeId: selectedNode.value?.id,
+    selectedExecutionId: historyDetail.value?.execution.id,
+  };
+  await router.push({ name: 'DataView', query });
+};
+
+// ==================== 结果查看跳转 ====================
+const handleViewResult = async (node: WorkflowNode) => {
+  const execDetail = workflowStore.getNodeExecution(node.id);
+  if (!execDetail || execDetail.status !== 'COMPLETED') return;
+  if (!workflowStore.currentExecution) return;
+
+  // Extract the target dataset, and any results
+  const datasetId = workflowStore.currentExecution.datasetId;
+  const targetTab = getTabForNodeType(node.nodeType);
+  
+  if (!datasetId || !targetTab) {
+    ElMessageBox.alert('无法定位结果所在的数据集或功能模块', '提示');
+    return;
+  }
+
+  let businessResultId = "";
+  let outputVersionId = "";
+
+  if (execDetail.resultJson) {
+    try {
+      const parsed = JSON.parse(execDetail.resultJson);
+      if (parsed.businessResultId) businessResultId = String(parsed.businessResultId);
+      if (execDetail.outputVersionId) outputVersionId = String(execDetail.outputVersionId);
+    } catch (e) {}
+  } else if (execDetail.outputVersionId) {
+    outputVersionId = String(execDetail.outputVersionId);
+  }
+
+  const query: any = {
+    datasetId,
+    tab: targetTab,
+    workflowId: workflowStore.currentWorkflow?.workflow.id
+  };
+  
+  if (businessResultId) query.businessResultId = businessResultId;
+  if (outputVersionId) query.versionId = outputVersionId;
+
+  // 设置 App 级返回工作流的状态
+  workflowStore.workflowReturnState = {
+    workflowId: workflowStore.currentWorkflow?.workflow.id,
+    active: true,
+    selectedNodeId: node.id,
+    selectedExecutionId: historyDetail.value?.execution.id,
+  };
+
+  await router.push({ name: 'DataView', query });
+};
+
+const getTabForNodeType = (nodeType: WorkflowNodeType): string | null => {
+  const map: Record<string, string> = {
+    'OUTLIER_DETECTION': 'outlier',
+    'IMPUTATION': 'missing',
+    'FLUX_PARTITIONING': 'flux-partitioning',
+    'CORRELATION_ANALYSIS': 'correlation',
+    'EXPORT': 'export'
+  };
+  return map[nodeType] || null;
+};
+
 // ==================== 执行管理 ====================
 const handleExecute = async () => {
   if (!workflowStore.currentWorkflow || !canExecute.value) return;
@@ -313,12 +469,41 @@ const statusLabel = (s: string) => {
 // ==================== 生命周期 ====================
 onMounted(async () => {
   workflowStore.startProgressListener();
-  await workflowStore.loadWorkflows();
+
+  if (workflowStore.workflowReturnState.active) {
+    // 从查看结果页返回：恢复跳转前的 UI 状态
+    const { selectedNodeId, selectedExecutionId } = workflowStore.workflowReturnState;
+
+    // 恢复右侧节点配置面板
+    if (selectedNodeId) {
+      const node = workflowStore.currentNodes.find(n => n.id === selectedNodeId);
+      if (node) selectedNode.value = node;
+    }
+
+    // 恢复历史面板选中的执行记录
+    if (selectedExecutionId) {
+      await handleSelectHistoryExecution(selectedExecutionId);
+    } else if (workflowStore.executions.length > 0) {
+      await handleSelectHistoryExecution(workflowStore.executions[0].id);
+    }
+
+    // 清除返回状态标记
+    workflowStore.workflowReturnState = { active: false };
+    isRestoringState.value = false;
+
+    // 刷新工作流列表（不重置当前选中状态）
+    await workflowStore.loadWorkflows();
+  } else {
+    await workflowStore.loadWorkflows();
+  }
 });
 
 onUnmounted(() => {
   workflowStore.stopProgressListener();
-  workflowStore.resetState();
+  // 若是跳转到结果查看页，保留 store 状态以便返回时恢复
+  if (!workflowStore.workflowReturnState.active) {
+    workflowStore.resetState();
+  }
 });
 </script>
 
@@ -471,6 +656,18 @@ onUnmounted(() => {
 .btn-execute:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* 历史面板列（工作流列表右侧） */
+.workflow-history-col {
+  width: 480px;
+  min-width: 480px;
+  border-right: 1px solid rgba(229, 231, 235, 0.5);
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(12px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 右侧配置面板 */

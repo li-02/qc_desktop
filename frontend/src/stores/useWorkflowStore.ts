@@ -13,7 +13,6 @@ import type {
   ExecuteWorkflowRequest,
   AddNodeRequest,
   UpdateNodeRequest,
-  WorkflowNodeType,
 } from "@shared/types/workflow";
 
 type Result<T> = { success: boolean; data?: T; error?: string };
@@ -24,8 +23,17 @@ export const useWorkflowStore = defineStore("workflow", () => {
   const workflows = ref<Workflow[]>([]);
   const currentWorkflow = ref<WorkflowWithNodes | null>(null);
   const currentExecution = ref<WorkflowExecution | null>(null);
-  const executionProgress = ref<WorkflowProgressEvent | null>(null);
+  const executionProgress = ref<WorkflowProgressEvent | null>(null);  // 记录工作流结果查看的全局状态
+  const workflowReturnState = ref<{
+    active: boolean;
+    workflowId?: number;
+    selectedNodeId?: number;
+    selectedExecutionId?: number;
+  }>({ active: false });
+
+  // 执行细节管理
   const executionDetail = ref<WorkflowExecutionDetail | null>(null);
+  const executions = ref<WorkflowExecution[]>([]);
   const loading = ref(false);
   const executing = ref(false);
 
@@ -42,6 +50,11 @@ export const useWorkflowStore = defineStore("workflow", () => {
     const currentRatio = (nodeProgress || 0) / 100 / totalNodes;
     return Math.round((completedRatio + currentRatio) * 100);
   });
+
+  const getNodeExecution = (nodeId: number) => {
+    if (!executionDetail.value) return null;
+    return executionDetail.value.nodeExecutions.find(ne => ne.nodeId === nodeId) || null;
+  };
 
   // ==================== 工作流管理 ====================
 
@@ -67,6 +80,15 @@ export const useWorkflowStore = defineStore("workflow", () => {
       });
       if (result.success && result.data) {
         currentWorkflow.value = result.data;
+        // 自动加载最近一次执行的详情
+        if (result.data.lastExecution) {
+          currentExecution.value = result.data.lastExecution;
+          await loadExecutionDetail(result.data.lastExecution.id);
+        } else {
+          currentExecution.value = null;
+          executionDetail.value = null;
+        }
+        await loadExecutions(result.data.workflow.id);
       }
     } catch (error: any) {
       ElMessage.error("加载工作流详情失败");
@@ -265,6 +287,62 @@ export const useWorkflowStore = defineStore("workflow", () => {
     }
   };
 
+  const loadExecutions = async (workflowId: number) => {
+    try {
+      const result: Result<WorkflowExecution[]> = await window.electronAPI.invoke(
+        API_ROUTES.WORKFLOW.GET_EXECUTIONS,
+        { workflowId }
+      );
+      if (result.success && result.data) {
+        executions.value = result.data;
+      } else {
+        executions.value = [];
+      }
+    } catch {
+      executions.value = [];
+    }
+  };
+
+  const deleteExecution = async (executionId: number): Promise<boolean> => {
+    try {
+      const result: Result<boolean> = await window.electronAPI.invoke(API_ROUTES.WORKFLOW.DELETE_EXECUTION, { executionId });
+      if (result.success) {
+        executions.value = executions.value.filter(e => e.id !== executionId);
+        if (executionDetail.value?.execution.id === executionId) {
+          executionDetail.value = null;
+        }
+        ElMessage.success("历史记录已删除");
+        return true;
+      }
+      return false;
+    } catch {
+      ElMessage.error("删除历史记录失败");
+      return false;
+    }
+  };
+
+  const renameExecution = async (executionId: number, label: string): Promise<boolean> => {
+    try {
+      const result: Result<boolean> = await window.electronAPI.invoke(API_ROUTES.WORKFLOW.RENAME_EXECUTION, { executionId, label });
+      if (result.success) {
+        const idx = executions.value.findIndex(e => e.id === executionId);
+        if (idx !== -1) executions.value[idx] = { ...executions.value[idx], label };
+        if (executionDetail.value?.execution.id === executionId) {
+          executionDetail.value = {
+            ...executionDetail.value,
+            execution: { ...executionDetail.value.execution, label },
+          };
+        }
+        ElMessage.success("重命名成功");
+        return true;
+      }
+      return false;
+    } catch {
+      ElMessage.error("重命名失败");
+      return false;
+    }
+  };
+
   // ==================== 进度监听 ====================
 
   const updateProgress = (event: WorkflowProgressEvent) => {
@@ -291,7 +369,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
   };
 
   const stopProgressListener = () => {
-    window.electronAPI.removeListener("workflow:progress", () => {});
+    window.electronAPI.removeListener("workflow:progress", () => { });
   };
 
   // ==================== 清理 ====================
@@ -301,6 +379,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
     currentExecution.value = null;
     executionProgress.value = null;
     executionDetail.value = null;
+    executions.value = [];
     executing.value = false;
   };
 
@@ -309,8 +388,9 @@ export const useWorkflowStore = defineStore("workflow", () => {
     workflows,
     currentWorkflow,
     currentExecution,
-    executionProgress,
     executionDetail,
+    executionProgress,
+    workflowReturnState,
     loading,
     executing,
     // computed
@@ -318,6 +398,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
     currentNodes,
     enabledNodes,
     overallProgress,
+    getNodeExecution,
     // 工作流管理
     loadWorkflows,
     loadWorkflowDetail,
@@ -334,6 +415,10 @@ export const useWorkflowStore = defineStore("workflow", () => {
     executeWorkflow,
     cancelExecution,
     loadExecutionDetail,
+    loadExecutions,
+    deleteExecution,
+    renameExecution,
+    executions,
     // 进度监听
     updateProgress,
     startProgressListener,

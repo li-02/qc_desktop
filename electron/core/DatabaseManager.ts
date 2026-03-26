@@ -48,6 +48,7 @@ export class DatabaseManager {
     this.initFluxPartitioningTables();
     this.initWorkflowTables();
     this.migrateSchema();
+    this.seedBuiltinTemplates();
   }
 
   /**
@@ -211,6 +212,11 @@ export class DatabaseManager {
     } catch (e) {
       // 列已存在，忽略错误
     }
+    try {
+      this.db.exec(`ALTER TABLE biz_outlier_result ADD COLUMN sort_order INTEGER DEFAULT 0;`);
+    } catch (e) {
+      // 列已存在，忽略错误
+    }
 
     // 异常值详情表 (biz_outlier_detail)
     this.db.exec(`
@@ -257,6 +263,7 @@ export class DatabaseManager {
         description       TEXT,                               -- 模板描述（可选）
         template_data     TEXT NOT NULL,                      -- 模板数据 (JSON格式)
         source_dataset_id INTEGER,                            -- 来源数据集ID（仅记录来源，可为NULL）
+        is_builtin        INTEGER DEFAULT 0,                  -- 是否内置模板 (0=用户, 1=内置)
         created_at        DATETIME DEFAULT CURRENT_TIMESTAMP, -- 创建时间
         updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP, -- 更新时间
         deleted_at        DATETIME,                           -- 删除时间
@@ -342,6 +349,13 @@ export class DatabaseManager {
         is_del BOOLEAN DEFAULT 0               -- 软删除标记
       );
     `);
+    // 为 biz_correlation_result 添加 name 和 sort_order 列
+    try {
+      this.db.exec(`ALTER TABLE biz_correlation_result ADD COLUMN name TEXT;`);
+    } catch (e) { /* 列已存在 */ }
+    try {
+      this.db.exec(`ALTER TABLE biz_correlation_result ADD COLUMN sort_order INTEGER DEFAULT 0;`);
+    } catch (e) { /* 列已存在 */ }
   }
 
   /**
@@ -355,7 +369,7 @@ export class DatabaseManager {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS conf_imputation_method (
         id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 方法唯一标识
-        method_id TEXT NOT NULL UNIQUE,        -- 方法标识符 (如 MEAN/LINEAR/ARIMA)
+        method_id TEXT NOT NULL UNIQUE,        -- 方法标识符 (如 MEAN/LINEAR/KNN)
         method_name TEXT NOT NULL,             -- 方法显示名称
         category TEXT NOT NULL CHECK(category IN ('basic', 'statistical', 'timeseries', 'ml', 'dl')),  -- 方法分类
         description TEXT,                      -- 方法描述
@@ -422,27 +436,6 @@ export class DatabaseManager {
       );
     `);
 
-    // 插补详情表 (biz_imputation_detail)
-    // 存储每个被插补的数据点详情
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS biz_imputation_detail (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 详情唯一标识
-        result_id INTEGER NOT NULL,            -- 所属插补结果ID
-        column_name TEXT NOT NULL,             -- 列名
-        row_index INTEGER NOT NULL,            -- 行索引 (从0开始)
-        time_point DATETIME,                   -- 时间点
-        original_value REAL,                   -- 原始值 (通常为NULL表示缺失)
-        imputed_value REAL NOT NULL,           -- 插补值
-        confidence REAL,                       -- 置信度 (0~1)
-        imputation_method TEXT,                -- 具体使用的插补方式
-        neighbor_values TEXT,                  -- 参考的相邻值 (JSON数组)
-        is_applied BOOLEAN DEFAULT 0,          -- 是否已应用到数据
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        is_del BOOLEAN DEFAULT 0
-      );
-    `);
-
     // 插补列统计表 (biz_imputation_column_stat)
     // 存储每列的插补统计信息
     this.db.exec(`
@@ -460,11 +453,32 @@ export class DatabaseManager {
         min_imputed REAL,                      -- 插补值最小值
         max_imputed REAL,                      -- 插补值最大值
         avg_confidence REAL,                   -- 平均置信度
+        imputed_row_indices TEXT,              -- 插补点行索引 (JSON数组)
+        imputed_values TEXT,                   -- 插补点数值 (JSON数组)
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         is_del BOOLEAN DEFAULT 0
       );
     `);
+
+    // 为已有数据库添加新字段（如果不存在）
+    try {
+      this.db.exec(`ALTER TABLE biz_imputation_column_stat ADD COLUMN imputed_row_indices TEXT`);
+    } catch (e) {
+      /* 字段已存在 */
+    }
+    try {
+      this.db.exec(`ALTER TABLE biz_imputation_column_stat ADD COLUMN imputed_values TEXT`);
+    } catch (e) {
+      /* 字段已存在 */
+    }
+    // 为 biz_imputation_result 添加 name 和 sort_order 列
+    try {
+      this.db.exec(`ALTER TABLE biz_imputation_result ADD COLUMN name TEXT;`);
+    } catch (e) { /* 列已存在 */ }
+    try {
+      this.db.exec(`ALTER TABLE biz_imputation_result ADD COLUMN sort_order INTEGER DEFAULT 0;`);
+    } catch (e) { /* 列已存在 */ }
 
     // 插补模型表 (biz_imputation_model)
     // 存储训练好的模型信息 (用于ML/DL方法)
@@ -518,12 +532,6 @@ export class DatabaseManager {
 
       CREATE INDEX IF NOT EXISTS idx_imputation_result_status
         ON biz_imputation_result(status);
-
-      CREATE INDEX IF NOT EXISTS idx_imputation_detail_result
-        ON biz_imputation_detail(result_id, column_name);
-
-      CREATE INDEX IF NOT EXISTS idx_imputation_detail_row
-        ON biz_imputation_detail(result_id, row_index);
 
       CREATE INDEX IF NOT EXISTS idx_imputation_column_stat_result
         ON biz_imputation_column_stat(result_id);
@@ -580,6 +588,13 @@ export class DatabaseManager {
       CREATE INDEX IF NOT EXISTS idx_flux_partitioning_result_status
         ON biz_flux_partitioning_result(status);
     `);
+    // 为 biz_flux_partitioning_result 添加 name 和 sort_order 列
+    try {
+      this.db.exec(`ALTER TABLE biz_flux_partitioning_result ADD COLUMN name TEXT;`);
+    } catch (e) { /* 列已存在 */ }
+    try {
+      this.db.exec(`ALTER TABLE biz_flux_partitioning_result ADD COLUMN sort_order INTEGER DEFAULT 0;`);
+    } catch (e) { /* 列已存在 */ }
   }
 
   /**
@@ -702,6 +717,11 @@ export class DatabaseManager {
     if (!hasDatasetId) {
       this.db.exec(`ALTER TABLE biz_workflow_execution ADD COLUMN dataset_id INTEGER NOT NULL DEFAULT 0`);
       this.db.exec(`ALTER TABLE biz_workflow_execution ADD COLUMN initial_version_id INTEGER NOT NULL DEFAULT 0`);
+    }
+    // v2.1 迁移：为执行记录添加自定义标签列
+    const hasLabel = execCols.some((c: any) => c.name === "label");
+    if (!hasLabel) {
+      this.db.exec(`ALTER TABLE biz_workflow_execution ADD COLUMN label TEXT`);
     }
 
     // 检查 biz_workflow 的 dataset_id 是否为 NOT NULL，如果是则需要重建表
@@ -846,56 +866,7 @@ export class DatabaseManager {
         applicable_data_types: JSON.stringify(["numeric"]),
         icon: "📈",
       },
-      // 时序方法
-      {
-        method_id: "ARIMA",
-        method_name: "ARIMA模型",
-        category: "timeseries",
-        description: "基于ARIMA时序模型的插补",
-        requires_python: 1,
-        estimated_time: "medium",
-        accuracy: "high",
-        priority: 80,
-        applicable_data_types: JSON.stringify(["numeric"]),
-        icon: "⏱️",
-      },
-      {
-        method_id: "SARIMA",
-        method_name: "SARIMA模型",
-        category: "timeseries",
-        description: "考虑季节性的ARIMA模型",
-        requires_python: 1,
-        estimated_time: "medium",
-        accuracy: "high",
-        priority: 79,
-        applicable_data_types: JSON.stringify(["numeric"]),
-        icon: "⏱️",
-      },
-      {
-        method_id: "ETS",
-        method_name: "ETS模型",
-        category: "timeseries",
-        description: "指数平滑状态空间模型",
-        requires_python: 1,
-        estimated_time: "medium",
-        accuracy: "high",
-        priority: 78,
-        applicable_data_types: JSON.stringify(["numeric"]),
-        icon: "⏱️",
-      },
       // 机器学习方法
-      {
-        method_id: "KNN",
-        method_name: "KNN插补",
-        category: "ml",
-        description: "基于K近邻算法的插补",
-        requires_python: 1,
-        estimated_time: "medium",
-        accuracy: "high",
-        priority: 70,
-        applicable_data_types: JSON.stringify(["numeric"]),
-        icon: "🤖",
-      },
       {
         method_id: "RANDOM_FOREST",
         method_name: "随机森林",
@@ -904,40 +875,28 @@ export class DatabaseManager {
         requires_python: 1,
         estimated_time: "slow",
         accuracy: "high",
+        priority: 70,
+        applicable_data_types: JSON.stringify(["numeric"]),
+        icon: "🤖",
+      },
+      {
+        method_id: "XGBOOST",
+        method_name: "XGBoost",
+        category: "ml",
+        description: "基于梯度提升树的高性能插补",
+        requires_python: 1,
+        estimated_time: "slow",
+        accuracy: "high",
         priority: 69,
-        applicable_data_types: JSON.stringify(["numeric"]),
-        icon: "🤖",
-      },
-      {
-        method_id: "MICE",
-        method_name: "MICE多重插补",
-        category: "ml",
-        description: "链式方程多重插补",
-        requires_python: 1,
-        estimated_time: "slow",
-        accuracy: "high",
-        priority: 68,
-        applicable_data_types: JSON.stringify(["numeric"]),
-        icon: "🤖",
-      },
-      {
-        method_id: "MISSFOREST",
-        method_name: "MissForest",
-        category: "ml",
-        description: "基于随机森林的迭代插补",
-        requires_python: 1,
-        estimated_time: "slow",
-        accuracy: "high",
-        priority: 67,
         applicable_data_types: JSON.stringify(["numeric"]),
         icon: "🤖",
       },
       // 深度学习方法
       {
-        method_id: "TIMEMIXER_PP",
-        method_name: "TimeMixer++",
+        method_id: "ITRANSFORMER",
+        method_name: "iTransformer",
         category: "dl",
-        description: "基于TimeMixer++的高精度时序插补模型，支持多变量时序数据，适用于生态环境监测数据",
+        description: "基于倒置Transformer的时序插补模型，将变量作为token处理，擅长捕获多变量间依赖关系",
         requires_python: 1,
         estimated_time: "slow",
         accuracy: "high",
@@ -946,38 +905,38 @@ export class DatabaseManager {
         icon: "🧠",
       },
       {
-        method_id: "LSTM",
-        method_name: "LSTM网络",
+        method_id: "SAITS",
+        method_name: "SAITS",
         category: "dl",
-        description: "基于LSTM的时序插补",
+        description: "自注意力时序插补模型，联合优化观测值重建和缺失值插补",
         requires_python: 1,
         estimated_time: "slow",
         accuracy: "high",
-        priority: 60,
+        priority: 64,
         applicable_data_types: JSON.stringify(["numeric"]),
         icon: "🧠",
       },
       {
-        method_id: "GRU",
-        method_name: "GRU网络",
+        method_id: "BITS",
+        method_name: "BITS",
         category: "dl",
-        description: "基于GRU的时序插补",
+        description: "双向时序插补模型，结合前向和后向信息进行高精度插补",
         requires_python: 1,
         estimated_time: "slow",
         accuracy: "high",
-        priority: 59,
+        priority: 63,
         applicable_data_types: JSON.stringify(["numeric"]),
         icon: "🧠",
       },
       {
-        method_id: "TRANSFORMER",
-        method_name: "Transformer",
+        method_id: "TIMEMIXER",
+        method_name: "TimeMixer",
         category: "dl",
-        description: "基于Transformer的插补",
+        description: "基于多尺度时序混合的插补模型，支持多变量时序数据",
         requires_python: 1,
         estimated_time: "slow",
         accuracy: "high",
-        priority: 58,
+        priority: 62,
         applicable_data_types: JSON.stringify(["numeric"]),
         icon: "🧠",
       },
@@ -1016,186 +975,78 @@ export class DatabaseManager {
     if (!this.db) return;
 
     const defaultParams = [
-      // ARIMA 参数
+      // 随机森林参数
       {
-        method_id: "ARIMA",
-        param_key: "autoSelect",
-        param_name: "自动选择参数",
-        param_type: "boolean",
-        default_value: "true",
-        tooltip: "是否自动选择最优的ARIMA参数",
-        is_required: false,
-        is_advanced: false,
-        param_order: 1,
-      },
-      {
-        method_id: "ARIMA",
-        param_key: "p",
-        param_name: "AR阶数 (p)",
+        method_id: "RANDOM_FOREST",
+        param_key: "n_estimators",
+        param_name: "树的数量",
         param_type: "number",
-        default_value: "1",
-        min_value: 0,
-        max_value: 5,
-        step_value: 1,
-        tooltip: "自回归阶数",
-        is_required: false,
-        is_advanced: false,
-        param_order: 2,
-      },
-      {
-        method_id: "ARIMA",
-        param_key: "d",
-        param_name: "差分次数 (d)",
-        param_type: "number",
-        default_value: "1",
-        min_value: 0,
-        max_value: 2,
-        step_value: 1,
-        tooltip: "差分阶数",
-        is_required: false,
-        is_advanced: false,
-        param_order: 3,
-      },
-      {
-        method_id: "ARIMA",
-        param_key: "q",
-        param_name: "MA阶数 (q)",
-        param_type: "number",
-        default_value: "1",
-        min_value: 0,
-        max_value: 5,
-        step_value: 1,
-        tooltip: "移动平均阶数",
-        is_required: false,
-        is_advanced: false,
-        param_order: 4,
-      },
-
-      // SARIMA 参数
-      {
-        method_id: "SARIMA",
-        param_key: "autoSelect",
-        param_name: "自动选择参数",
-        param_type: "boolean",
-        default_value: "true",
-        tooltip: "是否自动选择最优的SARIMA参数",
-        is_required: false,
-        is_advanced: false,
-        param_order: 1,
-      },
-      {
-        method_id: "SARIMA",
-        param_key: "p",
-        param_name: "AR阶数 (p)",
-        param_type: "number",
-        default_value: "1",
-        min_value: 0,
-        max_value: 5,
-        step_value: 1,
-        tooltip: "自回归阶数",
-        is_required: false,
-        is_advanced: false,
-        param_order: 2,
-      },
-      {
-        method_id: "SARIMA",
-        param_key: "d",
-        param_name: "差分次数 (d)",
-        param_type: "number",
-        default_value: "1",
-        min_value: 0,
-        max_value: 2,
-        step_value: 1,
-        tooltip: "差分阶数",
-        is_required: false,
-        is_advanced: false,
-        param_order: 3,
-      },
-      {
-        method_id: "SARIMA",
-        param_key: "q",
-        param_name: "MA阶数 (q)",
-        param_type: "number",
-        default_value: "1",
-        min_value: 0,
-        max_value: 5,
-        step_value: 1,
-        tooltip: "移动平均阶数",
-        is_required: false,
-        is_advanced: false,
-        param_order: 4,
-      },
-      {
-        method_id: "SARIMA",
-        param_key: "P",
-        param_name: "季节性AR阶数 (P)",
-        param_type: "number",
-        default_value: "1",
-        min_value: 0,
-        max_value: 5,
-        step_value: 1,
-        tooltip: "季节性自回归阶数",
-        is_required: false,
-        is_advanced: false,
-        param_order: 5,
-      },
-      {
-        method_id: "SARIMA",
-        param_key: "D",
-        param_name: "季节性差分次数 (D)",
-        param_type: "number",
-        default_value: "1",
-        min_value: 0,
-        max_value: 2,
-        step_value: 1,
-        tooltip: "季节性差分阶数",
-        is_required: false,
-        is_advanced: false,
-        param_order: 6,
-      },
-      {
-        method_id: "SARIMA",
-        param_key: "Q",
-        param_name: "季节性MA阶数 (Q)",
-        param_type: "number",
-        default_value: "1",
-        min_value: 0,
-        max_value: 5,
-        step_value: 1,
-        tooltip: "季节性移动平均阶数",
-        is_required: false,
-        is_advanced: false,
-        param_order: 7,
-      },
-      {
-        method_id: "SARIMA",
-        param_key: "s",
-        param_name: "季节性周期 (s)",
-        param_type: "number",
-        default_value: "24",
-        min_value: 2,
-        max_value: 365,
-        step_value: 1,
-        tooltip: "季节性周期长度",
-        is_required: false,
-        is_advanced: false,
-        param_order: 8,
-      },
-
-      // KNN 参数
-      {
-        method_id: "KNN",
-        param_key: "n_neighbors",
-        param_name: "K近邻数量",
-        param_type: "number",
-        default_value: "5",
-        min_value: 1,
-        max_value: 20,
-        step_value: 1,
-        tooltip: "用于插补的近邻数量",
+        default_value: "100",
+        min_value: 10,
+        max_value: 500,
+        step_value: 10,
+        tooltip: "随机森林中决策树的数量",
         is_required: true,
         is_advanced: false,
         param_order: 1,
+      },
+      {
+        method_id: "RANDOM_FOREST",
+        param_key: "max_depth",
+        param_name: "最大深度",
+        param_type: "number",
+        default_value: "10",
+        min_value: 1,
+        max_value: 50,
+        step_value: 1,
+        tooltip: "决策树的最大深度，越大越容易过拟合",
+        is_required: false,
+        is_advanced: true,
+        param_order: 2,
+      },
+
+      // XGBoost 参数
+      {
+        method_id: "XGBOOST",
+        param_key: "n_estimators",
+        param_name: "树的数量",
+        param_type: "number",
+        default_value: "100",
+        min_value: 10,
+        max_value: 500,
+        step_value: 10,
+        tooltip: "梯度提升轮数",
+        is_required: true,
+        is_advanced: false,
+        param_order: 1,
+      },
+      {
+        method_id: "XGBOOST",
+        param_key: "max_depth",
+        param_name: "最大深度",
+        param_type: "number",
+        default_value: "6",
+        min_value: 1,
+        max_value: 20,
+        step_value: 1,
+        tooltip: "树的最大深度",
+        is_required: false,
+        is_advanced: true,
+        param_order: 2,
+      },
+      {
+        method_id: "XGBOOST",
+        param_key: "learning_rate",
+        param_name: "学习率",
+        param_type: "number",
+        default_value: "0.1",
+        min_value: 0.01,
+        max_value: 1.0,
+        step_value: 0.01,
+        tooltip: "每步的收缩系数，越小越需要更多轮数",
+        is_required: false,
+        is_advanced: true,
+        param_order: 3,
       },
 
       // 样条插值参数
@@ -1230,54 +1081,6 @@ export class DatabaseManager {
         is_required: true,
         is_advanced: false,
         param_order: 1,
-      },
-
-      // ETS 参数
-      {
-        method_id: "ETS",
-        param_key: "trend",
-        param_name: "趋势组件",
-        param_type: "select",
-        default_value: "add",
-        options: JSON.stringify([
-          { label: "加法趋势", value: "add" },
-          { label: "乘法趋势", value: "mul" },
-          { label: "无趋势", value: "none" },
-        ]),
-        tooltip: "趋势组件的类型",
-        is_required: false,
-        is_advanced: false,
-        param_order: 1,
-      },
-      {
-        method_id: "ETS",
-        param_key: "seasonal",
-        param_name: "季节性组件",
-        param_type: "select",
-        default_value: "add",
-        options: JSON.stringify([
-          { label: "加法季节性", value: "add" },
-          { label: "乘法季节性", value: "mul" },
-          { label: "无季节性", value: "none" },
-        ]),
-        tooltip: "季节性组件的类型",
-        is_required: false,
-        is_advanced: false,
-        param_order: 2,
-      },
-      {
-        method_id: "ETS",
-        param_key: "seasonal_periods",
-        param_name: "季节性周期",
-        param_type: "number",
-        default_value: "24",
-        min_value: 2,
-        max_value: 365,
-        step_value: 1,
-        tooltip: "季节性周期长度",
-        is_required: false,
-        is_advanced: false,
-        param_order: 3,
       },
 
       // REddyProc MDS 参数 - 位置信息
@@ -1403,20 +1206,9 @@ export class DatabaseManager {
         param_order: 10,
       },
 
-      // TimeMixer++ 参数
+      // iTransformer 参数
       {
-        method_id: "TIMEMIXER_PP",
-        param_key: "model_path",
-        param_name: "模型文件路径",
-        param_type: "string",
-        default_value: "",
-        tooltip: "训练好的模型文件路径 (.pypots 文件)，留空则使用数据集关联的模型",
-        is_required: false,
-        is_advanced: false,
-        param_order: 1,
-      },
-      {
-        method_id: "TIMEMIXER_PP",
+        method_id: "ITRANSFORMER",
         param_key: "seq_len",
         param_name: "序列长度",
         param_type: "number",
@@ -1424,13 +1216,13 @@ export class DatabaseManager {
         min_value: 24,
         max_value: 512,
         step_value: 24,
-        tooltip: "滑动窗口长度，必须与训练时一致",
+        tooltip: "滑动窗口长度",
         is_required: true,
         is_advanced: false,
-        param_order: 2,
+        param_order: 1,
       },
       {
-        method_id: "TIMEMIXER_PP",
+        method_id: "ITRANSFORMER",
         param_key: "n_layers",
         param_name: "层数",
         param_type: "number",
@@ -1441,52 +1233,24 @@ export class DatabaseManager {
         tooltip: "模型层数",
         is_required: false,
         is_advanced: true,
-        param_order: 3,
+        param_order: 2,
       },
       {
-        method_id: "TIMEMIXER_PP",
+        method_id: "ITRANSFORMER",
         param_key: "d_model",
         param_name: "隐藏层维度",
         param_type: "number",
-        default_value: "32",
+        default_value: "64",
         min_value: 16,
         max_value: 256,
         step_value: 16,
         tooltip: "隐藏层特征维度",
         is_required: false,
         is_advanced: true,
-        param_order: 4,
+        param_order: 3,
       },
       {
-        method_id: "TIMEMIXER_PP",
-        param_key: "d_ffn",
-        param_name: "FFN维度",
-        param_type: "number",
-        default_value: "64",
-        min_value: 32,
-        max_value: 512,
-        step_value: 32,
-        tooltip: "前馈网络维度",
-        is_required: false,
-        is_advanced: true,
-        param_order: 5,
-      },
-      {
-        method_id: "TIMEMIXER_PP",
-        param_key: "top_k",
-        param_name: "Top-K频率",
-        param_type: "number",
-        default_value: "5",
-        min_value: 1,
-        max_value: 20,
-        step_value: 1,
-        tooltip: "Top-K 频率成分数量",
-        is_required: false,
-        is_advanced: true,
-        param_order: 6,
-      },
-      {
-        method_id: "TIMEMIXER_PP",
+        method_id: "ITRANSFORMER",
         param_key: "n_heads",
         param_name: "注意力头数",
         param_type: "number",
@@ -1497,24 +1261,24 @@ export class DatabaseManager {
         tooltip: "Multi-head Attention 的头数",
         is_required: false,
         is_advanced: true,
-        param_order: 7,
+        param_order: 4,
       },
       {
-        method_id: "TIMEMIXER_PP",
-        param_key: "n_kernels",
-        param_name: "Kernel数量",
+        method_id: "ITRANSFORMER",
+        param_key: "d_ffn",
+        param_name: "FFN维度",
         param_type: "number",
-        default_value: "3",
-        min_value: 1,
-        max_value: 8,
-        step_value: 1,
-        tooltip: "Inception Kernel 数量",
+        default_value: "128",
+        min_value: 32,
+        max_value: 512,
+        step_value: 32,
+        tooltip: "前馈网络维度",
         is_required: false,
         is_advanced: true,
-        param_order: 8,
+        param_order: 5,
       },
       {
-        method_id: "TIMEMIXER_PP",
+        method_id: "ITRANSFORMER",
         param_key: "dropout",
         param_name: "Dropout率",
         param_type: "number",
@@ -1525,46 +1289,349 @@ export class DatabaseManager {
         tooltip: "Dropout 比率",
         is_required: false,
         is_advanced: true,
-        param_order: 9,
+        param_order: 6,
       },
       {
-        method_id: "TIMEMIXER_PP",
-        param_key: "down_layers",
-        param_name: "下采样层数",
+        method_id: "ITRANSFORMER",
+        param_key: "epochs",
+        param_name: "训练轮数",
         param_type: "number",
-        default_value: "3",
-        min_value: 1,
-        max_value: 5,
-        step_value: 1,
-        tooltip: "下采样层数",
+        default_value: "100",
+        min_value: 10,
+        max_value: 500,
+        step_value: 10,
+        tooltip: "训练轮数",
         is_required: false,
         is_advanced: true,
-        param_order: 10,
+        param_order: 7,
       },
       {
-        method_id: "TIMEMIXER_PP",
-        param_key: "down_window",
-        param_name: "下采样窗口",
+        method_id: "ITRANSFORMER",
+        param_key: "batch_size",
+        param_name: "批次大小",
+        param_type: "number",
+        default_value: "32",
+        min_value: 8,
+        max_value: 256,
+        step_value: 8,
+        tooltip: "每批次训练样本数",
+        is_required: false,
+        is_advanced: true,
+        param_order: 8,
+      },
+
+      // SAITS 参数
+      {
+        method_id: "SAITS",
+        param_key: "seq_len",
+        param_name: "序列长度",
+        param_type: "number",
+        default_value: "96",
+        min_value: 24,
+        max_value: 512,
+        step_value: 24,
+        tooltip: "滑动窗口长度",
+        is_required: true,
+        is_advanced: false,
+        param_order: 1,
+      },
+      {
+        method_id: "SAITS",
+        param_key: "n_layers",
+        param_name: "层数",
         param_type: "number",
         default_value: "2",
-        min_value: 2,
+        min_value: 1,
         max_value: 8,
         step_value: 1,
-        tooltip: "下采样窗口大小",
+        tooltip: "模型层数",
         is_required: false,
         is_advanced: true,
-        param_order: 11,
+        param_order: 2,
       },
       {
-        method_id: "TIMEMIXER_PP",
-        param_key: "use_gpu",
-        param_name: "使用GPU",
-        param_type: "boolean",
-        default_value: "true",
-        tooltip: "是否使用GPU加速（如可用）",
+        method_id: "SAITS",
+        param_key: "d_model",
+        param_name: "隐藏层维度",
+        param_type: "number",
+        default_value: "64",
+        min_value: 16,
+        max_value: 256,
+        step_value: 16,
+        tooltip: "隐藏层特征维度",
         is_required: false,
+        is_advanced: true,
+        param_order: 3,
+      },
+      {
+        method_id: "SAITS",
+        param_key: "n_heads",
+        param_name: "注意力头数",
+        param_type: "number",
+        default_value: "4",
+        min_value: 1,
+        max_value: 16,
+        step_value: 1,
+        tooltip: "Multi-head Attention 的头数",
+        is_required: false,
+        is_advanced: true,
+        param_order: 4,
+      },
+      {
+        method_id: "SAITS",
+        param_key: "d_ffn",
+        param_name: "FFN维度",
+        param_type: "number",
+        default_value: "128",
+        min_value: 32,
+        max_value: 512,
+        step_value: 32,
+        tooltip: "前馈网络维度",
+        is_required: false,
+        is_advanced: true,
+        param_order: 5,
+      },
+      {
+        method_id: "SAITS",
+        param_key: "dropout",
+        param_name: "Dropout率",
+        param_type: "number",
+        default_value: "0.1",
+        min_value: 0,
+        max_value: 0.5,
+        step_value: 0.05,
+        tooltip: "Dropout 比率",
+        is_required: false,
+        is_advanced: true,
+        param_order: 6,
+      },
+      {
+        method_id: "SAITS",
+        param_key: "epochs",
+        param_name: "训练轮数",
+        param_type: "number",
+        default_value: "100",
+        min_value: 10,
+        max_value: 500,
+        step_value: 10,
+        tooltip: "训练轮数",
+        is_required: false,
+        is_advanced: true,
+        param_order: 7,
+      },
+      {
+        method_id: "SAITS",
+        param_key: "batch_size",
+        param_name: "批次大小",
+        param_type: "number",
+        default_value: "32",
+        min_value: 8,
+        max_value: 256,
+        step_value: 8,
+        tooltip: "每批次训练样本数",
+        is_required: false,
+        is_advanced: true,
+        param_order: 8,
+      },
+
+      // BITS 参数
+      {
+        method_id: "BITS",
+        param_key: "seq_len",
+        param_name: "序列长度",
+        param_type: "number",
+        default_value: "96",
+        min_value: 24,
+        max_value: 512,
+        step_value: 24,
+        tooltip: "滑动窗口长度",
+        is_required: true,
         is_advanced: false,
-        param_order: 12,
+        param_order: 1,
+      },
+      {
+        method_id: "BITS",
+        param_key: "n_layers",
+        param_name: "层数",
+        param_type: "number",
+        default_value: "2",
+        min_value: 1,
+        max_value: 8,
+        step_value: 1,
+        tooltip: "模型层数",
+        is_required: false,
+        is_advanced: true,
+        param_order: 2,
+      },
+      {
+        method_id: "BITS",
+        param_key: "d_model",
+        param_name: "隐藏层维度",
+        param_type: "number",
+        default_value: "64",
+        min_value: 16,
+        max_value: 256,
+        step_value: 16,
+        tooltip: "隐藏层特征维度",
+        is_required: false,
+        is_advanced: true,
+        param_order: 3,
+      },
+      {
+        method_id: "BITS",
+        param_key: "dropout",
+        param_name: "Dropout率",
+        param_type: "number",
+        default_value: "0.1",
+        min_value: 0,
+        max_value: 0.5,
+        step_value: 0.05,
+        tooltip: "Dropout 比率",
+        is_required: false,
+        is_advanced: true,
+        param_order: 4,
+      },
+      {
+        method_id: "BITS",
+        param_key: "epochs",
+        param_name: "训练轮数",
+        param_type: "number",
+        default_value: "100",
+        min_value: 10,
+        max_value: 500,
+        step_value: 10,
+        tooltip: "训练轮数",
+        is_required: false,
+        is_advanced: true,
+        param_order: 5,
+      },
+      {
+        method_id: "BITS",
+        param_key: "batch_size",
+        param_name: "批次大小",
+        param_type: "number",
+        default_value: "32",
+        min_value: 8,
+        max_value: 256,
+        step_value: 8,
+        tooltip: "每批次训练样本数",
+        is_required: false,
+        is_advanced: true,
+        param_order: 6,
+      },
+
+      // TimeMixer 参数
+      {
+        method_id: "TIMEMIXER",
+        param_key: "seq_len",
+        param_name: "序列长度",
+        param_type: "number",
+        default_value: "96",
+        min_value: 24,
+        max_value: 512,
+        step_value: 24,
+        tooltip: "滑动窗口长度",
+        is_required: true,
+        is_advanced: false,
+        param_order: 1,
+      },
+      {
+        method_id: "TIMEMIXER",
+        param_key: "n_layers",
+        param_name: "层数",
+        param_type: "number",
+        default_value: "2",
+        min_value: 1,
+        max_value: 8,
+        step_value: 1,
+        tooltip: "模型层数",
+        is_required: false,
+        is_advanced: true,
+        param_order: 2,
+      },
+      {
+        method_id: "TIMEMIXER",
+        param_key: "d_model",
+        param_name: "隐藏层维度",
+        param_type: "number",
+        default_value: "32",
+        min_value: 16,
+        max_value: 256,
+        step_value: 16,
+        tooltip: "隐藏层特征维度",
+        is_required: false,
+        is_advanced: true,
+        param_order: 3,
+      },
+      {
+        method_id: "TIMEMIXER",
+        param_key: "d_ffn",
+        param_name: "FFN维度",
+        param_type: "number",
+        default_value: "64",
+        min_value: 32,
+        max_value: 512,
+        step_value: 32,
+        tooltip: "前馈网络维度",
+        is_required: false,
+        is_advanced: true,
+        param_order: 4,
+      },
+      {
+        method_id: "TIMEMIXER",
+        param_key: "top_k",
+        param_name: "Top-K频率",
+        param_type: "number",
+        default_value: "5",
+        min_value: 1,
+        max_value: 20,
+        step_value: 1,
+        tooltip: "Top-K 频率成分数量",
+        is_required: false,
+        is_advanced: true,
+        param_order: 5,
+      },
+      {
+        method_id: "TIMEMIXER",
+        param_key: "dropout",
+        param_name: "Dropout率",
+        param_type: "number",
+        default_value: "0.1",
+        min_value: 0,
+        max_value: 0.5,
+        step_value: 0.05,
+        tooltip: "Dropout 比率",
+        is_required: false,
+        is_advanced: true,
+        param_order: 6,
+      },
+      {
+        method_id: "TIMEMIXER",
+        param_key: "epochs",
+        param_name: "训练轮数",
+        param_type: "number",
+        default_value: "100",
+        min_value: 10,
+        max_value: 500,
+        step_value: 10,
+        tooltip: "训练轮数",
+        is_required: false,
+        is_advanced: true,
+        param_order: 7,
+      },
+      {
+        method_id: "TIMEMIXER",
+        param_key: "batch_size",
+        param_name: "批次大小",
+        param_type: "number",
+        default_value: "32",
+        min_value: 8,
+        max_value: 256,
+        step_value: 8,
+        tooltip: "每批次训练样本数",
+        is_required: false,
+        is_advanced: true,
+        param_order: 8,
       },
     ];
 
@@ -1625,7 +1692,7 @@ export class DatabaseManager {
 
     const models = [
       {
-        method_id: "TIMEMIXER_PP",
+        method_id: "TIMEMIXER",
         model_name: "CO2通量插补模型",
         model_path: path.join(pythonDir, "timemixerpp_co2_flux.pypots"),
         target_column: "co2_flux",
@@ -1656,7 +1723,7 @@ export class DatabaseManager {
         is_active: 1,
       },
       {
-        method_id: "TIMEMIXER_PP",
+        method_id: "TIMEMIXER",
         model_name: "PM2.5插补模型",
         model_path: path.join(pythonDir, "timermixerpp_pm2_5.pypots"),
         target_column: "pm2_5",
@@ -1805,6 +1872,13 @@ export class DatabaseManager {
 
     // 迁移 sys_site -> sys_category (重命名表和字段)
     this.migrateSiteToCategoryTable();
+
+    // 检查并添加 conf_threshold_template 表的 is_builtin 字段
+    const templateInfo = this.db.prepare("PRAGMA table_info(conf_threshold_template)").all() as { name: string }[];
+    const templateColumns = new Set(templateInfo.map(c => c.name));
+    if (!templateColumns.has("is_builtin")) {
+      this.db.exec("ALTER TABLE conf_threshold_template ADD COLUMN is_builtin INTEGER DEFAULT 0;");
+    }
   }
 
   /**
@@ -1919,5 +1993,174 @@ export class DatabaseManager {
         console.log("site_id 已重命名为 category_id");
       }
     }
+  }
+
+  /**
+   * 种入内置阈值模板数据（已存在则跳过）
+   * 数据来源：indicators_filtered.csv
+   */
+  private seedBuiltinTemplates(): void {
+    if (!this.db) return;
+
+    const existing = this.db
+      .prepare("SELECT id FROM conf_threshold_template WHERE is_builtin = 1 AND name = 'standard' AND is_del = 0")
+      .get();
+    if (existing) return;
+
+    const templateData: Record<string, { min: number; max: number; unit: string }> = {
+      tau: { min: -5, max: 5, unit: "[kg+1m-1s-2]" },
+      h: { min: -800, max: 800, unit: "[W+1m-2]" },
+      le: { min: -500, max: 1000, unit: "[W+1m-2]" },
+      co2_flux: { min: -50, max: 50, unit: "[μmol+1s-1m-2]" },
+      h2o_flux: { min: -10, max: 25, unit: "[mmol+1s-1m-2]" },
+      ch4_flux: { min: -50, max: 50, unit: "[μmol+1s-1m-2]" },
+      h_strg: { min: -30, max: 30, unit: "[W+1m-2]" },
+      le_strg: { min: -30, max: 30, unit: "[W+1m-2]" },
+      co2_strg: { min: -5, max: 5, unit: "[μmol+1s-1m-2]" },
+      h2o_strg: { min: -0.5, max: 0.5, unit: "[mmol+1s-1m-2]" },
+      ch4_strg: { min: -5, max: 5, unit: "[μmol+1s-1m-2]" },
+      co2_molar_density: { min: 10, max: 40, unit: "[mmol+1m-3]" },
+      co2_mole_fraction: { min: 300, max: 1000, unit: "[μmol+1mol_a-1]" },
+      co2_mixing_ratio: { min: 300, max: 1000, unit: "[μmol+1mol_d-1]" },
+      h2o_molar_density: { min: 0, max: 2000, unit: "[mmol+1m-3]" },
+      h2o_mole_fraction: { min: 0, max: 50, unit: "[mmol+1mol_a-1]" },
+      h2o_mixing_ratio: { min: 0, max: 50, unit: "[mmol+1mol_d-1]" },
+      ch4_molar_density: { min: 0, max: 200, unit: "[mmol+1m-3]" },
+      ch4_mole_fraction: { min: 0, max: 100, unit: "[μmol+1mol_a-1]" },
+      ch4_mixing_ratio: { min: 0, max: 100, unit: "[μmol+1mol_d-1]" },
+      sonic_temperature: { min: -30, max: 50, unit: "[℃]" },
+      air_temperature: { min: -30, max: 50, unit: "[℃]" },
+      air_pressure: { min: 80000, max: 110000, unit: "[Pa]" },
+      air_density: { min: 0.9, max: 1.5, unit: "[kg+1m-3]" },
+      air_heat_capacity: { min: 1000, max: 1050, unit: "[J+1kg-1K-1]" },
+      air_molar_volume: { min: 0.015, max: 0.03, unit: "[m+3mol-1]" },
+      et: { min: -1, max: 2, unit: "[mm+1hour-1]" },
+      water_vapor_density: { min: 0, max: 0.04, unit: "[kg+1m-3]" },
+      e: { min: 0, max: 5000, unit: "[Pa]" },
+      es: { min: 0, max: 6000, unit: "[Pa]" },
+      specific_humidity: { min: 0, max: 0.03, unit: "[kg+1kg-1]" },
+      rh: { min: 0, max: 100, unit: "[%]" },
+      vpd: { min: 0, max: 6000, unit: "[Pa]" },
+      tdew: { min: -100, max: 50, unit: "[℃]" },
+      u_unrot: { min: -10, max: 10, unit: "[m+1s-1]" },
+      v_unrot: { min: -10, max: 10, unit: "[m+1s-1]" },
+      w_unrot: { min: -2.5, max: 2.5, unit: "[m+1s-1]" },
+      wind_speed: { min: 0, max: 12, unit: "[m+1s-1]" },
+      max_wind_speed: { min: 0, max: 30, unit: "[m+1s-1]" },
+      wind_dir: { min: 0, max: 360, unit: "[deg_from_north]" },
+      u_: { min: 0, max: 3, unit: "[m+1s-1]" },
+      x_peak: { min: 0, max: 10000, unit: "[m]" },
+      x_offset: { min: 0, max: 10000, unit: "[m]" },
+      x_10_: { min: 0, max: 10000, unit: "[m]" },
+      x_30_: { min: 0, max: 10000, unit: "[m]" },
+      x_50_: { min: 0, max: 10000, unit: "[m]" },
+      x_70_: { min: 0, max: 10000, unit: "[m]" },
+      x_90_: { min: 0, max: 10000, unit: "[m]" },
+      co2_mean: { min: 300, max: 1000, unit: "[μmol+1mol_a-1]" },
+      h2o_mean: { min: 0, max: 50, unit: "[mmol+1mol_a-1]" },
+      dew_point_mean: { min: -100, max: 50, unit: "[C]" },
+      co2_signal_strength_7500_mean: { min: 0, max: 150, unit: "" },
+      alb_1_1_1: { min: 0, max: 100, unit: "[%]" },
+      lwin_1_1_1: { min: 0, max: 700, unit: "[W/m^2]" },
+      lwout_1_1_1: { min: 0, max: 700, unit: "[W/m^2]" },
+      ppfd_1_1_1: { min: -5, max: 2500, unit: "[μmol/m^2/s]" },
+      ptemp_1_1_1: { min: -30, max: 50, unit: "[℃]" },
+      p_rain_1_1_1: { min: 0, max: 0.1, unit: "[m]" },
+      p_rain_1_2_1: { min: 0, max: 0.1, unit: "[m]" },
+      rh_1_1_1: { min: 0, max: 100, unit: "[%]" },
+      rh_1_2_1: { min: 0, max: 100, unit: "[%]" },
+      rn_1_1_1: { min: -300, max: 1200, unit: "[W/m^2]" },
+      rg_1_1_2: { min: -5, max: 1250, unit: "[W/m^2]" },
+      rlnet_1_1_1: { min: -200, max: 100, unit: "[W/M^2]" },
+      rsnet_1_1_1: { min: -50, max: 1200, unit: "[W/M^2]" },
+      r_uva_1_1_1: { min: -5, max: 100, unit: "[W/m^2]" },
+      swc_1_1_1: { min: 0, max: 1, unit: "[m^3/m^3]" },
+      swc_1_2_1: { min: 0, max: 1, unit: "[m^3/m^3]" },
+      swc_1_3_1: { min: 0, max: 1, unit: "[m^3/m^3]" },
+      swc_1_4_1: { min: 0, max: 1, unit: "[m^3/m^3]" },
+      swc_1_5_1: { min: 0, max: 1, unit: "[m^3/m^3]" },
+      swdif_1_1_1: { min: -5, max: 1000, unit: "[W/m^2]" },
+      swin_1_1_1: { min: -5, max: 1200, unit: "[W/m^2]" },
+      swout_1_1_1: { min: -5, max: 300, unit: "[W/m^2]" },
+      trn_1_1_1: { min: -30, max: 50, unit: "[℃]" },
+      ts_1_1_1: { min: -15, max: 30, unit: "[℃]" },
+      ts_1_2_1: { min: -15, max: 30, unit: "[℃]" },
+      ts_1_3_1: { min: -15, max: 30, unit: "[℃]" },
+      ts_1_4_1: { min: -15, max: 30, unit: "[℃]" },
+      ts_1_5_1: { min: -15, max: 30, unit: "[℃]" },
+      ta_1_1_1: { min: -30, max: 50, unit: "[℃]" },
+      ta_1_2_1: { min: -30, max: 50, unit: "[℃]" },
+      vin_1_1_1: { min: 0, max: 20, unit: "[V]" },
+      wd_1_1_1: { min: 0, max: 360, unit: "[Degrees_past_North]" },
+      wd_1_2_1: { min: 0, max: 360, unit: "[Degrees_past_North]" },
+      ws_1_1_1: { min: 0, max: 12, unit: "[m/s]" },
+      ws_1_2_1: { min: 0, max: 12, unit: "[m/s]" },
+      so2: { min: 0, max: 2500, unit: "μg/m3" },
+      no: { min: 0, max: 100, unit: "μg/m3" },
+      nox: { min: 0, max: 250, unit: "μg/m3" },
+      no2: { min: 0, max: 250, unit: "μg/m3" },
+      co: { min: 0, max: 10, unit: "mg/m3" },
+      o3: { min: 0, max: 1000, unit: "μg/m3" },
+      pm10: { min: 0, max: 1000, unit: "μg/m3" },
+      pm2_5: { min: 0, max: 1000, unit: "μg/m3" },
+      nai: { min: 0, max: 12000, unit: "[个/cm3]" },
+      tc_vel_1_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_2_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_3_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_4_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_5_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_6_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_7_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_8_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_9_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_10_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_11_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_12_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_13_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_14_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_15_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_16_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_17_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_18_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_19_: { min: 0, max: 25, unit: "[cm/hr]" },
+      tc_vel_20_: { min: 0, max: 25, unit: "[cm/hr]" },
+      ppfd_1_1_2: { min: -5, max: 500, unit: "[μmol/m^2/s]" },
+      ws_2_1_1: { min: 0, max: 12, unit: "" },
+      soilg_2_avg: { min: -300, max: 1000, unit: "" },
+      tc_dtca_1_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_2_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_3_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_4_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_5_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_6_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_7_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_8_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_9_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_10_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_11_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_12_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_13_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_14_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_15_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_16_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_17_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_18_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_19_: { min: 3, max: 12, unit: "[℃]" },
+      tc_dtca_20_: { min: 3, max: 12, unit: "[℃]" },
+      tsp: { min: 0, max: 1000, unit: "μg/m3" },
+    };
+
+    this.db
+      .prepare(
+        `INSERT INTO conf_threshold_template (name, description, template_data, is_builtin)
+         VALUES (?, ?, ?, 1)`
+      )
+      .run(
+        "standard",
+        "系统内置标准物理范围模板，来源于 indicators_filtered.csv",
+        JSON.stringify(templateData)
+      );
+
+    console.log("内置阈值模板 'standard' 已写入数据库");
   }
 }

@@ -16,6 +16,10 @@ import {
   Search,
   ArrowRight,
   Connection,
+  Edit,
+  Rank,
+  DataLine,
+  Grid,
 } from "@element-plus/icons-vue";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import type { OutlierResult } from "@shared/types/database";
@@ -28,7 +32,7 @@ import type {
   ImputationMethod,
   ImputationResult,
   ImputationProgressEvent,
-  ImputationDetail,
+  ImputationColumnStat,
 } from "@shared/types/imputation";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
@@ -37,6 +41,7 @@ import { translateRemark } from "@/utils/versionUtils";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
 import * as echarts from "echarts";
 import MissingMarkersEditor from "../common/MissingMarkersEditor.vue";
+import CustomModelDialog from "./CustomModelDialog.vue";
 
 // ==================== Props & Emits ====================
 interface ColumnInfo {
@@ -96,6 +101,14 @@ const imputationResults = ref<ImputationResult[]>([]);
 const currentResultId = ref<number | null>(null);
 const showArchivedHistory = ref(false); // 是否显示已归档(已应用)的历史记录
 
+// 重命名状态
+const editingResultId = ref<number | null>(null);
+const editingName = ref("");
+
+// 拖拽状态
+const dragIndex = ref<number | null>(null);
+const dragOverIndex = ref<number | null>(null);
+
 const visibleImputationResults = computed(() => {
   if (showArchivedHistory.value) {
     return imputationResults.value;
@@ -108,10 +121,20 @@ const visibleImputationResults = computed(() => {
 const categories = [
   { value: "basic", label: "基础方法", icon: "📊" },
   { value: "statistical", label: "统计方法", icon: "📈" },
-  { value: "timeseries", label: "时序模型", icon: "⏱️" },
   { value: "ml", label: "机器学习", icon: "🤖" },
   { value: "dl", label: "深度学习", icon: "🧠" },
+  { value: "custom", label: "自定义模型", icon: "🔌" },
 ];
+
+// ==================== 自定义模型对话框 ====================
+const showCustomModelDialog = ref(false);
+
+const onCustomModelRegistered = () => {
+  // 刷新方法列表
+  loadImputationMethods();
+  // 切换到自定义分类
+  activeCategory.value = 'custom';
+};
 
 const activeCategory = ref<ImputationCategory>("basic");
 const selectedMethodId = ref<ImputationMethodId | null>(null);
@@ -119,7 +142,7 @@ const selectedMethodId = ref<ImputationMethodId | null>(null);
 // 从数据库获取的插补方法
 const imputationMethods = ref<ImputationMethod[]>([]);
 // 硬编码的推荐方法ID
-const recommendedMethodIds = ref<ImputationMethodId[]>(["LINEAR", "ARIMA", "KNN"]);
+const recommendedMethodIds = ref<ImputationMethodId[]>(["LINEAR", "RANDOM_FOREST"]);
 
 // 方法参数缓存
 const methodParamsCache = ref<Record<string, ImputationMethodParam[]>>({});
@@ -189,11 +212,21 @@ const executionLogs = ref<{ id: number; time: string; level: string; message: st
 
 // ==================== 可视化状态 ====================
 const vizSelectedColumn = ref<string>("");
-const vizMode = ref<"timeseries" | "table">("timeseries");
+const vizMode = ref<"timeseries" | "distribution" | "scatter" | "table">("timeseries");
 const timeSeriesChart = ref<HTMLDivElement | null>(null);
 const timeSeriesInstance = shallowRef<echarts.ECharts | null>(null);
+const distributionChart = ref<HTMLDivElement | null>(null);
+const distributionInstance = shallowRef<echarts.ECharts | null>(null);
+const scatterChart = ref<HTMLDivElement | null>(null);
+const scatterInstance = shallowRef<echarts.ECharts | null>(null);
 const allTableData = shallowRef<any[]>([]); // 存储所有表格数据
 const imputedMap = shallowRef<Map<number, { value: number; confidence?: number }>>(new Map()); // 存储插补详情映射
+const allColumnStats = shallowRef<ImputationColumnStat[]>([]); // 所有列的统计报告
+// 缓存当前列数据，供分布图/散点图复用
+const cachedOriginalValues = shallowRef<number[]>([]);
+const cachedImputedValues = shallowRef<number[]>([]);
+const cachedOriginalScatter = shallowRef<[number, number][]>([]); // [epochMs, value]
+const cachedImputedScatter = shallowRef<[number, number][]>([]); // [epochMs, value]
 const currentPage = ref(1);
 const pageSize = ref(20);
 const comparisonTableData = computed(() => {
@@ -280,11 +313,19 @@ const availableColumns = computed<ColumnInfo[]>(() => {
     }));
 });
 
-// 监听 vizMode 变化，切换回时序图时重置大小
+// 监听 vizMode 变化，切换时重绘/重置对应图表
 watch(vizMode, newVal => {
   if (newVal === "timeseries") {
     nextTick(() => {
       timeSeriesInstance.value?.resize();
+    });
+  } else if (newVal === "distribution") {
+    nextTick(() => {
+      updateDistributionChart();
+    });
+  } else if (newVal === "scatter") {
+    nextTick(() => {
+      updateScatterChart();
     });
   }
 });
@@ -476,45 +517,27 @@ const formatDateTime = (dateInput: string | number): string => {
 };
 
 const getHistoryTitle = (result: ImputationResult) => {
-  // 1. 版本信息 - 如果已应用，显示新版本名称；否则显示源版本名称
-  let verLabel = "";
-
-  // 优先使用新生成的版本（如果已应用）
-  if (result.newVersionId) {
-    const newVer = versions.value.find(v => v.id === result.newVersionId);
-    if (newVer) {
-      verLabel = translateRemark(newVer.remark) || getVersionLabel(newVer.stageType, newVer.id);
-    } else {
-      verLabel = `版本#${result.newVersionId}`;
-    }
-  } else {
-    // 未应用时，显示源版本信息
-    const ver = versions.value.find(v => v.id === result.versionId);
-    if (ver) {
-      verLabel = translateRemark(ver.remark) || getVersionLabel(ver.stageType, ver.id);
-    } else {
-      verLabel = `版本#${result.versionId}`;
-    }
+  // 如果有自定义名称，直接使用
+  if (result.name) {
+    return result.name;
   }
 
-  // 2. 方法名称
+  // 默认名称：方法-参数
   const method = getMethodName(result.methodId);
 
-  // 3. 参数 (格式化展示)
+  // 参数 (格式化，如果太多只显示一部分)
   let paramsStr = "";
   if (result.methodParams && Object.keys(result.methodParams).length > 0) {
-    const validParams = Object.values(result.methodParams)
-      .filter(v => v !== null && v !== undefined && v !== "")
-      .join(", ");
-    if (validParams) {
-      paramsStr = ` - [${validParams}]`;
+    const entries = Object.entries(result.methodParams)
+      .filter(([, v]) => v !== null && v !== undefined && v !== "");
+    if (entries.length > 0) {
+      const maxShow = 2;
+      const shown = entries.slice(0, maxShow).map(([, v]) => String(v)).join(", ");
+      paramsStr = entries.length > maxShow ? `${shown}...` : shown;
     }
   }
 
-  // 4. 时间
-  const timeStr = formatDateTime(result.executedAt);
-
-  return `${verLabel} - ${method}${paramsStr} - ${timeStr}`;
+  return paramsStr ? `${method} - ${paramsStr}` : method;
 };
 
 const handleVersionChange = async (versionId: number) => {
@@ -830,6 +853,72 @@ const deleteResult = async (resultId: number) => {
   }
 };
 
+// === 重命名相关 ===
+const startRenaming = (result: any) => {
+  editingResultId.value = result.id;
+  editingName.value = getHistoryTitle(result);
+};
+
+const saveRenaming = async () => {
+  if (!editingResultId.value) return;
+  const name = editingName.value.trim();
+  if (!name) {
+    cancelRenaming();
+    return;
+  }
+  try {
+    await window.electronAPI.invoke(API_ROUTES.IMPUTATION.RENAME_RESULT, {
+      id: editingResultId.value,
+      name,
+    });
+    const target = imputationResults.value.find(r => r.id === editingResultId.value);
+    if (target) target.name = name;
+  } catch (error: any) {
+    ElMessage.error(error.message || "重命名失败");
+  }
+  cancelRenaming();
+};
+
+const cancelRenaming = () => {
+  editingResultId.value = null;
+  editingName.value = "";
+};
+
+// === 拖拽排序相关 ===
+const onDragStart = (index: number) => {
+  dragIndex.value = index;
+};
+
+const onDragOver = (index: number, event: DragEvent) => {
+  event.preventDefault();
+  dragOverIndex.value = index;
+};
+
+const onDrop = async (index: number) => {
+  if (dragIndex.value === null || dragIndex.value === index) {
+    dragIndex.value = null;
+    dragOverIndex.value = null;
+    return;
+  }
+  const list = [...imputationResults.value];
+  const [moved] = list.splice(dragIndex.value, 1);
+  list.splice(index, 0, moved);
+  imputationResults.value = list;
+  dragIndex.value = null;
+  dragOverIndex.value = null;
+  const orders = list.map((r, i) => ({ id: r.id, sortOrder: i }));
+  try {
+    await window.electronAPI.invoke(API_ROUTES.IMPUTATION.REORDER_RESULTS, { orders });
+  } catch (error: any) {
+    ElMessage.error(error.message || "排序失败");
+  }
+};
+
+const onDragEnd = () => {
+  dragIndex.value = null;
+  dragOverIndex.value = null;
+};
+
 const vizColumnOptions = computed(() => {
   if (currentView.value === "result" && currentResultId.value) {
     const result = imputationResults.value.find(r => r.id === currentResultId.value);
@@ -847,8 +936,19 @@ const vizColumnOptions = computed(() => {
 });
 
 const loadResultComparison = async (_resultId: number) => {
-  // 模拟加载对比数据
   await nextTick();
+  // 加载全部列的统计数据，用于逐列统计报告
+  try {
+    const statsRes = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.GET_COLUMN_STATS, _resultId);
+    if (statsRes.success && statsRes.data) {
+      allColumnStats.value = statsRes.data;
+    } else {
+      allColumnStats.value = [];
+    }
+  } catch (e) {
+    console.error("加载列统计失败:", e);
+    allColumnStats.value = [];
+  }
   if (vizColumnOptions.value.length > 0) {
     const newCol = vizColumnOptions.value[0].name;
     // 如果列名没变，watcher不会触发，需要手动更新
@@ -866,6 +966,14 @@ const disposeChart = () => {
   if (timeSeriesInstance.value) {
     timeSeriesInstance.value.dispose();
     timeSeriesInstance.value = null;
+  }
+  if (distributionInstance.value) {
+    distributionInstance.value.dispose();
+    distributionInstance.value = null;
+  }
+  if (scatterInstance.value) {
+    scatterInstance.value.dispose();
+    scatterInstance.value = null;
   }
 };
 
@@ -928,37 +1036,103 @@ const updateComparisonChart = async () => {
 
     const { tableData } = result.data;
 
+    // 辅助：安全地将值转为数字或 null
+    const toNumericValue = (val: any): number | null => {
+      if (val === null || val === undefined || val === '') return null;
+      const num = Number(val);
+      return isFinite(num) ? num : null;
+    };
+
     // 处理数据用于 ECharts
-    const originalData = tableData.map((row: any) => {
-      const timestamp = row._epochMs || row.TIMESTAMP || row.record_time || row.time;
-      const value = row[vizSelectedColumn.value];
-      return [timestamp, value];
-    });
+    // 只使用有效的 _epochMs 时间戳
+    const rawData: [number, number | null][] = tableData
+      .filter((row: any) => row._epochMs != null && isFinite(row._epochMs))
+      .map((row: any) => {
+        const value = toNumericValue(row[vizSelectedColumn.value]);
+        return [row._epochMs as number, value] as [number, number | null];
+      });
+
+    // 按时间戳严格排序
+    rawData.sort((a, b) => a[0] - b[0]);
+
+    // 对含缺失值的数据做安全降采样（按非空段独立采样，保留段间 null 间隔）
+    const downsampleWithGaps = (
+      data: [number, number | null][],
+      maxPoints: number
+    ): [number, number | null][] => {
+      // 将数据分成连续非 null 段
+      const segments: { start: number; end: number }[] = [];
+      let segStart = -1;
+      for (let i = 0; i < data.length; i++) {
+        if (data[i][1] !== null) {
+          if (segStart === -1) segStart = i;
+        } else {
+          if (segStart !== -1) {
+            segments.push({ start: segStart, end: i - 1 });
+            segStart = -1;
+          }
+        }
+      }
+      if (segStart !== -1) segments.push({ start: segStart, end: data.length - 1 });
+
+      const totalNonNull = segments.reduce((sum, s) => sum + (s.end - s.start + 1), 0);
+      if (totalNonNull <= maxPoints) return data;
+
+      const ratio = maxPoints / totalNonNull;
+      const result: [number, number | null][] = [];
+
+      for (let si = 0; si < segments.length; si++) {
+        const seg = segments[si];
+        const segLen = seg.end - seg.start + 1;
+        const targetLen = Math.max(2, Math.round(segLen * ratio));
+
+        if (segLen <= targetLen) {
+          for (let i = seg.start; i <= seg.end; i++) result.push(data[i]);
+        } else {
+          // 均匀采样，保留首末点
+          result.push(data[seg.start]);
+          const step = (segLen - 1) / (targetLen - 1);
+          for (let j = 1; j < targetLen - 1; j++) {
+            result.push(data[seg.start + Math.round(j * step)]);
+          }
+          result.push(data[seg.end]);
+        }
+
+        // 段间添加 null 间隔，防止跨段连线
+        if (si < segments.length - 1) {
+          const gapTs = data[seg.end][0] + 1;
+          result.push([gapTs, null]);
+        }
+      }
+      return result;
+    };
+
+    // 超过 8000 个非空点时降采样
+    const originalData = downsampleWithGaps(rawData, 8000);
 
     // 加载插补结果数据
     let imputedData: any[] = [];
+    let colStat: ImputationColumnStat | undefined;
     if (currentResultId.value) {
       try {
-        const detailsRes = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.GET_DETAILS, {
-          resultId: currentResultId.value,
-          columnName: vizSelectedColumn.value,
-          limit: 100000, // 获取足够多的插补详情
-        });
-
-        if (detailsRes.success && detailsRes.data) {
-          imputedData = detailsRes.data
-            .map((detail: ImputationDetail) => {
-              if (detail.rowIndex >= 0 && detail.rowIndex < tableData.length) {
-                const row = tableData[detail.rowIndex];
-                const timestamp = row._epochMs || row.TIMESTAMP || row.record_time || row.time;
-                return [timestamp, detail.imputedValue];
-              }
-              return null;
-            })
-            .filter((item: any) => item !== null);
+        const statsRes = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.GET_COLUMN_STATS, currentResultId.value);
+        if (statsRes.success && statsRes.data) {
+          colStat = statsRes.data.find((s: ImputationColumnStat) => s.columnName === vizSelectedColumn.value);
+          if (colStat?.imputedRowIndices && colStat?.imputedValues) {
+            imputedData = colStat.imputedRowIndices
+              .map((rowIdx: number, i: number) => {
+                if (rowIdx >= 0 && rowIdx < tableData.length) {
+                  const row = tableData[rowIdx];
+                  if (row._epochMs == null || !isFinite(row._epochMs)) return null;
+                  return [row._epochMs, colStat!.imputedValues![i]];
+                }
+                return null;
+              })
+              .filter((item: any) => item !== null);
+          }
         }
       } catch (error) {
-        console.error("加载插补详情失败:", error);
+        console.error("加载插补统计失败:", error);
       }
     }
 
@@ -1092,10 +1266,8 @@ const updateComparisonChart = async () => {
             itemStyle: { color: "#22c55e" },
             lineStyle: { width: isLargeData ? 1 : 1.5 },
             showSymbol: false,
-            sampling: "lttb",
+            // 不使用 sampling 和 large：它们会忽略 connectNulls:false，导致跨缺失段连线、线条交叉
             connectNulls: false,
-            large: isLargeData,
-            largeThreshold: 2000,
             emphasis: {
               disabled: isLargeData,
             },
@@ -1130,41 +1302,30 @@ const updateComparisonChart = async () => {
     // 创建插补数据的索引映射
     imputedMap.value = new Map();
 
-    if (imputedData.length > 0) {
-      // 重新构建 Map，这里复用之前获取的 imputedData 逻辑有点麻烦，
-      // 但由于 format 变了 (imputedData是[time, value])，我们还是得用 detailsRes 的原始数据
-      // 或者简单点，再次遍历 imputedData? 不，imputedData 已经丢失了 rowIndex
-      // 所以最好是在上面 try catch 里把 detailsRes 保存下来或者同时构建 map
-      // 为简化代码，这里再次调用一次 map 逻辑 (内存操作很快)
-      // 不过为了性能，我们在上面获取 detailsRes 时直接构建 map 更好。
-      // 下面是修复逻辑：
+    // 利用上面已获取的 colStat 构建表格映射
+    if (colStat?.imputedRowIndices && colStat?.imputedValues) {
+      const newMap = new Map<number, { value: number }>();
+      colStat.imputedRowIndices.forEach((rowIdx: number, i: number) => {
+        newMap.set(rowIdx, { value: colStat!.imputedValues![i] });
+      });
+      imputedMap.value = newMap;
     }
 
-    // 修正：在上面获取 detailsRes 时已经构建了 imputedData，这里需要重新获取一次 raw details 用于表格？
-    // 或者我们在上面就一起做。
-    //
-    // 重新获取一下用于表格的 Map (虽然有点重复，但逻辑清晰)
-    if (currentResultId.value) {
-      try {
-        // 使用缓存或者重新请求
-        const detailsRes = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.GET_DETAILS, {
-          resultId: currentResultId.value,
-          columnName: vizSelectedColumn.value,
-          limit: 100000,
-        });
-        if (detailsRes.success && detailsRes.data) {
-          const newMap = new Map<number, { value: number; confidence?: number }>();
-          detailsRes.data.forEach((detail: ImputationDetail) => {
-            newMap.set(detail.rowIndex, {
-              value: detail.imputedValue,
-              confidence: detail.confidence,
-            });
-          });
-          imputedMap.value = newMap;
-        }
-      } catch (e) {
-        console.error("加载插补详情(表格)失败", e);
-      }
+    // 缓存用于分布图和散点图的数据
+    cachedOriginalValues.value = rawData.filter(d => d[1] !== null).map(d => d[1] as number);
+    cachedImputedValues.value = colStat?.imputedValues ? [...colStat.imputedValues] : [];
+    cachedOriginalScatter.value = rawData
+      .filter(d => d[1] !== null)
+      .map(d => [d[0], d[1]] as [number, number]);
+    cachedImputedScatter.value = imputedData as [number, number][];
+
+    // 如果当前模式是分布图或散点图，同步更新
+    if (vizMode.value === "distribution") {
+      await nextTick();
+      updateDistributionChart();
+    } else if (vizMode.value === "scatter") {
+      await nextTick();
+      updateScatterChart();
     }
 
     currentPage.value = 1;
@@ -1175,6 +1336,153 @@ const updateComparisonChart = async () => {
       timeSeriesInstance.value.hideLoading();
     }
   }
+};
+
+// ==================== 分布对比图 ====================
+const updateDistributionChart = () => {
+  const originalVals = cachedOriginalValues.value;
+  const imputedVals = cachedImputedValues.value;
+  if (originalVals.length === 0) return;
+
+  const allVals = [...originalVals, ...imputedVals];
+  const minVal = Math.min(...allVals);
+  const maxVal = Math.max(...allVals);
+  if (minVal === maxVal) return;
+
+  const binCount = Math.min(30, Math.max(10, Math.ceil(Math.sqrt(originalVals.length))));
+  const binWidth = (maxVal - minVal) / binCount;
+
+  const originalBins = new Array(binCount).fill(0);
+  const imputedBins = new Array(binCount).fill(0);
+
+  originalVals.forEach(v => {
+    const idx = Math.min(Math.floor((v - minVal) / binWidth), binCount - 1);
+    originalBins[idx]++;
+  });
+  imputedVals.forEach(v => {
+    const idx = Math.min(Math.floor((v - minVal) / binWidth), binCount - 1);
+    imputedBins[idx]++;
+  });
+
+  const xData = Array.from({ length: binCount }, (_, i) => (minVal + (i + 0.5) * binWidth).toFixed(3));
+
+  if (!distributionChart.value) return;
+  if (!distributionInstance.value || distributionInstance.value.isDisposed()) {
+    distributionInstance.value = echarts.init(distributionChart.value);
+  } else {
+    distributionInstance.value.resize();
+  }
+
+  distributionInstance.value.setOption(
+    {
+      animation: false,
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        formatter: (params: any) => {
+          let html = `<div><b>区间中心: ${params[0].name}</b></div>`;
+          params.forEach((p: any) => {
+            html += `<div>${p.marker}${p.seriesName}: ${p.value} 个</div>`;
+          });
+          return html;
+        },
+      },
+      legend: { data: ["原始数据", "插补值"], bottom: 10 },
+      grid: { left: "3%", right: "4%", bottom: "18%", top: "8%", containLabel: true },
+      xAxis: {
+        type: "category",
+        data: xData,
+        axisLabel: { rotate: 30, fontSize: 10 },
+        name: "数值",
+        nameLocation: "end",
+      },
+      yAxis: { type: "value", name: "频数", nameTextStyle: { fontSize: 11 } },
+      series: [
+        {
+          name: "原始数据",
+          type: "bar",
+          data: originalBins,
+          barMaxWidth: 20,
+          itemStyle: { color: "rgba(34,197,94,0.75)" },
+          emphasis: { itemStyle: { color: "#22c55e" } },
+        },
+        {
+          name: "插补值",
+          type: "bar",
+          data: imputedBins,
+          barMaxWidth: 20,
+          itemStyle: { color: "rgba(245,158,11,0.85)" },
+          emphasis: { itemStyle: { color: "#f59e0b" } },
+        },
+      ],
+    },
+    true
+  );
+  distributionInstance.value.resize();
+};
+
+// ==================== 散点图 ====================
+const updateScatterChart = () => {
+  const originalPts = cachedOriginalScatter.value;
+  const imputedPts = cachedImputedScatter.value;
+  if (originalPts.length === 0) return;
+
+  // 对原始散点进行降采样，防止点太多导致卡顿
+  const MAX_ORIGINAL_SCATTER = 5000;
+  let sampledOriginal = originalPts as any[];
+  if (originalPts.length > MAX_ORIGINAL_SCATTER) {
+    const step = Math.ceil(originalPts.length / MAX_ORIGINAL_SCATTER);
+    sampledOriginal = originalPts.filter((_, i) => i % step === 0);
+  }
+
+  if (!scatterChart.value) return;
+  if (!scatterInstance.value || scatterInstance.value.isDisposed()) {
+    scatterInstance.value = echarts.init(scatterChart.value);
+  } else {
+    scatterInstance.value.resize();
+  }
+
+  scatterInstance.value.setOption(
+    {
+      animation: false,
+      tooltip: {
+        trigger: "item",
+        formatter: (params: any) => {
+          const d = new Date(params.value[0]);
+          return `${d.toLocaleString()}<br/>${params.seriesName}: ${Number(params.value[1]).toFixed(3)}`;
+        },
+      },
+      legend: { data: ["原始数据", "插补值"], bottom: 10 },
+      grid: { left: "3%", right: "4%", bottom: "18%", top: "5%", containLabel: true },
+      xAxis: { type: "time", axisLabel: { fontSize: 10 }, splitNumber: 6 },
+      yAxis: { type: "value", scale: true, axisLabel: { fontSize: 10 } },
+      dataZoom: [
+        { type: "slider", show: true, xAxisIndex: [0], start: 0, end: 100, throttle: 100 },
+        { type: "inside", xAxisIndex: [0], start: 0, end: 100, throttle: 100 },
+      ],
+      series: [
+        {
+          name: "原始数据",
+          type: "scatter",
+          data: sampledOriginal,
+          symbolSize: 3,
+          itemStyle: { color: "rgba(34,197,94,0.5)" },
+          large: true,
+          largeThreshold: 1000,
+        },
+        {
+          name: "插补值",
+          type: "scatter",
+          data: imputedPts,
+          symbolSize: imputedPts.length > 500 ? 4 : 6,
+          itemStyle: { color: "#f59e0b" },
+          z: 10,
+        },
+      ],
+    },
+    true
+  );
+  scatterInstance.value.resize();
 };
 
 // ==================== 保存结果 ====================
@@ -1318,6 +1626,39 @@ onUnmounted(() => {
 
 <template>
   <div class="gap-filling-panel">
+    <!-- eco backdrop decoration -->
+    <div class="eco-backdrop" aria-hidden="true">
+      <svg class="eco-leaf eco-leaf-1" viewBox="0 0 80 80" fill="none">
+        <path d="M10 70 C30 50, 70 10, 10 10 C10 10, 10 50, 50 70 Z" fill="rgba(64,145,108,0.07)" />
+      </svg>
+      <svg class="eco-leaf eco-leaf-2" viewBox="0 0 60 60" fill="none">
+        <path d="M5 55 C25 35, 55 5, 5 5 C5 5, 5 35, 45 55 Z" fill="rgba(82,183,136,0.05)" />
+      </svg>
+      <svg class="eco-leaf eco-leaf-3" viewBox="0 0 50 50" fill="none">
+        <path d="M5 45 C20 30, 45 5, 5 5 C5 5, 5 30, 35 45 Z" fill="rgba(116,198,157,0.06)" />
+      </svg>
+      <svg class="eco-net" viewBox="0 0 200 200" fill="none">
+        <circle cx="40" cy="40" r="3" fill="rgba(64,145,108,0.15)" />
+        <circle cx="100" cy="30" r="2" fill="rgba(64,145,108,0.12)" />
+        <circle cx="160" cy="60" r="3" fill="rgba(64,145,108,0.15)" />
+        <circle cx="70" cy="100" r="2" fill="rgba(64,145,108,0.12)" />
+        <circle cx="130" cy="110" r="3" fill="rgba(64,145,108,0.15)" />
+        <circle cx="50" cy="160" r="2" fill="rgba(64,145,108,0.12)" />
+        <circle cx="150" cy="170" r="3" fill="rgba(64,145,108,0.15)" />
+        <circle cx="100" cy="140" r="2" fill="rgba(64,145,108,0.1)" />
+        <circle cx="180" cy="120" r="2" fill="rgba(64,145,108,0.1)" />
+        <line x1="40" y1="40" x2="100" y2="30" stroke="rgba(64,145,108,0.08)" stroke-width="1" />
+        <line x1="100" y1="30" x2="160" y2="60" stroke="rgba(64,145,108,0.08)" stroke-width="1" />
+        <line x1="40" y1="40" x2="70" y2="100" stroke="rgba(64,145,108,0.08)" stroke-width="1" />
+        <line x1="100" y1="30" x2="130" y2="110" stroke="rgba(64,145,108,0.06)" stroke-width="1" />
+        <line x1="160" y1="60" x2="130" y2="110" stroke="rgba(64,145,108,0.08)" stroke-width="1" />
+        <line x1="70" y1="100" x2="50" y2="160" stroke="rgba(64,145,108,0.08)" stroke-width="1" />
+        <line x1="130" y1="110" x2="150" y2="170" stroke="rgba(64,145,108,0.08)" stroke-width="1" />
+        <line x1="70" y1="100" x2="100" y2="140" stroke="rgba(64,145,108,0.06)" stroke-width="1" />
+        <line x1="130" y1="110" x2="100" y2="140" stroke="rgba(64,145,108,0.06)" stroke-width="1" />
+        <line x1="160" y1="60" x2="180" y2="120" stroke="rgba(64,145,108,0.06)" stroke-width="1" />
+      </svg>
+    </div>
     <!-- 空状态 -->
     <div v-if="!datasetInfo" class="empty-state">
       <div class="empty-icon">📊</div>
@@ -1347,19 +1688,42 @@ onUnmounted(() => {
               <span>暂无草稿记录</span>
             </div>
             <div
-              v-for="result in visibleImputationResults"
+              v-for="(result, index) in visibleImputationResults"
               :key="result.id"
               class="history-item"
-              :class="{ 'history-item--active': currentResultId === result.id }"
+              :class="{
+                'history-item--active': currentResultId === result.id,
+                'history-item--drag-over': dragOverIndex === index,
+              }"
+              draggable="true"
+              @dragstart="onDragStart(index)"
+              @dragover="onDragOver(index, $event)"
+              @drop="onDrop(index)"
+              @dragend="onDragEnd"
               @click="viewResult(result)">
               <div class="history-item-header">
-                <span class="history-time">{{ formatDateTime(result.executedAt) }}</span>
-                <button class="history-delete-btn" @click.stop="deleteResult(result.id)">
-                  <el-icon><Delete /></el-icon>
-                </button>
+                <el-icon class="drag-handle"><Rank /></el-icon>
+                <div v-if="editingResultId === result.id" class="history-name-edit" @click.stop>
+                  <input
+                    v-model="editingName"
+                    class="history-name-input"
+                    @keyup.enter="saveRenaming"
+                    @keyup.escape="cancelRenaming"
+                    @blur="saveRenaming"
+                    autofocus
+                  />
+                </div>
+                <span v-else class="history-method" :title="getHistoryTitle(result)">{{ getHistoryTitle(result) }}</span>
+                <div class="history-item-actions">
+                  <button class="history-action-btn" @click.stop="startRenaming(result)" title="重命名">
+                    <el-icon><Edit /></el-icon>
+                  </button>
+                  <button class="history-action-btn history-delete-btn" @click.stop="deleteResult(result.id)" title="删除">
+                    <el-icon><Delete /></el-icon>
+                  </button>
+                </div>
               </div>
               <div class="history-item-content">
-                <span class="history-method" :title="getHistoryTitle(result)">{{ getHistoryTitle(result) }}</span>
                 <el-tag size="small" :type="getStatusType(result.status)" effect="light" round>
                   {{ getStatusText(result.status) }}
                 </el-tag>
@@ -1558,6 +1922,28 @@ onUnmounted(() => {
                       </div>
                     </div>
                   </div>
+
+                  <!-- 自定义分类下的新增模型按钮 -->
+                  <div
+                    v-if="activeCategory === 'custom'"
+                    class="method-card method-card--add"
+                    @click="showCustomModelDialog = true">
+                    <div class="add-model-content">
+                      <el-icon :size="28"><Plus /></el-icon>
+                      <span class="add-model-text">新增模型</span>
+                      <span class="add-model-hint">注册自训练模型或导入 YAML 配置</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 自定义分类空状态提示 -->
+                <div v-if="activeCategory === 'custom' && filteredMethods.length === 0" class="custom-empty-hint">
+                  <div class="custom-empty-icon">🔌</div>
+                  <p class="custom-empty-title">暂无自定义模型</p>
+                  <p class="custom-empty-desc">
+                    您可以将自己训练好的深度学习模型注册到系统中，支持 PyPOTS、PyTorch、ONNX 等框架。<br />
+                    点击上方「新增模型」按钮开始注册，或通过 YAML 配置文件批量导入。
+                  </p>
                 </div>
               </div>
 
@@ -1813,35 +2199,69 @@ onUnmounted(() => {
         <div v-else-if="currentView === 'result'" class="result-view">
           <div class="result-header">
             <h3 class="result-title">插补结果对比</h3>
-            <button class="back-btn" @click="switchToConfig">
-              <el-icon><Refresh /></el-icon>
-              <span>返回配置</span>
-            </button>
+            <div class="result-header-actions">
+              <template v-if="currentResultId">
+                <button
+                  class="compact-save-btn"
+                  :class="{ 'compact-save-btn--done': isSavedAsVersion }"
+                  :disabled="isSavedAsVersion"
+                  @click="saveAsNewVersion">
+                  <el-icon v-if="!isSavedAsVersion"><Plus /></el-icon>
+                  <el-icon v-else><Check /></el-icon>
+                  <span>{{ isSavedAsVersion ? "已保存为版本" : "保存为新版本" }}</span>
+                </button>
+                <button class="compact-save-btn" @click="saveAsFile">
+                  <el-icon><List /></el-icon>
+                  <span>保存为文件</span>
+                </button>
+              </template>
+              <button class="back-btn" @click="switchToConfig">
+                <el-icon><Refresh /></el-icon>
+                <span>返回配置</span>
+              </button>
+            </div>
           </div>
 
-          <!-- 保存操作区 -->
-          <div class="save-actions" v-if="currentResultId">
-            <div class="save-actions-header">
-              <el-icon><Check /></el-icon>
-              <span>确认并保存结果</span>
+          <!-- 逐列统计报告 -->
+          <div v-if="allColumnStats.length > 0" class="stats-report">
+            <div class="stats-report-header">
+              <el-icon><DataLine /></el-icon>
+              <span>逐列插补统计报告</span>
             </div>
-            <div class="save-buttons">
-              <button
-                class="save-btn save-btn--version"
-                :class="{ 'save-btn--disabled': isSavedAsVersion }"
-                @click="saveAsNewVersion"
-                :disabled="isSavedAsVersion">
-                <el-icon v-if="!isSavedAsVersion"><Plus /></el-icon>
-                <el-icon v-else><Check /></el-icon>
-                <span>{{ isSavedAsVersion ? "已保存为新版本" : "保存为新版本" }}</span>
-                <span class="btn-desc" v-if="!isSavedAsVersion">保存到当前数据集版本历史</span>
-              </button>
-
-              <button class="save-btn save-btn--file" @click="saveAsFile">
-                <el-icon><List /></el-icon>
-                <span>保存为文件</span>
-                <span class="btn-desc">导出为 CSV/Excel 文件</span>
-              </button>
+            <div class="stats-report-table-wrapper">
+              <table class="stats-report-table">
+                <thead>
+                  <tr>
+                    <th>列名</th>
+                    <th>插补前均值</th>
+                    <th>插补后均值</th>
+                    <th>均值变化</th>
+                    <th>插补前标准差</th>
+                    <th>插补后标准差</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template v-for="stat in allColumnStats" :key="stat.columnName">
+                  <tr v-if="stat.missingCount > 0">
+                    <td class="stat-col-name">{{ stat.columnName }}</td>
+                    <td class="stat-num">{{ stat.meanBefore != null ? stat.meanBefore.toFixed(4) : "—" }}</td>
+                    <td class="stat-num">{{ stat.meanAfter != null ? stat.meanAfter.toFixed(4) : "—" }}</td>
+                    <td>
+                      <span
+                        v-if="stat.meanBefore != null && stat.meanAfter != null"
+                        class="stat-delta"
+                        :class="{ 'stat-delta--pos': stat.meanAfter > stat.meanBefore, 'stat-delta--neg': stat.meanAfter < stat.meanBefore }">
+                        {{ stat.meanAfter > stat.meanBefore ? "▲" : stat.meanAfter < stat.meanBefore ? "▼" : "—" }}
+                        {{ Math.abs(stat.meanAfter - stat.meanBefore).toFixed(4) }}
+                      </span>
+                      <span v-else>—</span>
+                    </td>
+                    <td class="stat-num">{{ stat.stdBefore != null ? stat.stdBefore.toFixed(4) : "—" }}</td>
+                    <td class="stat-num">{{ stat.stdAfter != null ? stat.stdAfter.toFixed(4) : "—" }}</td>
+                  </tr>
+                  </template>
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -1866,6 +2286,20 @@ onUnmounted(() => {
               </button>
               <button
                 type="button"
+                :class="['viz-mode-btn', { 'viz-mode-btn--active': vizMode === 'distribution' }]"
+                @click.stop="vizMode = 'distribution'">
+                <el-icon><DataLine /></el-icon>
+                <span>分布图</span>
+              </button>
+              <button
+                type="button"
+                :class="['viz-mode-btn', { 'viz-mode-btn--active': vizMode === 'scatter' }]"
+                @click.stop="vizMode = 'scatter'">
+                <el-icon><Grid /></el-icon>
+                <span>散点图</span>
+              </button>
+              <button
+                type="button"
                 :class="['viz-mode-btn', { 'viz-mode-btn--active': vizMode === 'table' }]"
                 @click.stop="vizMode = 'table'">
                 <el-icon><List /></el-icon>
@@ -1877,6 +2311,16 @@ onUnmounted(() => {
           <!-- 图表区域 -->
           <div v-show="vizMode === 'timeseries'" class="chart-container">
             <div ref="timeSeriesChart" class="chart-area"></div>
+          </div>
+
+          <!-- 分布对比图 -->
+          <div v-show="vizMode === 'distribution'" class="chart-container">
+            <div ref="distributionChart" class="chart-area"></div>
+          </div>
+
+          <!-- 散点图 -->
+          <div v-show="vizMode === 'scatter'" class="chart-container">
+            <div ref="scatterChart" class="chart-area"></div>
           </div>
 
           <!-- 表格视图 -->
@@ -1946,6 +2390,11 @@ onUnmounted(() => {
         @switch-version="handleVersionSwitchFromManager"
         @close="showVersionDrawer = false" />
     </el-drawer>
+
+    <!-- 自定义模型注册对话框 -->
+    <CustomModelDialog
+      v-model:visible="showCustomModelDialog"
+      @registered="onCustomModelRegistered" />
   </div>
 </template>
 
@@ -1955,9 +2404,9 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: #ffffff;
+  background: var(--eco-white);
   border-radius: 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--eco-border-light);
   padding: 16px 20px;
 }
 
@@ -1980,7 +2429,7 @@ onUnmounted(() => {
 .version-bar-label {
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: var(--eco-text-dark);
   white-space: nowrap;
 }
 
@@ -1992,8 +2441,8 @@ onUnmounted(() => {
 
 .version-meta-remark {
   font-size: 12px;
-  color: #6b7280;
-  background: rgba(16, 185, 129, 0.08);
+  color: var(--eco-text-mid);
+  background: rgba(64, 145, 108, 0.08);
   padding: 2px 8px;
   border-radius: 4px;
   white-space: nowrap;
@@ -2009,7 +2458,7 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 12px;
   padding-top: 12px;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid var(--eco-border-light);
 }
 
 .detection-bar-left {
@@ -2039,7 +2488,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 0;
   padding-top: 12px;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid var(--eco-border-light);
 }
 
 .stat-chip {
@@ -2109,10 +2558,10 @@ onUnmounted(() => {
 /* ==================== 模块切换Tab ==================== */
 .module-switch-tabs {
   display: flex;
-  background: #f8fafc;
+  background: var(--eco-surface);
   padding: 4px;
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--eco-border-light);
 }
 
 .module-tab-item {
@@ -2129,13 +2578,13 @@ onUnmounted(() => {
 }
 
 .module-tab-item:hover {
-  background: #ffffff;
-  color: #1e293b;
+  background: var(--eco-white);
+  color: var(--eco-text-dark);
 }
 
 .module-tab-item--active {
-  background: #ffffff;
-  color: #10b981;
+  background: var(--eco-white);
+  color: var(--eco-moss);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
 
@@ -2159,14 +2608,64 @@ onUnmounted(() => {
 
 /* ==================== 主容器 ==================== */
 .gap-filling-panel {
+  /* eco design tokens */
+  --eco-forest: #0d2b1a;
+  --eco-forest-mid: #1b4332;
+  --eco-pine: #2d6a4f;
+  --eco-moss: #40916c;
+  --eco-fern: #52b788;
+  --eco-spring: #74c69d;
+  --eco-leaf: #95d5b2;
+  --eco-mint: #b7e4c7;
+  --eco-mist: #d8f3dc;
+  --eco-ice: #ebfbf0;
+  --eco-surface: #f2fdf5;
+  --eco-white: #f8fffe;
+  --eco-border: #74c69d;
+  --eco-border-light: #b7e4c7;
+  --eco-text-dark: #0d2b1a;
+  --eco-text-mid: #2d6a4f;
+  --eco-text-muted: #52b788;
+
   display: flex;
   height: 100%;
   width: 100%;
-  background: #f8fafc;
+  background: var(--eco-surface);
+  background-image:
+    radial-gradient(ellipse at 10% 20%, rgba(45, 106, 79, 0.07) 0%, transparent 50%),
+    radial-gradient(ellipse at 90% 80%, rgba(64, 145, 108, 0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(116, 198, 157, 0.03) 0%, transparent 70%);
   overflow: hidden;
   padding: 8px;
   gap: 8px;
   box-sizing: border-box;
+  position: relative;
+}
+
+/* eco backdrop decoration */
+.eco-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.eco-leaf {
+  position: absolute;
+}
+
+.eco-leaf-1 { top: -20px; right: -10px; width: 180px; height: 180px; transform: rotate(15deg); }
+.eco-leaf-2 { bottom: 60px; left: -20px; width: 120px; height: 120px; transform: rotate(-30deg); }
+.eco-leaf-3 { top: 40%; right: 5%; width: 80px; height: 80px; transform: rotate(60deg); }
+
+.eco-net {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 220px;
+  height: 220px;
+  opacity: 0.8;
 }
 
 /* ==================== 空状态 ==================== */
@@ -2189,12 +2688,12 @@ onUnmounted(() => {
 .empty-title {
   font-size: 20px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--eco-text-dark);
   margin: 0 0 8px 0;
 }
 
 .empty-description {
-  color: #64748b;
+  color: var(--eco-text-muted);
   font-size: 15px;
   margin: 0;
 }
@@ -2206,13 +2705,15 @@ onUnmounted(() => {
   height: 100%;
   overflow: hidden;
   gap: 8px;
+  position: relative;
+  z-index: 1;
 }
 
 /* ==================== 侧边栏 ==================== */
 .panel-sidebar {
   width: 280px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--eco-white);
+  border: 1px solid var(--eco-border-light);
   border-radius: 10px;
   display: flex;
   flex-direction: column;
@@ -2222,7 +2723,7 @@ onUnmounted(() => {
 
 .sidebar-header {
   padding: 16px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--eco-border-light);
 }
 
 .new-imputation-btn {
@@ -2235,28 +2736,31 @@ onUnmounted(() => {
   font-size: 14px;
   font-weight: 600;
   color: white;
-  background: #10b981;
+  background: linear-gradient(135deg, var(--eco-moss), var(--eco-forest-mid));
   border: none;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(45, 106, 79, 0.3);
 }
 
 .new-imputation-btn:hover {
-  background: #059669;
+  background: linear-gradient(135deg, var(--eco-pine), var(--eco-forest));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(45, 106, 79, 0.4);
 }
 
 /* ==================== 详细表格 ==================== */
 .glass-effect {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--eco-white);
+  border: 1px solid var(--eco-border-light);
   border-radius: 10px;
 }
 
 .detailed-table-card {
-  background: #ffffff;
+  background: var(--eco-white);
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--eco-border-light);
   padding: 20px;
 }
 
@@ -2273,9 +2777,9 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 80px 0;
-  background: #ffffff;
+  background: var(--eco-white);
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--eco-border-light);
   margin-top: 20px;
 }
 
@@ -2291,12 +2795,12 @@ onUnmounted(() => {
 
 .illustration-icon {
   font-size: 48px;
-  color: #10b981;
+  color: var(--eco-moss);
   z-index: 2;
-  background: white;
+  background: var(--eco-white);
   padding: 16px;
   border-radius: 50%;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--eco-border-light);
   transition: transform 0.2s ease;
 }
 
@@ -2316,7 +2820,7 @@ onUnmounted(() => {
 .circles .circle {
   position: absolute;
   border-radius: 50%;
-  border: 1px solid #10b981;
+  border: 1px solid var(--eco-moss);
   opacity: 0;
   animation: ripple 2s infinite;
 }
@@ -2351,13 +2855,13 @@ onUnmounted(() => {
 .empty-hint-title {
   font-size: 20px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--eco-text-dark);
   margin-bottom: 8px;
 }
 
 .empty-hint-desc {
   text-align: center;
-  color: #64748b;
+  color: var(--eco-text-muted);
   font-size: 15px;
   line-height: 1.6;
 }
@@ -2398,34 +2902,66 @@ onUnmounted(() => {
   margin-bottom: 8px;
   border: 1px solid transparent;
   transition: all 0.2s ease;
-  background: #f8fafc;
+  background: var(--eco-surface);
 }
 
 .history-item:hover {
-  background: #ffffff;
-  border-color: #e2e8f0;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  background: var(--eco-ice);
+  border-color: var(--eco-border-light);
+  box-shadow: 0 2px 8px rgba(45, 106, 79, 0.06);
 }
 
 .history-item--active,
 .history-item.active {
-  background: #f8fffb;
-  border-color: #86efac;
+  background: var(--eco-mist);
+  border-color: var(--eco-border);
 }
 
 .history-item-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 6px;
   margin-bottom: 6px;
 }
 
-.history-time {
-  font-size: 11px;
+.drag-handle {
+  cursor: grab;
   color: #9ca3af;
+  font-size: 14px;
+  flex-shrink: 0;
 }
 
-.history-delete-btn {
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.history-item--drag-over {
+  border-top: 2px solid #3b82f6 !important;
+}
+
+.history-name-edit {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-name-input {
+  width: 100%;
+  padding: 2px 6px;
+  border: 1px solid var(--eco-border);
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+  background: var(--eco-white);
+}
+
+.history-item-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.history-action-btn {
   padding: 4px;
   background: transparent;
   border: none;
@@ -2435,9 +2971,14 @@ onUnmounted(() => {
   transition: all 0.2s ease;
 }
 
+.history-action-btn:hover {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+
 .history-delete-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1) !important;
+  color: #ef4444 !important;
 }
 
 .history-item-content {
@@ -2450,7 +2991,12 @@ onUnmounted(() => {
 .history-method {
   font-size: 13px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--eco-text-dark);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .history-item-stats {
@@ -2468,8 +3014,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--eco-white);
+  border: 1px solid var(--eco-border-light);
   border-radius: 10px;
 }
 
@@ -2484,14 +3030,14 @@ onUnmounted(() => {
 }
 
 .version-icon {
-  color: #10b981;
+  color: var(--eco-moss);
   font-size: 16px;
 }
 
 .version-selector :deep(.el-input__wrapper) {
-  background-color: #ffffff;
+  background-color: var(--eco-white);
   box-shadow: none;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--eco-border-light);
 }
 
 .version-option-item {
@@ -2543,7 +3089,7 @@ onUnmounted(() => {
 }
 
 .detect-btn:hover {
-  background: #059669;
+  background: var(--eco-pine);
 }
 
 .section-header {
@@ -2556,7 +3102,7 @@ onUnmounted(() => {
 .section-title {
   font-size: 15px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--eco-text-dark);
   display: flex;
   align-items: center;
 }
@@ -2571,7 +3117,7 @@ onUnmounted(() => {
 .table-title {
   font-size: 15px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--eco-text-dark);
   margin: 0;
   display: flex;
   align-items: center;
@@ -2582,7 +3128,7 @@ onUnmounted(() => {
   display: block;
   width: 4px;
   height: 16px;
-  background: #10b981;
+  background: var(--eco-moss);
   border-radius: 2px;
   margin-right: 8px;
 }
@@ -2595,7 +3141,7 @@ onUnmounted(() => {
 .table-container {
   overflow-x: auto;
   border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--eco-border-light);
 }
 
 .column-stats-table {
@@ -2605,12 +3151,12 @@ onUnmounted(() => {
 }
 
 .column-stats-table thead th {
-  background: #f8fafc;
+  background: var(--eco-surface);
   padding: 14px 16px;
   text-align: left;
   font-weight: 600;
-  color: #64748b;
-  border-bottom: 1px solid #e2e8f0;
+  color: var(--eco-text-mid);
+  border-bottom: 1px solid var(--eco-border-light);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -2625,12 +3171,12 @@ onUnmounted(() => {
 
 .column-stats-table tbody td {
   padding: 12px 16px;
-  border-bottom: 1px solid #e2e8f0;
-  background: #ffffff;
+  border-bottom: 1px solid var(--eco-border-light);
+  background: var(--eco-white);
 }
 
 .column-stats-table tbody tr:hover td {
-  background: #ecfdf5;
+  background: var(--eco-ice);
 }
 
 .column-stats-table tbody tr.has-missing td {
@@ -2667,7 +3213,7 @@ onUnmounted(() => {
 
 .column-name-text {
   font-weight: 500;
-  color: #1e293b;
+  color: var(--eco-text-dark);
 }
 
 .missing-count {
@@ -2711,7 +3257,7 @@ onUnmounted(() => {
 
 .rate-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(90deg, var(--eco-fern) 0%, var(--eco-moss) 100%);
   border-radius: 3px;
   transition: width 0.5s ease;
 }
@@ -2765,9 +3311,9 @@ onUnmounted(() => {
 
 /* ==================== 方法选择区 ==================== */
 .method-selection-section {
-  background: #ffffff;
+  background: var(--eco-white);
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--eco-border-light);
   padding: 20px;
 }
 
@@ -2778,7 +3324,7 @@ onUnmounted(() => {
 .section-title {
   font-size: 15px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--eco-text-dark);
   display: flex;
   align-items: center;
   margin: 0;
@@ -2789,7 +3335,7 @@ onUnmounted(() => {
   display: block;
   width: 4px;
   height: 16px;
-  background: #10b981;
+  background: var(--eco-moss);
   border-radius: 2px;
   margin-right: 8px;
 }
@@ -2808,21 +3354,21 @@ onUnmounted(() => {
   padding: 8px 14px;
   font-size: 13px;
   font-weight: 500;
-  color: #64748b;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  color: var(--eco-text-muted);
+  background: var(--eco-white);
+  border: 1px solid var(--eco-border-light);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .category-tab:hover {
-  border-color: #cbd5e1;
-  color: #1e293b;
+  border-color: var(--eco-border);
+  color: var(--eco-text-dark);
 }
 
 .category-tab--active {
-  background: #10b981;
+  background: linear-gradient(135deg, var(--eco-moss), var(--eco-forest-mid));
   color: white;
   border-color: transparent;
 }
@@ -2840,22 +3386,23 @@ onUnmounted(() => {
 .method-card {
   position: relative;
   padding: 14px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--eco-white);
+  border: 1px solid var(--eco-border-light);
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .method-card:hover {
-  border-color: #86efac;
-  background: #f8fffb;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  border-color: var(--eco-border);
+  background: var(--eco-ice);
+  box-shadow: 0 2px 8px rgba(45, 106, 79, 0.08);
 }
 
 .method-card--selected {
-  background: #f8fffb;
-  border-color: #86efac;
+  background: var(--eco-mist);
+  border-color: var(--eco-moss);
+  box-shadow: 0 0 0 2px rgba(64, 145, 108, 0.15);
 }
 
 .method-card--unavailable {
@@ -2894,7 +3441,7 @@ onUnmounted(() => {
 .method-card-name {
   font-size: 14px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--eco-text-dark);
 }
 
 .method-card-tags {
@@ -2915,8 +3462,8 @@ onUnmounted(() => {
 }
 
 .tag--time-fast {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
+  background: rgba(64, 145, 108, 0.1);
+  color: var(--eco-moss);
 }
 
 .tag--time-medium {
@@ -2931,7 +3478,7 @@ onUnmounted(() => {
 
 .method-card-description {
   font-size: 12px;
-  color: #64748b;
+  color: var(--eco-text-muted);
   line-height: 1.5;
   margin: 0 0 10px 0;
 }
@@ -2948,7 +3495,7 @@ onUnmounted(() => {
 }
 
 .accuracy--high {
-  color: #10b981;
+  color: var(--eco-moss);
   font-weight: 600;
 }
 
@@ -2963,14 +3510,14 @@ onUnmounted(() => {
 }
 
 .selected-indicator {
-  color: #10b981;
+  color: var(--eco-moss);
 }
 
 /* ==================== 参数配置区 ==================== */
 .params-config-section {
-  background: #ffffff;
+  background: var(--eco-white);
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--eco-border-light);
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -3012,7 +3559,7 @@ onUnmounted(() => {
 }
 
 .radio-item input {
-  accent-color: #10b981;
+  accent-color: var(--eco-moss);
 }
 
 .column-list {
@@ -3025,8 +3572,8 @@ onUnmounted(() => {
 
 .column-item {
   padding: 8px 10px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--eco-white);
+  border: 1px solid var(--eco-border-light);
   border-radius: 6px;
 }
 
@@ -3038,7 +3585,7 @@ onUnmounted(() => {
 }
 
 .checkbox-item input {
-  accent-color: #10b981;
+  accent-color: var(--eco-moss);
 }
 
 .column-info {
@@ -3121,8 +3668,8 @@ onUnmounted(() => {
 
 .param-input:focus {
   outline: none;
-  border-color: #10b981;
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+  border-color: var(--eco-moss);
+  box-shadow: 0 0 0 3px rgba(64, 145, 108, 0.1);
 }
 
 .param-input-text {
@@ -3157,17 +3704,20 @@ onUnmounted(() => {
   font-size: 15px;
   font-weight: 600;
   color: white;
-  background: #10b981;
+  background: linear-gradient(135deg, var(--eco-moss), var(--eco-forest-mid));
   border: none;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
   height: 36px;
   min-width: 110px;
+  box-shadow: 0 2px 10px rgba(45, 106, 79, 0.35);
 }
 
 .execute-btn:hover:not(:disabled) {
-  background: #059669;
+  background: linear-gradient(135deg, var(--eco-pine), var(--eco-forest));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(45, 106, 79, 0.45);
 }
 
 .execute-btn:disabled {
@@ -3193,9 +3743,9 @@ onUnmounted(() => {
 
 /* ==================== 进度区 ==================== */
 .progress-section {
-  background: #ffffff;
+  background: var(--eco-white);
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--eco-border-light);
   padding: 20px;
 }
 
@@ -3209,7 +3759,7 @@ onUnmounted(() => {
 .progress-title {
   font-size: 15px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--eco-text-dark);
   margin: 0;
 }
 
@@ -3259,13 +3809,13 @@ onUnmounted(() => {
 
 .stage-item--active {
   opacity: 1;
-  background: #ecfdf5;
-  border: 1px solid #86efac;
+  background: var(--eco-ice);
+  border: 1px solid var(--eco-border);
 }
 
 .stage-item--completed {
   opacity: 1;
-  background: rgba(220, 252, 231, 0.6);
+  background: var(--eco-mist);
 }
 
 .stage-icon {
@@ -3294,7 +3844,7 @@ onUnmounted(() => {
 
 .progress-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(90deg, var(--eco-fern) 0%, var(--eco-moss) 100%);
   border-radius: 5px;
   transition: width 0.3s ease;
   position: relative;
@@ -3333,7 +3883,7 @@ onUnmounted(() => {
 }
 
 .status-dot--completed {
-  background-color: #10b981;
+  background-color: var(--eco-moss);
 }
 
 @keyframes pulse {
@@ -3369,17 +3919,17 @@ onUnmounted(() => {
 }
 
 .save-btn--disabled .el-icon {
-  color: #10b981;
+  color: var(--eco-moss);
 }
 
 .save-btn--disabled span:first-of-type {
-  color: #10b981;
+  color: var(--eco-moss);
 }
 
 .progress-text {
   font-size: 14px;
   font-weight: 600;
-  color: #10b981;
+  color: var(--eco-moss);
   min-width: 45px;
   text-align: right;
 }
@@ -3467,6 +4017,120 @@ onUnmounted(() => {
   flex: 1;
 }
 
+/* ==================== 逐列统计报告 ==================== */
+.stats-report {
+  background: var(--eco-white);
+  border-radius: 10px;
+  border: 1px solid var(--eco-border-light);
+  overflow: hidden;
+}
+
+.stats-report-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--eco-surface);
+  border-bottom: 1px solid var(--eco-border-light);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--eco-text-mid);
+}
+
+.stats-report-table-wrapper {
+  overflow-x: auto;
+}
+
+.stats-report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.stats-report-table th {
+  padding: 9px 14px;
+  background: var(--eco-surface);
+  font-weight: 600;
+  color: var(--eco-text-mid);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-bottom: 1px solid var(--eco-border-light);
+  text-align: left;
+}
+
+.stats-report-table td {
+  padding: 9px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.stats-report-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.stats-report-table tbody tr:hover td {
+  background: var(--eco-surface);
+}
+
+.stat-col-name {
+  font-weight: 600;
+  color: var(--eco-text-dark);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat-missing {
+  color: #ef4444;
+  font-weight: 500;
+  font-family: monospace;
+}
+
+.stat-imputed {
+  color: #3b82f6;
+  font-weight: 500;
+  font-family: monospace;
+}
+
+.stat-num {
+  font-family: monospace;
+  color: #374151;
+}
+
+.stat-rate-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.stat-rate-badge--low {
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+}
+.stat-rate-badge--mid {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+.stat-rate-badge--high {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+.stat-delta {
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 600;
+}
+.stat-delta--pos {
+  color: var(--eco-pine);
+}
+.stat-delta--neg {
+  color: #dc2626;
+}
+
 .result-header {
   display: flex;
   justify-content: space-between;
@@ -3476,7 +4140,7 @@ onUnmounted(() => {
 .result-title {
   font-size: 20px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--eco-text-dark);
   margin: 0;
 }
 
@@ -3487,9 +4151,9 @@ onUnmounted(() => {
   padding: 8px 14px;
   font-size: 13px;
   font-weight: 600;
-  color: #64748b;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  color: var(--eco-text-muted);
+  background: var(--eco-white);
+  border: 1px solid var(--eco-border-light);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -3497,9 +4161,9 @@ onUnmounted(() => {
 }
 
 .back-btn:hover {
-  background: #ecfdf5;
-  border-color: #86efac;
-  color: #059669;
+  background: var(--eco-mist);
+  border-color: var(--eco-border);
+  color: var(--eco-pine);
 }
 
 .viz-controls {
@@ -3507,9 +4171,9 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 14px;
-  background: #ffffff;
+  background: var(--eco-white);
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--eco-border-light);
 }
 
 .viz-column-select {
@@ -3527,15 +4191,15 @@ onUnmounted(() => {
 .viz-select {
   padding: 8px 12px;
   font-size: 13px;
-  border: 1px solid rgba(209, 213, 219, 1);
+  border: 1px solid var(--eco-border-light);
   border-radius: 6px;
-  background: white;
+  background: var(--eco-white);
   min-width: 200px;
 }
 
 .viz-select:focus {
   outline: none;
-  border-color: #10b981;
+  border-color: var(--eco-moss);
 }
 
 .viz-mode-switch {
@@ -3550,29 +4214,29 @@ onUnmounted(() => {
   padding: 8px 14px;
   font-size: 12px;
   font-weight: 500;
-  color: #64748b;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  color: var(--eco-text-muted);
+  background: var(--eco-white);
+  border: 1px solid var(--eco-border-light);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .viz-mode-btn:hover {
-  border-color: #cbd5e1;
-  color: #1e293b;
+  border-color: var(--eco-border);
+  color: var(--eco-text-dark);
 }
 
 .viz-mode-btn--active {
-  background: #10b981;
+  background: linear-gradient(135deg, var(--eco-moss), var(--eco-forest-mid));
   color: white;
   border-color: transparent;
 }
 
 .chart-container {
-  background: #ffffff;
+  background: var(--eco-white);
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--eco-border-light);
   padding: 16px;
   min-height: 350px;
 }
@@ -3583,9 +4247,9 @@ onUnmounted(() => {
 }
 
 .table-container {
-  background: #ffffff;
+  background: var(--eco-white);
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--eco-border-light);
   overflow: hidden;
 }
 
@@ -3599,13 +4263,13 @@ onUnmounted(() => {
 .comparison-table td {
   padding: 10px 14px;
   text-align: left;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--eco-border-light);
 }
 
 .comparison-table th {
-  background: #f8fafc;
+  background: var(--eco-surface);
   font-weight: 600;
-  color: #64748b;
+  color: var(--eco-text-mid);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -3650,7 +4314,7 @@ onUnmounted(() => {
 
 .confidence-fill {
   height: 100%;
-  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(90deg, var(--eco-fern) 0%, var(--eco-moss) 100%);
   border-radius: 3px;
 }
 
@@ -3705,63 +4369,37 @@ onUnmounted(() => {
   background: #ef4444;
 }
 
-.save-actions {
-  background: #ffffff;
-  border-radius: 10px;
-  border: 1px solid #86efac;
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
-.save-actions-header {
+.result-header-actions {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #059669;
-  margin-bottom: 12px;
 }
 
-.save-buttons {
+.compact-save-btn {
   display: flex;
-  gap: 16px;
-}
-
-.save-btn {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  background: #ffffff;
+  gap: 5px;
+  padding: 7px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--eco-pine);
+  background: var(--eco-ice);
+  border: 1px solid var(--eco-border);
+  border-radius: 7px;
   cursor: pointer;
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
-.save-btn:hover {
-  border-color: #86efac;
-  background: #ecfdf5;
+.compact-save-btn:hover:not(:disabled) {
+  background: var(--eco-mist);
+  border-color: var(--eco-moss);
 }
 
-.save-btn .el-icon {
-  font-size: 24px;
-  color: #10b981;
-  margin-bottom: 4px;
-}
-
-.save-btn span:first-of-type {
-  font-size: 14px;
-  font-weight: 600;
-  color: #374151;
-}
-
-.save-btn .btn-desc {
-  font-size: 11px;
-  color: #9ca3af;
+.compact-save-btn:disabled,
+.compact-save-btn--done {
+  opacity: 0.7;
+  cursor: default;
 }
 
 .legend-text {
@@ -3799,11 +4437,11 @@ onUnmounted(() => {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(156, 163, 175, 0.3);
+  background: rgba(64, 145, 108, 0.25);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(156, 163, 175, 0.5);
+  background: rgba(64, 145, 108, 0.45);
 }
 
 .table-pagination {
@@ -3848,5 +4486,68 @@ onUnmounted(() => {
   .viz-mode-switch {
     justify-content: center;
   }
+}
+
+/* ==================== 自定义模型相关样式 ==================== */
+.method-card--add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  border: 2px dashed #cbd5e1;
+  background: #fafbfc;
+  cursor: pointer;
+}
+
+.method-card--add:hover {
+  border-color: var(--eco-moss);
+  background: var(--eco-ice);
+}
+
+.add-model-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--eco-text-muted);
+}
+
+.method-card--add:hover .add-model-content {
+  color: var(--eco-moss);
+}
+
+.add-model-text {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.add-model-hint {
+  font-size: 11px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.custom-empty-hint {
+  text-align: center;
+  padding: 24px 16px 8px;
+}
+
+.custom-empty-icon {
+  font-size: 36px;
+  margin-bottom: 8px;
+}
+
+.custom-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #475569;
+  margin: 0 0 8px;
+}
+
+.custom-empty-desc {
+  font-size: 13px;
+  color: #94a3b8;
+  line-height: 1.6;
+  margin: 0;
 }
 </style>

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch, onMounted, nextTick } from "vue";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { translateRemark } from "@/utils/versionUtils";
 import type { DatasetVersionInfo } from "@shared/types/projectInterface";
+import { ElMessageBox } from "element-plus";
 
 const props = defineProps<{
   datasetId: string;
@@ -114,6 +115,63 @@ const formatTime = (date: string | number) => {
   return new Date(date).toLocaleString();
 };
 
+// 版本管理操作
+const editingVersionId = ref<number | null>(null);
+const editingRemark = ref("");
+const editInputRef = ref<HTMLInputElement | null>(null);
+
+const hasChildren = (nodeId: number) => {
+  return flattenedVersions.value.some(n => n.data.parentVersionId === nodeId);
+};
+
+const isRootRaw = (node: VersionNode) => {
+  return node.data.stageType === "RAW" && !node.data.parentVersionId;
+};
+
+const canDelete = (node: VersionNode) => {
+  return !isRootRaw(node) && !hasChildren(node.id);
+};
+
+const startRename = (node: VersionNode, event: Event) => {
+  event.stopPropagation();
+  editingVersionId.value = node.id;
+  editingRemark.value = node.data.remark || "";
+  nextTick(() => editInputRef.value?.focus());
+};
+
+const confirmRename = async (node: VersionNode) => {
+  if (editingVersionId.value !== node.id) return;
+  const newRemark = editingRemark.value.trim();
+  try {
+    await datasetStore.updateVersionRemark(node.id, newRemark);
+    // 同步本地 versions
+    const v = versions.value.find(v => v.id === node.id);
+    if (v) v.remark = newRemark;
+  } catch {
+    // error already shown by store
+  } finally {
+    editingVersionId.value = null;
+  }
+};
+
+const cancelRename = () => {
+  editingVersionId.value = null;
+};
+
+const confirmDelete = (node: VersionNode, event: Event) => {
+  event.stopPropagation();
+  ElMessageBox.confirm(
+    `确定要删除版本 #${node.id} (${getStageLabel(node.data.stageType)}) 吗？此操作不可恢复。`,
+    "删除版本",
+    { confirmButtonText: "删除", cancelButtonText: "取消", type: "warning" }
+  )
+    .then(async () => {
+      await datasetStore.deleteVersion(node.id);
+      versions.value = datasetStore.versions;
+    })
+    .catch(() => {});
+};
+
 watch(
   () => props.isExpanded,
   expanded => {
@@ -172,14 +230,44 @@ onMounted(() => {
           {{ getStageLabel(node.data.stageType).charAt(0) }}
         </div>
 
-        <!-- Name -->
-        <div class="version-name">
-          {{ translateRemark(node.data.remark) || `v${node.id}` }}
-        </div>
+        <!-- 内联编辑备注 -->
+        <template v-if="editingVersionId === node.id">
+          <input
+            ref="editInputRef"
+            class="version-remark-input"
+            v-model="editingRemark"
+            @keyup.enter.stop="confirmRename(node)"
+            @keyup.escape.stop="cancelRename"
+            @blur="confirmRename(node)"
+            @click.stop />
+        </template>
+        <template v-else>
+          <!-- Name -->
+          <div class="version-name">
+            {{ translateRemark(node.data.remark) || `v${node.id}` }}
+          </div>
 
-        <div class="version-stage" :style="{ color: getStageColor(node.data.stageType) }">
-          {{ getStageLabel(node.data.stageType) }}
-        </div>
+          <div class="version-stage" :style="{ color: getStageColor(node.data.stageType) }">
+            {{ getStageLabel(node.data.stageType) }}
+          </div>
+
+          <!-- 操作按钮（hover 显示） -->
+          <div class="version-actions">
+            <button
+              class="version-action-btn"
+              title="重命名"
+              @click.stop="startRename(node, $event)">
+              ✎
+            </button>
+            <button
+              v-if="canDelete(node)"
+              class="version-action-btn version-action-danger"
+              title="删除版本"
+              @click.stop="confirmDelete(node, $event)">
+              ×
+            </button>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -299,5 +387,58 @@ onMounted(() => {
   padding: 6px 8px;
   font-size: 11px;
   color: #94a3b8;
+}
+
+/* 操作按钮区域 - hover 时显示 */
+.version-actions {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.version-row:hover .version-actions {
+  display: flex;
+}
+
+.version-action-btn {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #94a3b8;
+  padding: 0;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  line-height: 1;
+}
+
+.version-action-btn:hover {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.version-action-btn.version-action-danger:hover {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+/* 内联编辑输入框 */
+.version-remark-input {
+  flex: 1;
+  height: 20px;
+  font-size: 11px;
+  color: #1f2937;
+  border: 1px solid #10b981;
+  border-radius: 4px;
+  padding: 0 4px;
+  outline: none;
+  background: #fff;
+  min-width: 0;
 }
 </style>

@@ -8,12 +8,12 @@
 export type ImputationMethodId = 
   | 'MEAN' | 'MEDIAN' | 'MODE' | 'FORWARD_FILL' | 'BACKWARD_FILL'
   | 'LINEAR' | 'SPLINE' | 'POLYNOMIAL' | 'SEASONAL' | 'MDS_REDDYPROC'
-  | 'ARIMA' | 'SARIMA' | 'ETS'
-  | 'KNN' | 'RANDOM_FOREST' | 'GRADIENT_BOOSTING' | 'MICE' | 'MISSFOREST'
-  | 'TIMEMIXER_PP' | 'LSTM' | 'GRU' | 'TRANSFORMER' | 'VAE' | 'GAIN';
+  | 'RANDOM_FOREST' | 'XGBOOST'
+  | 'ITRANSFORMER' | 'SAITS' | 'BITS' | 'TIMEMIXER'
+  | `CUSTOM_${string}`;
 
 /** 插补方法分类 */
-export type ImputationCategory = 'basic' | 'statistical' | 'timeseries' | 'ml' | 'dl';
+export type ImputationCategory = 'basic' | 'statistical' | 'ml' | 'dl' | 'custom';
 
 /** 插补结果状态 */
 export type ImputationResultStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'APPLIED' | 'REVERTED';
@@ -96,6 +96,7 @@ export interface ImputationResult {
   versionId: number;
   newVersionId?: number;
   methodId: ImputationMethodId;
+  name?: string;
   targetColumns: string[];
   methodParams?: Record<string, any>;
   totalMissing: number;
@@ -105,23 +106,6 @@ export interface ImputationResult {
   status: ImputationResultStatus;
   errorMessage?: string;
   executedAt: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/** 插补详情 */
-export interface ImputationDetail {
-  id: number;
-  resultId: number;
-  columnName: string;
-  rowIndex: number;
-  timePoint?: string;
-  originalValue?: number | null;
-  imputedValue: number;
-  confidence?: number;
-  imputationMethod?: string;
-  neighborValues?: number[];
-  isApplied: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -141,6 +125,8 @@ export interface ImputationColumnStat {
   minImputed?: number;
   maxImputed?: number;
   avgConfidence?: number;
+  imputedRowIndices?: number[];
+  imputedValues?: number[];
   createdAt: string;
   updatedAt: string;
 }
@@ -210,14 +196,6 @@ export interface GetImputationResultsRequest {
   datasetId: number;
   versionId?: number;
   status?: ImputationResultStatus;
-  limit?: number;
-  offset?: number;
-}
-
-/** 获取插补详情请求 */
-export interface GetImputationDetailsRequest {
-  resultId: number;
-  columnName?: string;
   limit?: number;
   offset?: number;
 }
@@ -325,6 +303,7 @@ export interface ImputationResultRow {
   version_id: number;
   new_version_id: number | null;
   method_id: string;
+  name: string | null;
   target_columns: string;
   method_params: string | null;
   total_missing: number;
@@ -337,24 +316,6 @@ export interface ImputationResultRow {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
-  is_del: number;
-}
-
-/** 插补详情数据库行 */
-export interface ImputationDetailRow {
-  id: number;
-  result_id: number;
-  column_name: string;
-  row_index: number;
-  time_point: string | null;
-  original_value: number | null;
-  imputed_value: number;
-  confidence: number | null;
-  imputation_method: string | null;
-  neighbor_values: string | null;
-  is_applied: number;
-  created_at: string;
-  updated_at: string;
   is_del: number;
 }
 
@@ -373,6 +334,8 @@ export interface ImputationColumnStatRow {
   min_imputed: number | null;
   max_imputed: number | null;
   avg_confidence: number | null;
+  imputed_row_indices: string | null;
+  imputed_values: string | null;
   created_at: string;
   updated_at: string;
   is_del: number;
@@ -399,3 +362,53 @@ export interface ImputationModelRow {
   deleted_at: string | null;
   is_del: number;
 }
+
+// ==================== 自定义模型注册 ====================
+
+/** 自定义模型参数定义 */
+export interface CustomModelParamDef {
+  paramKey: string;
+  paramName: string;
+  paramType: 'number' | 'select' | 'boolean' | 'string';
+  defaultValue: string;
+  minValue?: number;
+  maxValue?: number;
+  stepValue?: number;
+  options?: { label: string; value: string }[];
+  tooltip?: string;
+  isRequired: boolean;
+  isAdvanced: boolean;
+}
+
+/** 自定义模型注册配置 */
+export interface CustomModelConfig {
+  /** 模型名称（用户可读） */
+  modelName: string;
+  /** 模型ID（自动生成 CUSTOM_xxx） */
+  methodId?: ImputationMethodId;
+  /** 模型描述 */
+  description: string;
+  /** 模型文件路径（.pypots / .pt / .onnx 等） */
+  modelFilePath: string;
+  /** 推理脚本路径（Python 脚本） */
+  inferenceScriptPath: string;
+  /** 模型框架 */
+  framework: 'pypots' | 'pytorch' | 'onnx' | 'other';
+  /** 模型需要的输入列 */
+  featureColumns: string[];
+  /** 目标插补列 */
+  targetColumn?: string;
+  /** 时间列名称 */
+  timeColumn?: string;
+  /** 序列长度（时序模型需要） */
+  seqLen?: number;
+  /** 预估耗时 */
+  estimatedTime: EstimatedTime;
+  /** 准确度等级 */
+  accuracy: AccuracyLevel;
+  /** 自定义参数定义 */
+  params: CustomModelParamDef[];
+}
+
+/** 自定义模型导入方式 */
+export type CustomModelImportMode = 'file' | 'yaml';

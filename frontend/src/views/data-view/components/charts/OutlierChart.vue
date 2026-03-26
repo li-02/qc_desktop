@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from "vue";
+import { ref, onMounted, watch, computed, nextTick } from "vue";
 import * as echarts from "echarts";
 import { useResizeObserver } from "@vueuse/core";
 import type { OutlierDetail } from "@shared/types/database";
@@ -57,6 +57,15 @@ const availableColumns = computed(() => {
   const cols = new Set(props.details.map(d => d.column_name || (d as any).columnName || 'Unknown'));
   return Array.from(cols);
 });
+
+// 获取默认选中列：优先选择有异常值的列
+const getDefaultColumn = () => {
+  if (props.summary?.columnResults) {
+    const colWithOutlier = props.summary.columnResults.find(c => c.outlierCount > 0);
+    if (colWithOutlier) return colWithOutlier.columnName;
+  }
+  return availableColumns.value[0] || "";
+};
 
 // 获取当前列的阈值信息
 const currentThresholds = computed(() => {
@@ -255,7 +264,15 @@ const initScatterChart = () => {
       scale: true,
       splitLine: { show: false },
       axisLine: { lineStyle: { color: '#e5e7eb' } },
-      axisLabel: { color: '#6b7280' }
+      axisLabel: {
+        color: '#6b7280',
+        formatter: hasTimeData
+          ? (value: number) => {
+              const d = new Date(value);
+              return d.getFullYear() + '年' + (d.getMonth() + 1) + '月';
+            }
+          : undefined
+      }
     },
     yAxis: {
       type: 'value',
@@ -465,13 +482,14 @@ watch(() => props.summary, () => {
   }
 }, { deep: true });
 
-watch(() => props.details, () => {
+watch(() => props.details, async () => {
   if (props.details.length) {
     // 数据更新时，如果没有选中或者选中不在新数据中，重置选中
     if (!selectedColumn.value || !availableColumns.value.includes(selectedColumn.value)) {
-       selectedColumn.value = availableColumns.value[0] || "";
+       selectedColumn.value = getDefaultColumn();
     }
-    // 更新详情图表
+    // 等待 v-if 渲染完成后再初始化（details.length>0 控制了 detailChartRef 的 DOM 存在）
+    await nextTick();
     updateDetailChart();
   }
 }, { deep: true });
@@ -492,7 +510,7 @@ watch(chartRef, () => {
 });
 
 watch(detailChartRef, () => {
-  if (detailChartRef.value) {
+  if (detailChartRef.value && selectedColumn.value) {
     setTimeout(updateDetailChart, 0);
   }
 });
@@ -510,7 +528,7 @@ onMounted(() => {
   if (props.summary) initBarChart();
   if (props.details.length) {
      if (!selectedColumn.value && availableColumns.value.length > 0) {
-        selectedColumn.value = availableColumns.value[0];
+        selectedColumn.value = getDefaultColumn();
      }
      initScatterChart();
   }

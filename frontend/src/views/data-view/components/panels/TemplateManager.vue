@@ -53,7 +53,7 @@ const filteredUserTemplates = computed(() => {
 const builtinTemplateList = computed(() => {
   return Object.entries(outlierStore.thresholdTemplates).map(([key, data]) => ({
     key,
-    label: key === "standard" ? "标准模板" : key === "strict" ? "严格模板" : key,
+    label: key === "standard" ? "标准模板" : key,
     columnCount: Object.keys(data).length,
     data: data as Record<string, ThresholdTemplateEntry>,
   }));
@@ -298,34 +298,53 @@ watch(
               :key="tpl.id"
               class="template-card user"
               :class="{ expanded: expandedTemplateId === tpl.id, editing: editingTemplateId === tpl.id }">
-              <div class="card-header" @click="toggleExpand(tpl.id)">
-                <div class="card-info">
-                  <!-- 编辑态：名称输入 -->
-                  <template v-if="editingTemplateId === tpl.id">
-                    <el-input
-                      v-model="editForm.name"
-                      size="small"
-                      placeholder="模板名称"
-                      @click.stop
-                      class="edit-name-input" />
-                  </template>
-                  <template v-else>
-                    <div class="card-name">{{ tpl.name }}</div>
-                  </template>
-                  <div class="card-meta">
-                    <span>{{ tpl.columnCount }} 列</span>
-                    <span class="meta-sep">·</span>
-                    <span>{{ formatDate(tpl.createdAt) }}</span>
+              <!-- 编辑态头部 -->
+              <template v-if="editingTemplateId === tpl.id">
+                <div class="edit-header" @click.stop>
+                  <div class="edit-fields">
+                    <div class="edit-field-row">
+                      <label class="edit-field-label">名称</label>
+                      <el-input
+                        v-model="editForm.name"
+                        size="small"
+                        placeholder="模板名称"
+                        maxlength="50"
+                        show-word-limit
+                        class="edit-name-input" />
+                    </div>
+                    <div class="edit-field-row">
+                      <label class="edit-field-label">描述</label>
+                      <el-input
+                        v-model="editForm.description"
+                        type="textarea"
+                        :rows="2"
+                        placeholder="适用场景或来源说明（可选）"
+                        maxlength="200"
+                        resize="none"
+                        class="edit-desc-input" />
+                    </div>
                   </div>
-                </div>
-                <div class="card-actions" @click.stop>
-                  <template v-if="editingTemplateId === tpl.id">
-                    <el-button size="small" type="success" text :icon="Check" @click="saveEdit" :loading="outlierStore.saving">
+                  <div class="edit-actions">
+                    <el-button size="small" type="primary" :icon="Check" @click="saveEdit" :loading="outlierStore.saving">
                       保存
                     </el-button>
-                    <el-button size="small" text :icon="Close" @click="cancelEdit">取消</el-button>
-                  </template>
-                  <template v-else>
+                    <el-button size="small" :icon="Close" @click="cancelEdit">取消</el-button>
+                  </div>
+                </div>
+              </template>
+
+              <!-- 正常态头部 -->
+              <template v-else>
+                <div class="card-header" @click="toggleExpand(tpl.id)">
+                  <div class="card-info">
+                    <div class="card-name">{{ tpl.name }}</div>
+                    <div class="card-meta">
+                      <span>{{ tpl.columnCount }} 列</span>
+                      <span class="meta-sep">·</span>
+                      <span>{{ formatDate(tpl.createdAt) }}</span>
+                    </div>
+                  </div>
+                  <div class="card-actions" @click.stop>
                     <el-button
                       size="small"
                       type="primary"
@@ -334,30 +353,23 @@ watch(
                       :disabled="!datasetId">
                       应用
                     </el-button>
-                    <el-button size="small" text :icon="Edit" @click="startEdit(tpl)"></el-button>
-                    <el-button size="small" text :icon="Download" @click="handleExport(tpl)"></el-button>
-                    <el-button size="small" type="danger" text :icon="Delete" @click="handleDelete(tpl)"></el-button>
-                  </template>
+                    <el-button size="small" text :icon="Edit" title="编辑" @click="startEdit(tpl)"></el-button>
+                    <el-button size="small" text :icon="Download" title="导出" @click="handleExport(tpl)"></el-button>
+                    <el-button size="small" type="danger" text :icon="Delete" title="删除" @click="handleDelete(tpl)"></el-button>
+                    <el-icon class="expand-icon" :class="{ rotated: expandedTemplateId === tpl.id }">
+                      <View />
+                    </el-icon>
+                  </div>
                 </div>
-              </div>
+                <div v-if="tpl.description && expandedTemplateId === tpl.id" class="card-description">
+                  {{ tpl.description }}
+                </div>
+              </template>
 
-              <!-- 描述（编辑态） -->
-              <div v-if="editingTemplateId === tpl.id" class="edit-description" @click.stop>
-                <el-input
-                  v-model="editForm.description"
-                  type="textarea"
-                  :rows="2"
-                  placeholder="模板描述（可选）"
-                  resize="none" />
-              </div>
-              <!-- 描述（展示态） -->
-              <div v-else-if="tpl.description && expandedTemplateId === tpl.id" class="card-description">
-                {{ tpl.description }}
-              </div>
-
-              <!-- 列阈值详情 -->
+              <!-- 列阈值详情（展示态展开 / 编辑态始终展开） -->
               <transition name="expand">
-                <div v-if="expandedTemplateId === tpl.id" class="card-detail">
+                <div v-if="expandedTemplateId === tpl.id || editingTemplateId === tpl.id" class="card-detail">
+                  <div v-if="editingTemplateId === tpl.id" class="detail-section-label">阈值配置</div>
                   <table class="detail-table">
                     <thead>
                       <tr>
@@ -548,21 +560,73 @@ watch(
 }
 
 /* 编辑态 */
+.edit-header {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  align-items: flex-start;
+}
+
+.edit-fields {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.edit-field-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.edit-field-label {
+  flex-shrink: 0;
+  width: 30px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  padding-top: 6px;
+}
+
 .edit-name-input {
-  width: 100%;
+  flex: 1;
 }
 
 .edit-name-input :deep(.el-input__wrapper) {
   border-radius: 6px;
 }
 
-.edit-description {
-  padding: 0 16px 8px;
+.edit-desc-input {
+  flex: 1;
 }
 
-.edit-description :deep(.el-textarea__inner) {
+.edit-desc-input :deep(.el-textarea__inner) {
   border-radius: 6px;
   font-size: 13px;
+}
+
+.edit-actions {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.edit-actions .el-button {
+  margin: 0;
+  width: 64px;
+}
+
+.detail-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
 }
 
 .card-description {

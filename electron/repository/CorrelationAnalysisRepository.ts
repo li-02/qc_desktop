@@ -67,4 +67,34 @@ export class CorrelationAnalysisRepository {
     const info = stmt.run(...ids);
     return info.changes;
   }
+
+  /**
+   * 重命名分析结果
+   */
+  async rename(id: number, name: string): Promise<boolean> {
+    const stmt = this.db.prepare(`
+      UPDATE biz_correlation_result 
+      SET name = ?, updated_at = CURRENT_TIMESTAMP 
+      WHERE id = ? AND is_del = 0
+    `);
+    const info = stmt.run(name, id);
+    return info.changes > 0;
+  }
+
+  /**
+   * 批量更新排序顺序
+   */
+  async updateSortOrders(orders: { id: number; sortOrder: number }[]): Promise<void> {
+    const stmt = this.db.prepare(`
+      UPDATE biz_correlation_result 
+      SET sort_order = ?, updated_at = CURRENT_TIMESTAMP 
+      WHERE id = ? AND is_del = 0
+    `);
+    const transaction = this.db.transaction(() => {
+      for (const order of orders) {
+        stmt.run(order.sortOrder, order.id);
+      }
+    });
+    transaction();
+  }
 }

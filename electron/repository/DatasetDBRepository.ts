@@ -117,6 +117,34 @@ export class DatasetDBRepository {
     }
   }
 
+  updateDatasetVersion(id: number, updates: Partial<Pick<DatasetVersion, "remark">>): ServiceResponse<void> {
+    try {
+      const fields = Object.keys(updates)
+        .map(key => `${key} = @${key}`)
+        .join(", ");
+      if (!fields) return { success: true };
+      const stmt = this.db.prepare(`
+        UPDATE biz_dataset_version SET ${fields}, updated_at = CURRENT_TIMESTAMP WHERE id = @id
+      `);
+      stmt.run({ ...updates, id });
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  deleteDatasetVersion(id: number): ServiceResponse<void> {
+    try {
+      this.db.transaction(() => {
+        this.db.prepare("DELETE FROM stat_version_detail WHERE version_id = ?").run(id);
+        this.db.prepare("DELETE FROM biz_dataset_version WHERE id = ?").run(id);
+      })();
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
   // Stat Version Detail operations
   createStatVersionDetail(
     stat: Omit<StatVersionDetail, "id" | "calculated_at" | "created_at" | "updated_at" | "is_del" | "deleted_at">

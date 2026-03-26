@@ -14,6 +14,8 @@ interface Props {
   datasetInfo?: DatasetInfo | null;
   contentLoading?: boolean;
   defaultTab?: string;
+  initialBusinessResultId?: string;
+  initialVersionId?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -44,39 +46,32 @@ const tabs = computed(() => [
     description: "查看数据集的基本统计信息和分布",
   },
   {
-    id: "correlation",
-    name: "相关性分析",
-    icon: "🔗",
-    disabled: !props.datasetInfo,
-    description: "分析变量间的相关性关系",
-  },
-  {
     id: "outlier",
-    name: "异常检测",
+    name: "异常值检测",
     icon: "🔍",
     disabled: !props.datasetInfo,
-    description: "识别和处理数据中的异常值",
+    description: "识别和过滤数据中的异常值",
   },
   {
     id: "missing",
-    name: "缺失值处理",
+    name: "缺失值插补",
     icon: "🔧",
     disabled: !props.datasetInfo,
-    description: "检测和填补数据中的缺失值",
+    description: "对数据中的缺失值进行科学插补",
   },
   {
     id: "flux-partitioning",
     name: "通量分割",
     icon: "📊",
     disabled: !props.datasetInfo,
-    description: "进行通量数据分割处理",
+    description: "将NEE分解为GPP与Reco，ET分解为T与E",
   },
   {
-    id: "cleaning",
-    name: "数据清洗",
-    icon: "🧹",
+    id: "correlation",
+    name: "相关性分析",
+    icon: "🔗",
     disabled: !props.datasetInfo,
-    description: "数据格式化和标准化处理",
+    description: "分析变量间的相关性关系",
   },
   {
     id: "export",
@@ -121,13 +116,25 @@ const handleStartMissingValueImputation = (options: any) => {
 // Watch for dataset changes
 watch(
   () => props.datasetInfo,
-  newDataset => {
-    if (!newDataset && activeTab.value !== "overview") {
+  (newDataset, oldDataset) => {
+    if (!newDataset && oldDataset && activeTab.value !== "overview") {
       activeTab.value = "overview";
       emit("tabChange", "overview");
     }
-  },
-  { immediate: true }
+  }
+);
+
+// Watch for defaultTab prop changes (e.g. async navigation from workflow)
+watch(
+  () => props.defaultTab,
+  newTab => {
+    if (newTab && newTab !== activeTab.value) {
+      const tab = tabs.value.find(t => t.id === newTab);
+      if (tab && !tab.disabled) {
+        activeTab.value = newTab;
+      }
+    }
+  }
 );
 
 // Expose methods
@@ -201,6 +208,7 @@ defineExpose({
           <OutlierDetectionPanel
             :dataset-info="datasetInfo"
             :loading="contentLoading"
+            :initial-result-id="initialBusinessResultId"
             @start-detection="handleStartOutlierDetection" />
         </div>
       </div>

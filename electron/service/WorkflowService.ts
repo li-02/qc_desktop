@@ -60,6 +60,8 @@ function mapExecutionRow(row: WorkflowExecutionRow): WorkflowExecution {
     id: row.id,
     workflowId: row.workflow_id,
     datasetId: row.dataset_id,
+    datasetName: row.dataset_name,
+    label: row.label,
     initialVersionId: row.initial_version_id,
     status: row.status as any,
     startedAt: row.started_at,
@@ -365,6 +367,22 @@ export class WorkflowService {
    */
   getExecutions(workflowId: number): WorkflowExecution[] {
     return this.workflowRepo.getExecutionsByWorkflow(workflowId).map(mapExecutionRow);
+  }
+
+  /**
+   * 删除执行记录
+   */
+  deleteExecution(executionId: number): boolean {
+    this.workflowRepo.deleteExecution(executionId);
+    return true;
+  }
+
+  /**
+   * 重命名执行记录
+   */
+  renameExecution(executionId: number, label: string): boolean {
+    this.workflowRepo.renameExecution(executionId, label.trim());
+    return true;
   }
 
   /**

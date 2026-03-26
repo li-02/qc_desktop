@@ -6,8 +6,8 @@ import { ElMessageBox, ElMessage } from 'element-plus';
 import { API_ROUTES } from '@shared/constants/apiRoutes';
 import VersionNodeItem from './VersionNodeItem.vue';
 
-const props = defineProps<{
-  datasetId: string;
+defineProps<{
+  datasetId: string | number;
 }>();
 
 const emit = defineEmits<{

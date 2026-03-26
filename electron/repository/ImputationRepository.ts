@@ -3,7 +3,6 @@ import type {
   ImputationMethodRow,
   ImputationMethodParamRow,
   ImputationResultRow,
-  ImputationDetailRow,
   ImputationColumnStatRow,
   ImputationCategory,
   ImputationResultStatus,
@@ -228,83 +227,35 @@ export class ImputationRepository {
       .run(resultId);
   }
 
-  // ==================== 插补详情 ====================
+  /**
+   * 重命名插补结果
+   */
+  renameResult(id: number, name: string): boolean {
+    const result = this.db
+      .prepare(`
+        UPDATE biz_imputation_result 
+        SET name = ?, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = ? AND is_del = 0
+      `)
+      .run(name, id);
+    return result.changes > 0;
+  }
 
   /**
-   * 批量插入插补详情
+   * 批量更新排序顺序
    */
-  insertDetails(details: Array<{
-    resultId: number;
-    columnName: string;
-    rowIndex: number;
-    timePoint?: string;
-    originalValue?: number | null;
-    imputedValue: number;
-    confidence?: number;
-    imputationMethod?: string;
-    neighborValues?: number[];
-  }>): void {
-    const insertStmt = this.db.prepare(`
-      INSERT INTO biz_imputation_detail 
-        (result_id, column_name, row_index, time_point, original_value, imputed_value, 
-         confidence, imputation_method, neighbor_values)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  updateSortOrders(orders: { id: number; sortOrder: number }[]): void {
+    const stmt = this.db.prepare(`
+      UPDATE biz_imputation_result 
+      SET sort_order = ?, updated_at = CURRENT_TIMESTAMP 
+      WHERE id = ? AND is_del = 0
     `);
-
-    const insertMany = this.db.transaction((items: typeof details) => {
-      for (const item of items) {
-        insertStmt.run(
-          item.resultId,
-          item.columnName,
-          item.rowIndex,
-          item.timePoint || null,
-          item.originalValue ?? null,
-          item.imputedValue,
-          item.confidence || null,
-          item.imputationMethod || null,
-          item.neighborValues ? JSON.stringify(item.neighborValues) : null
-        );
+    const transaction = this.db.transaction(() => {
+      for (const order of orders) {
+        stmt.run(order.sortOrder, order.id);
       }
     });
-
-    insertMany(details);
-  }
-
-  /**
-   * 获取插补详情
-   */
-  getDetailsByResult(resultId: number, columnName?: string, limit = 1000, offset = 0): ImputationDetailRow[] {
-    if (columnName) {
-      return this.db
-        .prepare(`
-          SELECT * FROM biz_imputation_detail 
-          WHERE result_id = ? AND column_name = ? AND is_del = 0
-          ORDER BY row_index
-          LIMIT ? OFFSET ?
-        `)
-        .all(resultId, columnName, limit, offset) as ImputationDetailRow[];
-    }
-    return this.db
-      .prepare(`
-        SELECT * FROM biz_imputation_detail 
-        WHERE result_id = ? AND is_del = 0
-        ORDER BY column_name, row_index
-        LIMIT ? OFFSET ?
-      `)
-      .all(resultId, limit, offset) as ImputationDetailRow[];
-  }
-
-  /**
-   * 标记详情已应用
-   */
-  markDetailsApplied(resultId: number): void {
-    this.db
-      .prepare(`
-        UPDATE biz_imputation_detail 
-        SET is_applied = 1, updated_at = CURRENT_TIMESTAMP
-        WHERE result_id = ?
-      `)
-      .run(resultId);
+    transaction();
   }
 
   // ==================== 插补列统计 ====================
@@ -325,13 +276,16 @@ export class ImputationRepository {
     minImputed?: number;
     maxImputed?: number;
     avgConfidence?: number;
+    imputedRowIndices?: number[];
+    imputedValues?: number[];
   }): number {
     const result = this.db
       .prepare(`
         INSERT INTO biz_imputation_column_stat 
           (result_id, column_name, missing_count, imputed_count, imputation_rate,
-           mean_before, mean_after, std_before, std_after, min_imputed, max_imputed, avg_confidence)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           mean_before, mean_after, std_before, std_after, min_imputed, max_imputed,
+           avg_confidence, imputed_row_indices, imputed_values)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         stat.resultId,
@@ -345,7 +299,9 @@ export class ImputationRepository {
         stat.stdAfter ?? null,
         stat.minImputed ?? null,
         stat.maxImputed ?? null,
-        stat.avgConfidence ?? null
+        stat.avgConfidence ?? null,
+        stat.imputedRowIndices ? JSON.stringify(stat.imputedRowIndices) : null,
+        stat.imputedValues ? JSON.stringify(stat.imputedValues) : null
       );
     return result.lastInsertRowid as number;
   }

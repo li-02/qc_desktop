@@ -21,6 +21,8 @@ export class FluxPartitioningController extends BaseController {
       'fluxPartitioning:getResultsByDataset': this.getResultsByDataset.bind(this),
       'fluxPartitioning:getResult': this.getResult.bind(this),
       'fluxPartitioning:deleteResult': this.deleteResult.bind(this),
+      'fluxPartitioning:renameResult': this.renameResult.bind(this),
+      'fluxPartitioning:reorderResults': this.reorderResults.bind(this),
     };
   }
 
@@ -91,6 +93,42 @@ export class FluxPartitioningController extends BaseController {
   ): Promise<{ success: boolean; error?: string }> {
     try {
       this.service.deleteResult(resultId);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 重命名分割结果
+   */
+  private async renameResult(
+    args: { resultId: number; name: string },
+    _event: Electron.IpcMainInvokeEvent
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (!args.name || !args.name.trim()) {
+        return { success: false, error: '名称不能为空' };
+      }
+      const success = this.service.renameResult(args.resultId, args.name.trim());
+      if (!success) {
+        return { success: false, error: '结果不存在' };
+      }
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 批量更新排序顺序
+   */
+  private async reorderResults(
+    args: { orders: { id: number; sortOrder: number }[] },
+    _event: Electron.IpcMainInvokeEvent
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.service.reorderResults(args.orders);
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };

@@ -201,15 +201,77 @@ export class OutlierDetectionService {
   ): ServiceResponse<{ appliedCount: number }> {
     try {
       const columns = this.outlierRepo.getColumnThresholds(datasetId);
-      const updates: Array<{ id: number; min_threshold: number; max_threshold: number }> = [];
+      const updates: Array<{ id: number; min_threshold: number; max_threshold: number; unit?: string }> = [];
+
+      // 模板键 → 小写映射，用于大小写不敏感查找
+      const templateEntries = Object.entries(template);
+      const templateLowerMap = new Map<string, { min: number; max: number; unit?: string }>();
+      for (const [key, val] of templateEntries) {
+        templateLowerMap.set(key.toLowerCase(), val);
+      }
+
+      // 构建前缀索引：模板键前缀（去掉末尾 _单个数字 后缀）→ 第一个匹配值
+      // 用于反向模糊匹配（列名 rg → 模板键 rg_1_1_2）
+      // 使用分割法提取前缀，避免贪婪正则错误捕获（如 rg_1_1 而不是 rg）
+      const extractBaseName = (k: string): string | null => {
+        const parts = k.split('_');
+        let suffixStart = parts.length;
+        for (let i = parts.length - 1; i >= 1; i--) {
+          if (/^\d$/.test(parts[i])) {
+            suffixStart = i;
+          } else {
+            break;
+          }
+        }
+        return suffixStart < parts.length ? parts.slice(0, suffixStart).join('_') : null;
+      };
+      const templatePrefixMap = new Map<string, { min: number; max: number; unit?: string }>();
+      for (const [key, val] of templateEntries) {
+        const prefix = extractBaseName(key);
+        if (prefix) {
+          const prefixLower = prefix.toLowerCase();
+          // 只保留第一个匹配（优先短键）
+          if (!templatePrefixMap.has(prefixLower)) {
+            templatePrefixMap.set(prefixLower, val);
+          }
+        }
+      }
+
+      const findTemplateConfig = (
+        colName: string,
+        variableType?: string | null
+      ): { min: number; max: number; unit?: string } | undefined => {
+        // 1. 精确匹配
+        if (template[colName]) return template[colName];
+        // 2. 通过 variable_type 精确匹配
+        if (variableType && template[variableType]) return template[variableType];
+        // 3. 列名大小写不敏感匹配
+        const colLower = colName.toLowerCase();
+        if (templateLowerMap.has(colLower)) return templateLowerMap.get(colLower);
+        // 4. variable_type 大小写不敏感匹配
+        if (variableType) {
+          const vtLower = variableType.toLowerCase();
+          if (templateLowerMap.has(vtLower)) return templateLowerMap.get(vtLower);
+        }
+        // 5. 提取列名前缀（去掉末尾 _单个数字 后缀，如 ta_1_2_1 → ta）再精确匹配
+        const colBase = extractBaseName(colName);
+        if (colBase) {
+          const baseLower = colBase.toLowerCase();
+          if (templateLowerMap.has(baseLower)) return templateLowerMap.get(baseLower);
+        }
+        // 6. 反向模糊匹配：列名作为模板键的前缀（如列名 rg → 模板键 rg_1_1_2）
+        if (templatePrefixMap.has(colLower)) return templatePrefixMap.get(colLower);
+        return undefined;
+      };
 
       for (const col of columns) {
-        const templateConfig = template[col.column_name] || template[col.variable_type || ""];
+        const templateConfig = findTemplateConfig(col.column_name, col.variable_type);
         if (templateConfig) {
           updates.push({
             id: col.id,
             min_threshold: templateConfig.min,
             max_threshold: templateConfig.max,
+            unit: templateConfig.unit || undefined,
           });
         }
       }
@@ -396,46 +458,50 @@ export class OutlierDetectionService {
   // ==================== 预设阈值模板 ====================
 
   /**
-   * 获取通量数据常用阈值模板
+   * 获取内置阈值模板（从数据库查询）
    */
   getFluxThresholdTemplates(): ServiceResponse<
     Record<string, Record<string, { min: number; max: number; unit: string }>>
   > {
-    const templates = {
-      standard: {
-        Ta: { min: -40, max: 50, unit: "°C" },
-        Ta_2m: { min: -40, max: 50, unit: "°C" },
-        RH: { min: 0, max: 100, unit: "%" },
-        VPD: { min: 0, max: 8, unit: "kPa" },
-        SW_IN: { min: 0, max: 1400, unit: "W/m²" },
-        SW_OUT: { min: 0, max: 1000, unit: "W/m²" },
-        LW_IN: { min: 100, max: 600, unit: "W/m²" },
-        LW_OUT: { min: 200, max: 700, unit: "W/m²" },
-        PPFD: { min: 0, max: 2500, unit: "μmol/m²/s" },
-        CO2: { min: 350, max: 550, unit: "ppm" },
-        H2O: { min: 0, max: 50, unit: "mmol/mol" },
-        NEE: { min: -40, max: 30, unit: "μmol/m²/s" },
-        LE: { min: -50, max: 700, unit: "W/m²" },
-        H: { min: -100, max: 500, unit: "W/m²" },
-        USTAR: { min: 0, max: 3, unit: "m/s" },
-        WS: { min: 0, max: 30, unit: "m/s" },
-        WD: { min: 0, max: 360, unit: "°" },
-        P: { min: 0, max: 100, unit: "mm" },
-        PA: { min: 80, max: 110, unit: "kPa" },
-      },
-      strict: {
-        Ta: { min: -30, max: 45, unit: "°C" },
-        RH: { min: 5, max: 100, unit: "%" },
-        SW_IN: { min: 0, max: 1300, unit: "W/m²" },
-        CO2: { min: 380, max: 500, unit: "ppm" },
-        NEE: { min: -30, max: 20, unit: "μmol/m²/s" },
-      },
-    };
+    try {
+      const records = this.outlierRepo.getBuiltinTemplates();
+      const templates: Record<string, Record<string, { min: number; max: number; unit: string }>> = {};
 
-    return { success: true, data: templates };
+      for (const record of records) {
+        try {
+          templates[record.name] = JSON.parse(record.template_data);
+        } catch {
+          // 跳过无效 JSON
+        }
+      }
+
+      return { success: true, data: templates };
+    } catch (error: any) {
+      return { success: false, error: `获取内置模板失败: ${error.message}` };
+    }
   }
 
   // ==================== 用户自定义阈值模板 ====================
+
+  /**
+   * 直接创建用户自定义模板（不依赖数据集）
+   */
+  createUserTemplate(
+    name: string,
+    templateData: ThresholdTemplateData,
+    description?: string
+  ): ServiceResponse<{ id: number; columnCount: number }> {
+    try {
+      if (!name.trim()) {
+        return { success: false, error: "模板名称不能为空" };
+      }
+
+      const id = this.outlierRepo.createTemplate(name.trim(), JSON.stringify(templateData), description?.trim());
+      return { success: true, data: { id, columnCount: Object.keys(templateData).length } };
+    } catch (error: any) {
+      return { success: false, error: `创建模板失败: ${error.message}` };
+    }
+  }
 
   /**
    * 将当前数据集的阈值配置保存为模板
@@ -1497,6 +1563,18 @@ export class OutlierDetectionService {
       return { success: true };
     } catch (error: any) {
       return { success: false, error: `重命名失败: ${error.message}` };
+    }
+  }
+
+  /**
+   * 批量更新排序顺序
+   */
+  reorderResults(orders: { id: number; sortOrder: number }[]): ServiceResponse<void> {
+    try {
+      this.outlierRepo.updateSortOrders(orders);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: `排序更新失败: ${error.message}` };
     }
   }
 

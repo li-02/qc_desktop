@@ -43,6 +43,11 @@ function createWindow(): void {
     show: false, // 先隐藏，等加载完成后显示
   });
 
+  // 注入 mainWindow 给 controllerRegistry
+  if (appState.controllerRegistry && appState.mainWindow) {
+    appState.controllerRegistry.setMainWindow(appState.mainWindow);
+  }
+
   // 创建应用菜单
   createApplicationMenu();
 

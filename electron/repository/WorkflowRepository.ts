@@ -373,6 +373,20 @@ export class WorkflowRepository {
   }
 
   /**
+   * 重命名执行记录（自定义标签）
+   */
+  renameExecution(executionId: number, label: string): void {
+    this.db.prepare(`UPDATE biz_workflow_execution SET label = ? WHERE id = ?`).run(label, executionId);
+  }
+
+  /**
+   * 删除执行记录
+   */
+  deleteExecution(executionId: number): void {
+    this.db.prepare(`DELETE FROM biz_workflow_execution WHERE id = ?`).run(executionId);
+  }
+
+  /**
    * 获取执行记录
    */
   getExecutionById(executionId: number): WorkflowExecutionRow | undefined {
@@ -388,9 +402,11 @@ export class WorkflowRepository {
     return this.db
       .prepare(
         `
-        SELECT * FROM biz_workflow_execution
-        WHERE workflow_id = ?
-        ORDER BY created_at DESC
+        SELECT e.*, d.dataset_name
+        FROM biz_workflow_execution e
+        LEFT JOIN sys_dataset d ON e.dataset_id = d.id
+        WHERE e.workflow_id = ?
+        ORDER BY e.created_at DESC
       `
       )
       .all(workflowId) as WorkflowExecutionRow[];
@@ -403,9 +419,11 @@ export class WorkflowRepository {
     return this.db
       .prepare(
         `
-        SELECT * FROM biz_workflow_execution
-        WHERE workflow_id = ?
-        ORDER BY created_at DESC
+        SELECT e.*, d.dataset_name
+        FROM biz_workflow_execution e
+        LEFT JOIN sys_dataset d ON e.dataset_id = d.id
+        WHERE e.workflow_id = ?
+        ORDER BY e.created_at DESC
         LIMIT 1
       `
       )

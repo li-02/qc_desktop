@@ -3,26 +3,15 @@ import { computed } from "vue";
 import { formatLocalWithTZ } from '@/utils/timeUtils';
 import { ElMessage } from "element-plus";
 import {
-  Calendar,
-  CircleCheck,
   DataAnalysis,
   Document,
   DocumentCopy,
   DocumentDelete,
-  FolderOpened,
-  Refresh,
 } from "@element-plus/icons-vue";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 
 const datasetStore = useDatasetStore();
 const datasetInfo = computed(() => datasetStore.currentDataset);
-
-// Emits
-const emit = defineEmits<{
-  retry: [];
-  refresh: [];
-  export: [];
-}>();
 
 // 数据是否完整可用
 const isDataReady = computed(() => {
@@ -35,39 +24,8 @@ const isDataReady = computed(() => {
   );
 });
 
-const missingValueCount = computed(() => {
-  if (!isDataReady.value || !datasetInfo.value?.missingValueTypes) return 0;
-  // 安全访问dataQuality属性
-  return datasetInfo.value.originalFile.dataQuality?.totalMissingCount || 0;
-});
 
-const missingValueTextClass = computed(() => {
-  return missingValueCount.value > 0 ? "missing-warning" : "missing-success";
-});
 
-const missingValueTooltip = computed(() => {
-  if (!isDataReady.value || missingValueCount.value === 0) return "";
-  return `缺失值类型: ${datasetInfo.value?.missingValueTypes?.join(", ") || ""}`;
-});
-
-const dataQualityPercentage = computed(() => {
-  if (!isDataReady.value) return 0;
-  const totalRows = datasetInfo.value!.originalFile.rows;
-  const missingRows = missingValueCount.value;
-  return ((totalRows - missingRows) / totalRows) * 100;
-});
-
-const dataQualityTextClass = computed(() => {
-  const percentage = dataQualityPercentage.value;
-  if (percentage >= 95) return "quality-excellent";
-  if (percentage >= 85) return "quality-good";
-  return "quality-poor";
-});
-
-const completeRecords = computed(() => {
-  if (!isDataReady.value) return 0;
-  return datasetInfo.value!.originalFile.rows - missingValueCount.value;
-});
 
 // Methods
 const formatDate = (timestamp: number): string => {
@@ -92,10 +50,6 @@ const formatFileSize = (sizeStr: string | number): string => {
   return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 };
 
-const formatNumber = (num: number): string => {
-  if (!num && num !== 0) return "0";
-  return num.toLocaleString("zh-CN");
-};
 
 const getDatasetTypeLabel = (type: string): string => {
   if (!type) return "未知";
@@ -132,16 +86,6 @@ const copyFilePath = async () => {
   }
 };
 
-const handleCommand = (command: string) => {
-  switch (command) {
-    case "refresh":
-      emit("refresh");
-      break;
-    case "export":
-      emit("export");
-      break;
-  }
-};
 </script>
 
 <template>

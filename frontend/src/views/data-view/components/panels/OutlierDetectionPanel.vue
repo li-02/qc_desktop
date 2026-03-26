@@ -18,9 +18,11 @@ import {
   Edit,
   Connection,
   View,
+  Rank,
 } from "@element-plus/icons-vue";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
+import { API_ROUTES } from "@shared/constants/apiRoutes";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import type {
   ColumnSetting,
@@ -32,6 +34,7 @@ import type {
 import OutlierChart from "../charts/OutlierChart.vue";
 import VersionManager from "../VersionManager.vue";
 import TemplateManager from "./TemplateManager.vue";
+import SaveTemplateDialog from "./SaveTemplateDialog.vue";
 
 const datasetStore = useDatasetStore();
 const outlierStore = useOutlierDetectionStore();
@@ -39,6 +42,7 @@ const outlierStore = useOutlierDetectionStore();
 interface Props {
   datasetInfo?: DatasetInfo | null;
   loading?: boolean;
+  initialResultId?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -53,6 +57,7 @@ const panelLoading = computed(() => props.loading || outlierStore.loading);
 const activeView = ref<"config" | "result">("config");
 const showVersionDrawer = ref(false);
 const showTemplateManager = ref(false);
+const showSaveTemplateDialog = ref(false);
 const currentVersion = computed(() => datasetStore.currentVersion);
 
 const handleVersionSwitch = async (versionId: number) => {
@@ -83,6 +88,7 @@ const resultDetails = ref<OutlierDetail[]>([]);
 const detailLoading = ref(false);
 const detailPage = ref(1);
 const detailPageSize = ref(100);
+void detailPageSize;
 
 const executing = ref(false);
 const applying = ref(false); // 应用过滤中
@@ -91,6 +97,8 @@ const currentSelectedColumn = ref("");
 // 重命名状态
 const editingResultId = ref<number | null>(null);
 const editingName = ref("");
+const dragIndex = ref<number | null>(null);
+const dragOverIndex = ref<number | null>(null);
 
 // 检测方法选择状态
 const selectedMethodId = ref<string>("THRESHOLD_STATIC");
@@ -148,7 +156,7 @@ const filteredColumns = computed(() => {
 
 const templateOptions = computed(() => {
   return Object.keys(outlierStore.thresholdTemplates).map(key => ({
-    label: key === "standard" ? "标准模板" : key === "strict" ? "严格模板" : key,
+    label: key === "standard" ? "标准模板" : key,
     value: key,
   }));
 });
@@ -168,6 +176,15 @@ const loadData = async () => {
     outlierStore.loadUserTemplates(),
     loadDetectionResults(),
   ]);
+
+  // 从工作流等外部传来的初始 ID（如果有）
+  if (props.initialResultId && detectionResults.value.length > 0) {
+    const targetId = Number(props.initialResultId);
+    const targetResult = detectionResults.value.find(r => r.id === targetId);
+    if (targetResult) {
+      await viewResult(targetResult);
+    }
+  }
 };
 
 const loadDetectionResults = async () => {
@@ -234,7 +251,7 @@ const executeDetection = async () => {
         String(datasetInfo.value.id),
         String(versionId),
         method,
-        methodParamsForm.value,
+        { ...methodParamsForm.value },
         targetColumnNames
       );
     }
@@ -255,11 +272,13 @@ const loadResultDetails = async () => {
 
   detailLoading.value = true;
   try {
+    // 加载所有异常值详情用于图表展示（不分页）
+    const totalCount = currentResult.value?.outlier_count ?? 10000;
     const res = await outlierStore.getDetectionResultDetails(
       String(currentResultId.value),
       undefined,
-      detailPageSize.value,
-      (detailPage.value - 1) * detailPageSize.value
+      Math.max(totalCount, 10000),
+      0
     );
     resultDetails.value = res.details;
   } catch (error) {
@@ -365,10 +384,8 @@ const getResultDisplayName = (result: OutlierResult) => {
   if (result.name) {
     return result.name;
   }
-  // 默认名称：方法-时间
   const methodName = getMethodDisplayName(result.detection_method);
-  const time = formatDateTime(result.executed_at);
-  return `${methodName}-${time}`;
+  return result.column_name ? `${methodName} - ${result.column_name}` : methodName;
 };
 
 const getMethodDisplayName = (method: string) => {
@@ -416,6 +433,40 @@ const saveRenaming = async (event?: Event) => {
   }
 
   cancelRenaming();
+};
+
+const onDragStart = (index: number) => {
+  dragIndex.value = index;
+};
+
+const onDragOver = (index: number, event: DragEvent) => {
+  event.preventDefault();
+  dragOverIndex.value = index;
+};
+
+const onDrop = async (index: number) => {
+  if (dragIndex.value === null || dragIndex.value === index) {
+    dragIndex.value = null;
+    dragOverIndex.value = null;
+    return;
+  }
+  const list = [...detectionResults.value];
+  const [moved] = list.splice(dragIndex.value, 1);
+  list.splice(index, 0, moved);
+  detectionResults.value = list;
+  dragIndex.value = null;
+  dragOverIndex.value = null;
+  const orders = list.map((r, i) => ({ id: r.id, sortOrder: i }));
+  try {
+    await window.electronAPI.invoke(API_ROUTES.OUTLIER.REORDER_RESULTS, { orders });
+  } catch (error: any) {
+    ElMessage.error(error.message || "排序失败");
+  }
+};
+
+const onDragEnd = () => {
+  dragIndex.value = null;
+  dragOverIndex.value = null;
 };
 
 const applyFiltering = async () => {
@@ -490,12 +541,6 @@ const exportCleanedData = async () => {
   const fileName = `cleaned_data_v${versionId}.csv`;
 
   await datasetStore.exportVersion(Number(versionId), fileName);
-};
-
-import { formatLocalWithTZ } from "@/utils/timeUtils";
-const formatDateTime = (dateStr: string) => {
-  if (!dateStr) return "-";
-  return formatLocalWithTZ(dateStr);
 };
 
 const getStatusType = (status: string) => {
@@ -601,7 +646,7 @@ const handleTemplateCommand = async (command: string) => {
   }
 };
 
-const handleSaveAsTemplate = async () => {
+const handleSaveAsTemplate = () => {
   if (!datasetInfo.value?.id) return;
 
   if (configuredColumnCount.value === 0) {
@@ -609,27 +654,25 @@ const handleSaveAsTemplate = async () => {
     return;
   }
 
-  try {
-    const { value } = await ElMessageBox.prompt(
-      `将当前 ${configuredColumnCount.value} 列的阈值配置保存为模板`,
-      "保存为模板",
-      {
-        confirmButtonText: "保存",
-        cancelButtonText: "取消",
-        inputPlaceholder: "输入模板名称",
-        inputValidator: (val: string) => {
-          if (!val || !val.trim()) return "模板名称不能为空";
-          return true;
-        },
-        customClass: "qc-message-box",
-      }
-    );
+  showSaveTemplateDialog.value = true;
+};
 
-    if (value) {
-      await outlierStore.saveAsTemplate(datasetInfo.value.id, value.trim());
-    }
-  } catch {
-    // 用户取消
+const handleSaveTemplateConfirm = async (payload: {
+  mode: string;
+  name?: string;
+  description?: string;
+  templateId?: number;
+  mergedData?: Record<string, { min: number; max: number; unit?: string }>;
+}) => {
+  if (!datasetInfo.value?.id) return;
+  let success = false;
+  if (payload.mode === "new") {
+    success = await outlierStore.saveAsTemplate(datasetInfo.value.id, payload.name!, payload.description || undefined);
+  } else if (payload.mode === "existing" && payload.templateId && payload.mergedData) {
+    success = await outlierStore.updateUserTemplate(payload.templateId, { templateData: payload.mergedData });
+  }
+  if (success) {
+    showSaveTemplateDialog.value = false;
   }
 };
 
@@ -662,8 +705,7 @@ const handlePreviewBuiltinTemplate = (templateKey: string, event: Event) => {
   const templates = outlierStore.thresholdTemplates;
   const data = templates[templateKey];
   if (!data) return;
-  previewTemplateName.value =
-    templateKey === "standard" ? "标准模板" : templateKey === "strict" ? "严格模板" : templateKey;
+  previewTemplateName.value = templateKey === "standard" ? "标准模板" : templateKey;
   previewTemplateData.value = data as Record<string, ThresholdTemplateEntry>;
   showTemplatePreview.value = true;
 };
@@ -781,6 +823,46 @@ onMounted(() => {
 
 <template>
   <div class="outlier-panel">
+    <!-- 生态背景装饰层 -->
+    <div class="eco-backdrop" aria-hidden="true">
+      <!-- 大叶片 — 右上角 -->
+      <svg class="eco-leaf eco-leaf--1" viewBox="0 0 200 200" fill="currentColor">
+        <path d="M100 10C100 10 30 50 20 110C14 148 40 175 80 180C60 160 55 130 70 108C85 86 100 75 100 75C100 75 115 86 130 108C145 130 140 160 120 180C160 175 186 148 180 110C170 50 100 10 100 10Z"/>
+        <line x1="100" y1="185" x2="100" y2="90" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+      </svg>
+      <!-- 小叶片 — 左下 -->
+      <svg class="eco-leaf eco-leaf--2" viewBox="0 0 130 130" fill="currentColor">
+        <path d="M65 8C65 8 20 35 15 72C11 97 28 114 52 117C39 104 37 85 46 70C55 56 65 49 65 49C65 49 75 56 84 70C93 85 91 104 78 117C102 114 119 97 115 72C110 35 65 8 65 8Z"/>
+      </svg>
+      <!-- 微叶 — 中左 -->
+      <svg class="eco-leaf eco-leaf--3" viewBox="0 0 90 90" fill="currentColor">
+        <path d="M45 5C45 5 14 24 10 50C7 67 19 79 36 81C27 72 26 59 32 48C38 38 45 34 45 34C45 34 52 38 58 48C64 59 63 72 54 81C71 79 83 67 80 50C76 24 45 5 45 5Z"/>
+      </svg>
+      <!-- 监测站网络图 -->
+      <svg class="eco-network-graph" viewBox="0 0 520 260" fill="none">
+        <circle cx="80"  cy="60"  r="5" fill="currentColor" opacity="0.7"/>
+        <circle cx="200" cy="30"  r="5" fill="currentColor" opacity="0.7"/>
+        <circle cx="340" cy="70"  r="5" fill="currentColor" opacity="0.7"/>
+        <circle cx="460" cy="40"  r="5" fill="currentColor" opacity="0.7"/>
+        <circle cx="140" cy="140" r="5" fill="currentColor" opacity="0.7"/>
+        <circle cx="280" cy="160" r="5" fill="currentColor" opacity="0.7"/>
+        <circle cx="400" cy="130" r="5" fill="currentColor" opacity="0.7"/>
+        <circle cx="60"  cy="200" r="5" fill="currentColor" opacity="0.7"/>
+        <circle cx="480" cy="190" r="5" fill="currentColor" opacity="0.7"/>
+        <line x1="80"  y1="60"  x2="200" y2="30"  stroke="currentColor" stroke-width="1" opacity="0.35"/>
+        <line x1="200" y1="30"  x2="340" y2="70"  stroke="currentColor" stroke-width="1" opacity="0.35"/>
+        <line x1="340" y1="70"  x2="460" y2="40"  stroke="currentColor" stroke-width="1" opacity="0.35"/>
+        <line x1="80"  y1="60"  x2="140" y2="140" stroke="currentColor" stroke-width="1" opacity="0.35"/>
+        <line x1="200" y1="30"  x2="280" y2="160" stroke="currentColor" stroke-width="1" opacity="0.35"/>
+        <line x1="340" y1="70"  x2="400" y2="130" stroke="currentColor" stroke-width="1" opacity="0.35"/>
+        <line x1="140" y1="140" x2="280" y2="160" stroke="currentColor" stroke-width="1" opacity="0.35"/>
+        <line x1="280" y1="160" x2="400" y2="130" stroke="currentColor" stroke-width="1" opacity="0.35"/>
+        <line x1="60"  y1="200" x2="140" y2="140" stroke="currentColor" stroke-width="1" opacity="0.35"/>
+        <line x1="400" y1="130" x2="480" y2="190" stroke="currentColor" stroke-width="1" opacity="0.35"/>
+        <line x1="460" y1="40"  x2="400" y2="130" stroke="currentColor" stroke-width="1" opacity="0.35"/>
+      </svg>
+    </div>
+
     <!-- 加载状态 -->
     <div v-if="panelLoading && !datasetInfo" class="loading-overlay">
       <div class="loading-content">
@@ -804,12 +886,21 @@ onMounted(() => {
           <el-scrollbar>
             <div class="history-list">
               <div
-                v-for="result in detectionResults"
+                v-for="(result, index) in detectionResults"
                 :key="result.id"
                 class="history-item"
-                :class="{ active: currentResultId === result.id }"
+                :class="{
+                  active: currentResultId === result.id,
+                  'history-item--drag-over': dragOverIndex === index,
+                }"
+                draggable="true"
+                @dragstart="onDragStart(index)"
+                @dragover="onDragOver(index, $event)"
+                @drop="onDrop(index)"
+                @dragend="onDragEnd"
                 @click="viewResult(result)">
                 <div class="history-item-header">
+                  <el-icon class="drag-handle"><Rank /></el-icon>
                   <!-- 名称显示/编辑区域 -->
                   <div class="history-name-wrapper" v-if="editingResultId !== result.id">
                     <span class="history-name" :title="getResultDisplayName(result)">{{
@@ -881,68 +972,6 @@ onMounted(() => {
                 <el-button class="action-btn" plain @click="showVersionDrawer = true">
                   <el-icon><Connection /></el-icon> 版本谱系
                 </el-button>
-                <el-dropdown @command="handleTemplateCommand" :disabled="outlierStore.saving">
-                  <el-button class="action-btn" plain>
-                    <el-icon><Setting /></el-icon> 模板
-                  </el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item disabled style="font-size: 12px; color: #909399; font-weight: 500"
-                        >内置模板</el-dropdown-item
-                      >
-                      <el-dropdown-item v-for="opt in templateOptions" :key="opt.value" :command="opt.value">
-                        <div class="template-dropdown-item">
-                          <span>{{ opt.label }}</span>
-                          <el-icon
-                            class="template-preview-icon"
-                            @click="handlePreviewBuiltinTemplate(opt.value, $event)"
-                            ><View
-                          /></el-icon>
-                        </div>
-                      </el-dropdown-item>
-                      <template v-if="outlierStore.userTemplates.length > 0">
-                        <el-dropdown-item divided disabled style="font-size: 12px; color: #909399; font-weight: 500"
-                          >我的模板</el-dropdown-item
-                        >
-                        <el-dropdown-item
-                          v-for="tpl in outlierStore.userTemplates"
-                          :key="'user:' + tpl.id"
-                          :command="'user:' + tpl.id">
-                          <div
-                            style="
-                              display: flex;
-                              align-items: center;
-                              justify-content: space-between;
-                              width: 100%;
-                              min-width: 160px;
-                            ">
-                            <span
-                              >{{ tpl.name }}
-                              <span style="color: #909399; font-size: 11px">({{ tpl.columnCount }}列)</span></span
-                            >
-                            <span
-                              style="display: flex; align-items: center; gap: 4px; flex-shrink: 0; margin-left: 12px">
-                              <el-icon class="template-preview-icon" @click="handlePreviewUserTemplate(tpl.id, $event)"
-                                ><View
-                              /></el-icon>
-                              <el-icon
-                                style="color: #f56c6c; cursor: pointer; font-size: 14px"
-                                @click="handleDeleteUserTemplate(tpl.id, $event)"
-                                ><Close
-                              /></el-icon>
-                            </span>
-                          </div>
-                        </el-dropdown-item>
-                      </template>
-                      <el-dropdown-item divided command="__save__">
-                        <el-icon style="margin-right: 4px"><Plus /></el-icon> 保存当前为模板
-                      </el-dropdown-item>
-                      <el-dropdown-item command="__manage__">
-                        <el-icon style="margin-right: 4px"><Setting /></el-icon> 管理模板
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
                 <el-button class="action-btn" plain @click="loadData" :loading="outlierStore.loading">
                   <el-icon><Refresh /></el-icon> 刷新
                 </el-button>
@@ -1030,6 +1059,92 @@ onMounted(() => {
                     </div>
                   </transition>
                 </div>
+
+                <!-- ② 模板工具栏 (仅静态阈值方法时显示) -->
+                <transition name="fade">
+                  <div v-if="isThresholdMethod" class="template-toolbar">
+                    <div class="template-toolbar-left">
+                      <el-icon class="template-toolbar-icon"><Setting /></el-icon>
+                      <span class="template-toolbar-label">阈值模板</span>
+                    </div>
+                    <div class="template-toolbar-right">
+                      <el-dropdown @command="handleTemplateCommand" :disabled="outlierStore.saving">
+                        <el-button class="template-action-btn" size="small">
+                          <el-icon><Setting /></el-icon> 应用模板
+                          <el-icon class="el-icon--right"><ArrowLeft style="transform: rotate(-90deg)" /></el-icon>
+                        </el-button>
+                        <template #dropdown>
+                          <el-dropdown-menu>
+                            <el-dropdown-item disabled style="font-size: 12px; color: #909399; font-weight: 500"
+                              >内置模板</el-dropdown-item
+                            >
+                            <el-dropdown-item v-for="opt in templateOptions" :key="opt.value" :command="opt.value">
+                              <div class="template-dropdown-item">
+                                <span>{{ opt.label }}</span>
+                                <el-icon
+                                  class="template-preview-icon"
+                                  @click="handlePreviewBuiltinTemplate(opt.value, $event)"
+                                  ><View
+                                /></el-icon>
+                              </div>
+                            </el-dropdown-item>
+                            <template v-if="outlierStore.userTemplates.length > 0">
+                              <el-dropdown-item
+                                divided
+                                disabled
+                                style="font-size: 12px; color: #909399; font-weight: 500"
+                                >我的模板</el-dropdown-item
+                              >
+                              <el-dropdown-item
+                                v-for="tpl in outlierStore.userTemplates"
+                                :key="'user:' + tpl.id"
+                                :command="'user:' + tpl.id">
+                                <div
+                                  style="
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: space-between;
+                                    width: 100%;
+                                    min-width: 160px;
+                                  ">
+                                  <span
+                                    >{{ tpl.name }}
+                                    <span style="color: #909399; font-size: 11px">({{ tpl.columnCount }}列)</span></span
+                                  >
+                                  <span
+                                    style="
+                                      display: flex;
+                                      align-items: center;
+                                      gap: 4px;
+                                      flex-shrink: 0;
+                                      margin-left: 12px;
+                                    ">
+                                    <el-icon
+                                      class="template-preview-icon"
+                                      @click="handlePreviewUserTemplate(tpl.id, $event)"
+                                      ><View
+                                    /></el-icon>
+                                    <el-icon
+                                      style="color: #f56c6c; cursor: pointer; font-size: 14px"
+                                      @click="handleDeleteUserTemplate(tpl.id, $event)"
+                                      ><Close
+                                    /></el-icon>
+                                  </span>
+                                </div>
+                              </el-dropdown-item>
+                            </template>
+                            <el-dropdown-item divided command="__save__">
+                              <el-icon style="margin-right: 4px"><Plus /></el-icon> 保存当前为模板
+                            </el-dropdown-item>
+                            <el-dropdown-item command="__manage__">
+                              <el-icon style="margin-right: 4px"><Setting /></el-icon> 管理模板
+                            </el-dropdown-item>
+                          </el-dropdown-menu>
+                        </template>
+                      </el-dropdown>
+                    </div>
+                  </div>
+                </transition>
 
                 <!-- ③ 筛选区域 -->
                 <div class="filter-section">
@@ -1359,6 +1474,14 @@ onMounted(() => {
       @update:visible="showTemplateManager = $event"
       @template-applied="loadData" />
 
+    <!-- Save Template Dialog -->
+    <SaveTemplateDialog
+      v-model:visible="showSaveTemplateDialog"
+      :column-count="configuredColumnCount"
+      :saving="outlierStore.saving"
+      :current-thresholds="outlierStore.columnThresholds"
+      @confirm="handleSaveTemplateConfirm" />
+
     <!-- Version Manager Drawer -->
     <el-drawer v-model="showVersionDrawer" title="数据版本管理" size="450px" destroy-on-close append-to-body>
       <VersionManager
@@ -1373,28 +1496,54 @@ onMounted(() => {
 <style scoped>
 /* 核心布局与背景 */
 .outlier-panel {
+  /* === 17 个标准 eco 色彩令牌 === */
+  --eco-forest:        #0d2b1a;
+  --eco-forest-mid:    #1b4332;
+  --eco-pine:          #2d6a4f;
+  --eco-moss:          #40916c;
+  --eco-fern:          #52b788;
+  --eco-spring:        #74c69d;
+  --eco-leaf:          #95d5b2;
+  --eco-mint:          #b7e4c7;
+  --eco-mist:          #d8f3dc;
+  --eco-ice:           #ebfbf0;
+  --eco-surface:       #f2fdf5;
+  --eco-white:         #f8fffe;
+  --eco-border:        #74c69d;
+  --eco-border-light:  #b7e4c7;
+  --eco-text-dark:     #0d2b1a;
+  --eco-text-mid:      #2d6a4f;
+  --eco-text-muted:    #52b788;
+
   display: flex;
   height: 100%;
   width: 100%;
-  background: #f8fafc;
+  background: var(--eco-surface);
+  background-image:
+    radial-gradient(ellipse at 15% 45%, rgba(64, 145, 108, 0.10) 0%, transparent 50%),
+    radial-gradient(ellipse at 88% 12%, rgba(116, 198, 157, 0.12) 0%, transparent 45%),
+    radial-gradient(ellipse at 55% 88%, rgba(27, 67, 50, 0.07)  0%, transparent 40%);
   overflow: hidden;
   padding: 8px;
   gap: 8px;
   box-sizing: border-box;
+  position: relative;
 }
 
 /* Panel 通用样式 */
 .glass-panel {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  background: var(--eco-white);
+  border: 1px solid var(--eco-border-light);
+  border-radius: 12px;
   overflow: hidden;
+  box-shadow: 0 2px 16px rgba(13, 43, 26, 0.08), 0 1px 4px rgba(64, 145, 108, 0.06);
 }
 
 .glass-effect {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--eco-white);
+  border: 1px solid var(--eco-border-light);
   border-radius: 10px;
+  box-shadow: 0 1px 6px rgba(13, 43, 26, 0.06);
 }
 
 /* 侧边栏 */
@@ -1408,7 +1557,7 @@ onMounted(() => {
 
 .sidebar-header {
   padding: 16px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--eco-border-light);
 }
 
 .new-detection-btn {
@@ -1420,16 +1569,19 @@ onMounted(() => {
   height: 36px;
   font-size: 14px;
   font-weight: 600;
-  color: white;
-  background: #10b981;
+  color: #fff;
+  background: linear-gradient(135deg, var(--eco-moss) 0%, var(--eco-forest-mid) 100%);
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  box-shadow: 0 2px 10px rgba(45, 106, 79, 0.35);
+  transition: all 0.25s ease;
 }
 
 .new-detection-btn:hover {
-  background: #059669;
+  background: linear-gradient(135deg, var(--eco-fern) 0%, var(--eco-moss) 100%);
+  box-shadow: 0 4px 14px rgba(45, 106, 79, 0.45);
+  transform: translateY(-1px);
 }
 
 .history-list-container {
@@ -1443,7 +1595,7 @@ onMounted(() => {
   padding: 16px 20px 8px;
   font-size: 12px;
   font-weight: 700;
-  color: #6b7280;
+  color: var(--eco-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -1459,26 +1611,41 @@ onMounted(() => {
   margin-bottom: 8px;
   border: 1px solid transparent;
   transition: all 0.2s ease;
-  background: #f8fafc;
+  background: var(--eco-ice);
 }
 
 .history-item:hover {
-  background: #ffffff;
-  border-color: #e2e8f0;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  background: var(--eco-white);
+  border-color: var(--eco-border-light);
+  box-shadow: 0 2px 8px rgba(13, 43, 26, 0.08);
 }
 
 .history-item.active {
-  background: #f8fffb;
-  border-color: #86efac;
+  background: var(--eco-mist);
+  border-color: var(--eco-border);
+  box-shadow: 0 0 0 1px var(--eco-spring);
 }
 
 .history-item-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
   gap: 8px;
+}
+
+.drag-handle {
+  cursor: grab;
+  color: var(--eco-spring);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.history-item--drag-over {
+  border-top: 2px solid var(--eco-moss) !important;
 }
 
 .history-name-wrapper {
@@ -1491,7 +1658,7 @@ onMounted(() => {
 
 .history-name {
   font-size: 13px;
-  color: #1e293b;
+  color: var(--eco-text-dark);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1512,7 +1679,7 @@ onMounted(() => {
 
 .history-item:hover .rename-btn:hover {
   opacity: 1;
-  color: #10b981;
+  color: var(--eco-moss);
 }
 
 .history-name-edit {
@@ -1534,7 +1701,7 @@ onMounted(() => {
 
 .history-time {
   font-size: 13px;
-  color: #1e293b;
+  color: var(--eco-text-dark);
   font-weight: 600;
 }
 
@@ -1558,14 +1725,14 @@ onMounted(() => {
 
 .history-count {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--eco-text-muted);
   font-weight: 500;
 }
 
 .no-history {
   text-align: center;
   padding: 40px 16px;
-  color: #9ca3af;
+  color: var(--eco-text-muted);
   font-size: 14px;
 }
 
@@ -1599,11 +1766,12 @@ onMounted(() => {
 
 .view-header {
   padding: 16px 24px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1.5px solid var(--eco-border-light);
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
+  background: linear-gradient(90deg, rgba(116,198,157,0.06) 0%, rgba(248,255,254,0.95) 100%);
 }
 
 .header-title {
@@ -1622,7 +1790,7 @@ onMounted(() => {
   margin-right: 4px;
   padding: 4px;
   height: auto;
-  color: #64748b;
+  color: var(--eco-text-mid);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1630,8 +1798,8 @@ onMounted(() => {
 }
 
 .back-btn:hover {
-  color: #10b981;
-  background: rgba(16, 185, 129, 0.1);
+  color: var(--eco-moss);
+  background: var(--eco-mist);
   border-radius: 4px;
 }
 
@@ -1642,8 +1810,8 @@ onMounted(() => {
 .header-title h2 {
   margin: 0;
   font-size: 20px;
-  font-weight: 600;
-  color: #1e293b;
+  font-weight: 700;
+  color: var(--eco-forest-mid);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1651,7 +1819,7 @@ onMounted(() => {
 
 .header-desc {
   font-size: 13px;
-  color: #64748b;
+  color: var(--eco-text-mid);
   margin-top: 6px;
   display: block;
 }
@@ -1668,21 +1836,67 @@ onMounted(() => {
 }
 
 .primary-gradient-btn {
-  background: #10b981;
+  background: linear-gradient(135deg, var(--eco-moss) 0%, var(--eco-forest-mid) 100%);
   border: none;
-  transition: all 0.2s ease;
+  box-shadow: 0 2px 10px rgba(45, 106, 79, 0.35);
+  transition: all 0.25s ease;
   height: 36px;
   min-width: 110px;
   font-weight: 600;
 }
 
 .primary-gradient-btn:hover {
-  background: #059669;
+  background: linear-gradient(135deg, var(--eco-fern) 0%, var(--eco-moss) 100%);
+  box-shadow: 0 4px 14px rgba(45, 106, 79, 0.45);
+  transform: translateY(-1px);
 }
 
 .primary-gradient-btn:disabled {
-  background: #9ca3af;
+  background: var(--eco-mint);
   cursor: not-allowed;
+}
+
+/* 模板工具栏 */
+.template-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 24px;
+  background: linear-gradient(90deg, rgba(64, 145, 108, 0.06) 0%, rgba(64, 145, 108, 0.02) 100%);
+  border-top: 1px solid var(--eco-border-light);
+  border-bottom: 1px solid var(--eco-border-light);
+}
+
+.template-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.template-toolbar-icon {
+  color: var(--eco-moss);
+  font-size: 14px;
+}
+
+.template-toolbar-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--eco-pine);
+}
+
+.template-action-btn {
+  border-radius: 6px;
+  border: 1px solid rgba(64, 145, 108, 0.4);
+  color: var(--eco-pine);
+  background: rgba(64, 145, 108, 0.06);
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.template-action-btn:hover {
+  border-color: var(--eco-moss);
+  background: var(--eco-mist);
+  color: var(--eco-forest-mid);
 }
 
 /* 筛选区域 */
@@ -1691,9 +1905,9 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #ffffff;
-  border-top: 1px solid #e2e8f0;
-  border-bottom: 1px solid #e2e8f0;
+  background: var(--eco-white);
+  border-top: 1px solid var(--eco-border-light);
+  border-bottom: 1px solid var(--eco-border-light);
   position: sticky;
   top: 0;
   z-index: 5;
@@ -1754,12 +1968,12 @@ onMounted(() => {
 }
 
 .threshold-table th {
-  background: #f8fafc;
+  background: #c9edda;
   padding: 14px 16px;
   text-align: left;
   font-weight: 600;
-  color: #64748b;
-  border-bottom: 1px solid #e2e8f0;
+  color: var(--eco-forest-mid);
+  border-bottom: 1px solid var(--eco-border);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -1768,18 +1982,18 @@ onMounted(() => {
 
 .threshold-table td {
   padding: 12px 16px;
-  border-bottom: 1px solid #e2e8f0;
-  background: #ffffff;
+  border-bottom: 1px solid var(--eco-border-light);
+  background: var(--eco-white);
   transition: background 0.2s;
   white-space: nowrap;
 }
 
 .threshold-table tr:hover td {
-  background: #ecfdf5;
+  background: var(--eco-mist);
 }
 
 .threshold-table tr.row-editing td {
-  background: rgba(59, 130, 246, 0.05);
+  background: var(--eco-ice);
 }
 
 .threshold-table tr:last-child td {
@@ -1827,12 +2041,13 @@ onMounted(() => {
 }
 .column-name {
   font-weight: 600;
-  color: #1e293b;
+  color: var(--eco-text-dark);
 }
 .variable-type {
   font-size: 10px;
-  color: #6b7280;
-  background: #f3f4f6;
+  color: var(--eco-pine);
+  background: var(--eco-ice);
+  border: 1px solid var(--eco-border-light);
   padding: 2px 6px;
   border-radius: 4px;
   align-self: flex-start;
@@ -1847,20 +2062,20 @@ onMounted(() => {
   letter-spacing: 0.02em;
 }
 .status-badge.configured {
-  background: #ecfdf5;
-  color: #059669;
+  background: var(--eco-mist);
+  color: var(--eco-pine);
 }
 .status-badge.not-configured {
-  background: #f8fafc;
-  color: #64748b;
+  background: var(--eco-ice);
+  color: var(--eco-text-muted);
 }
 
 .missing-count {
-  color: #64748b;
+  color: var(--eco-text-mid);
   font-family: monospace;
 }
 .missing-count.has-missing {
-  color: #ef4444;
+  color: #e07a5f;
   font-weight: 600;
 }
 
@@ -1871,7 +2086,7 @@ onMounted(() => {
 }
 
 .unit-text {
-  color: #9ca3af;
+  color: var(--eco-text-muted);
   font-style: italic;
 }
 
@@ -1901,7 +2116,7 @@ onMounted(() => {
   opacity: 0.5;
 }
 .empty-text {
-  color: #6b7280;
+  color: var(--eco-text-mid);
   font-size: 16px;
 }
 
@@ -1909,13 +2124,13 @@ onMounted(() => {
 .methods-section {
   padding: 12px 16px;
   flex-shrink: 0;
-  background: #ffffff;
+  background: var(--eco-white);
 }
 
 .section-title {
   font-size: 15px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--eco-forest-mid);
   display: flex;
   align-items: center;
 }
@@ -1924,7 +2139,7 @@ onMounted(() => {
   display: block;
   width: 4px;
   height: 16px;
-  background: #10b981;
+  background: var(--eco-moss);
   border-radius: 2px;
   margin-right: 8px;
 }
@@ -1936,8 +2151,8 @@ onMounted(() => {
 }
 
 .method-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--eco-white);
+  border: 1px solid var(--eco-border-light);
   border-radius: 8px;
   padding: 12px;
   transition: all 0.2s ease;
@@ -1947,15 +2162,15 @@ onMounted(() => {
 }
 
 .method-card:hover {
-  border-color: #86efac;
-  background: #f8fffb;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  border-color: var(--eco-border);
+  background: var(--eco-ice);
+  box-shadow: 0 2px 8px rgba(13, 43, 26, 0.08);
 }
 
 .method-card.method-selected {
-  border-color: #10b981;
-  background: #f0fdf4;
-  box-shadow: 0 0 0 1px #10b981;
+  border-color: var(--eco-moss);
+  background: var(--eco-mist);
+  box-shadow: 0 0 0 1px var(--eco-moss);
 }
 
 .method-card.method-unavailable {
@@ -1972,7 +2187,7 @@ onMounted(() => {
 
 .method-name {
   font-weight: 600;
-  color: #1e293b;
+  color: var(--eco-forest-mid);
   font-size: 13px;
 }
 
@@ -1984,21 +2199,21 @@ onMounted(() => {
   text-transform: uppercase;
 }
 .method-category.threshold {
-  background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
+  background: rgba(64, 145, 108, 0.12);
+  color: var(--eco-pine);
 }
 .method-category.statistical {
-  background: rgba(16, 185, 129, 0.1);
-  color: #059669;
+  background: rgba(27, 67, 50, 0.10);
+  color: var(--eco-forest-mid);
 }
 .method-category.ml {
-  background: rgba(139, 92, 246, 0.1);
-  color: #7c3aed;
+  background: rgba(45, 106, 79, 0.15);
+  color: var(--eco-moss);
 }
 
 .method-description {
   font-size: 12px;
-  color: #64748b;
+  color: var(--eco-text-mid);
   line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
@@ -2018,16 +2233,16 @@ onMounted(() => {
   padding: 2px 6px;
   border-radius: 4px;
   display: inline-block;
-  background: #f3f4f6;
-  color: #6b7280;
-  border: 1px solid #e5e7eb;
+  background: var(--eco-ice);
+  color: var(--eco-text-mid);
+  border: 1px solid var(--eco-border-light);
 }
 
 .method-check-icon {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #10b981;
+  background: var(--eco-moss);
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -2038,11 +2253,11 @@ onMounted(() => {
 
 .selected-method-hint {
   font-size: 12px;
-  color: #64748b;
+  color: var(--eco-text-mid);
 }
 
 .selected-method-hint strong {
-  color: #10b981;
+  color: var(--eco-moss);
   font-weight: 600;
 }
 
@@ -2056,15 +2271,15 @@ onMounted(() => {
 .method-params-panel {
   margin-top: 16px;
   padding: 16px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--eco-ice);
+  border: 1px solid var(--eco-border-light);
   border-radius: 10px;
 }
 
 .params-title {
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: var(--eco-forest-mid);
   margin-bottom: 12px;
 }
 
@@ -2083,7 +2298,7 @@ onMounted(() => {
 
 .param-label {
   font-size: 12px;
-  color: #64748b;
+  color: var(--eco-text-mid);
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -2097,8 +2312,8 @@ onMounted(() => {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #e2e8f0;
-  color: #64748b;
+  background: var(--eco-mist);
+  color: var(--eco-pine);
   font-size: 10px;
   cursor: help;
 }
@@ -2110,20 +2325,21 @@ onMounted(() => {
 .params-hint {
   margin-top: 12px;
   font-size: 12px;
-  color: #10b981;
+  color: var(--eco-pine);
   font-weight: 500;
   padding: 8px 12px;
-  background: rgba(16, 185, 129, 0.06);
+  background: rgba(64, 145, 108, 0.06);
   border-radius: 6px;
-  border-left: 3px solid #10b981;
+  border-left: 3px solid var(--eco-moss);
 }
 
 .selected-cols-tag {
   font-size: 12px;
-  color: #10b981;
+  color: var(--eco-pine);
   font-weight: 600;
   padding: 4px 10px;
-  background: rgba(16, 185, 129, 0.08);
+  background: rgba(64, 145, 108, 0.10);
+  border: 1px solid rgba(64, 145, 108, 0.25);
   border-radius: 12px;
 }
 
@@ -2165,10 +2381,11 @@ onMounted(() => {
 }
 
 .summary-card.highlight {
-  background: #10b981;
+  background: linear-gradient(135deg, var(--eco-moss) 0%, var(--eco-forest-mid) 100%);
   border: none;
   color: #fff;
   border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(45, 106, 79, 0.40);
 }
 
 .summary-card.highlight .card-label,
@@ -2178,7 +2395,7 @@ onMounted(() => {
 
 .card-label {
   font-size: 12px;
-  color: #64748b;
+  color: var(--eco-text-mid);
   margin-bottom: 4px;
   font-weight: 500;
 }
@@ -2186,7 +2403,7 @@ onMounted(() => {
 .card-value {
   font-size: 22px;
   font-weight: 700;
-  color: #111827;
+  color: var(--eco-forest);
   letter-spacing: -0.02em;
 }
 
@@ -2198,7 +2415,7 @@ onMounted(() => {
 .breakdown-title {
   font-size: 16px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--eco-forest-mid);
   margin-bottom: 16px;
   display: flex;
   align-items: center;
@@ -2208,7 +2425,7 @@ onMounted(() => {
   display: inline-block;
   width: 4px;
   height: 18px;
-  background: #10b981;
+  background: var(--eco-moss);
   margin-right: 8px;
   border-radius: 2px;
 }
@@ -2222,26 +2439,26 @@ onMounted(() => {
 .column-tag {
   display: flex;
   align-items: center;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: var(--eco-white);
+  border: 1px solid var(--eco-border-light);
   border-radius: 8px;
   overflow: hidden;
   font-size: 12px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 2px rgba(13, 43, 26, 0.06);
 }
 
 .tag-name {
   padding: 6px 12px;
-  color: #374151;
+  color: var(--eco-forest-mid);
   font-weight: 500;
 }
 
 .tag-count {
   padding: 6px 10px;
-  background: #f3f4f6;
-  color: #6b7280;
+  background: var(--eco-ice);
+  color: var(--eco-pine);
   font-weight: 600;
-  border-left: 1px solid #e5e7eb;
+  border-left: 1px solid var(--eco-border-light);
 }
 
 .tag-count.has-outliers {
@@ -2261,7 +2478,7 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #6b7280;
+  color: var(--eco-text-muted);
   gap: 16px;
 }
 
@@ -2285,7 +2502,7 @@ onMounted(() => {
 
 .loading-spinner {
   font-size: 32px;
-  color: #10b981;
+  color: var(--eco-moss);
   animation: spin 1s linear infinite;
 }
 
@@ -2301,15 +2518,16 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f8fafc;
+  background: transparent;
 }
 
 .no-data-content {
   text-align: center;
-  background: #ffffff;
+  background: var(--eco-white);
   padding: 48px;
   border-radius: 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--eco-border-light);
+  box-shadow: 0 2px 16px rgba(13, 43, 26, 0.08);
 }
 
 .no-data-icon {
@@ -2320,12 +2538,12 @@ onMounted(() => {
 .no-data-text {
   font-size: 20px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--eco-forest-mid);
   margin-bottom: 8px;
 }
 
 .no-data-subtitle {
-  color: #64748b;
+  color: var(--eco-text-mid);
   font-size: 15px;
 }
 
@@ -2347,11 +2565,11 @@ onMounted(() => {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(156, 163, 175, 0.3);
+  background: rgba(64, 145, 108, 0.25);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(156, 163, 175, 0.5);
+  background: rgba(64, 145, 108, 0.45);
 }
 
 /* Column Statistics Row */
@@ -2373,12 +2591,12 @@ onMounted(() => {
 .stats-title {
   font-size: 14px;
   font-weight: 600;
-  color: #374151;
+  color: var(--eco-forest-mid);
 }
 
 .stats-subtitle {
   font-size: 11px;
-  color: #9ca3af;
+  color: var(--eco-text-muted);
 }
 
 .column-stats-list {
@@ -2389,8 +2607,8 @@ onMounted(() => {
 
 .stat-item {
   flex: 0 0 110px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--eco-white);
+  border: 1px solid var(--eco-border-light);
   border-radius: 8px;
   padding: 8px 10px;
   cursor: pointer;
@@ -2400,13 +2618,13 @@ onMounted(() => {
 }
 
 .stat-item:hover {
-  border-color: #cbd5e1;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  border-color: var(--eco-border);
+  box-shadow: 0 2px 8px rgba(13, 43, 26, 0.08);
 }
 
 .stat-item.active {
-  background: #f8fffb;
-  border-color: #86efac;
+  background: var(--eco-mist);
+  border-color: var(--eco-moss);
 }
 
 .stat-item.has-outliers .count {
@@ -2430,7 +2648,7 @@ onMounted(() => {
 }
 
 .stat-item.active .col-name {
-  color: #059669;
+  color: var(--eco-pine);
 }
 
 .stat-metrics {
@@ -2451,13 +2669,13 @@ onMounted(() => {
 .stat-divider {
   width: 1px;
   height: 16px;
-  background: #e2e8f0;
+  background: var(--eco-border-light);
 }
 
 .count {
   font-size: 14px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--eco-forest-mid);
   line-height: 1;
 }
 
@@ -2467,13 +2685,13 @@ onMounted(() => {
 
 .label {
   font-size: 9px;
-  color: #9ca3af;
+  color: var(--eco-text-muted);
   transform: scale(0.9);
 }
 
 .stat-bar-bg {
   height: 3px;
-  background: #f3f4f6;
+  background: var(--eco-ice);
   border-radius: 2px;
   overflow: hidden;
   width: 100%;
@@ -2481,7 +2699,7 @@ onMounted(() => {
 
 .stat-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, #10b981, #059669);
+  background: linear-gradient(90deg, var(--eco-fern), var(--eco-moss));
   border-radius: 2px;
   transition: width 0.5s ease;
 }
@@ -2500,14 +2718,99 @@ onMounted(() => {
 }
 
 .template-preview-icon {
-  color: #9ca3af;
+  color: var(--eco-spring);
   cursor: pointer;
   font-size: 14px;
   transition: color 0.2s ease;
 }
 
 .template-preview-icon:hover {
-  color: #10b981;
+  color: var(--eco-moss);
+}
+
+/* eco-backdrop 装饰层 */
+.eco-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+.eco-leaf {
+  position: absolute;
+  color: var(--eco-moss);
+}
+.eco-leaf--1 {
+  width: 200px; height: 200px;
+  top: -50px; right: 310px;
+  transform: rotate(-18deg);
+  opacity: 0.07;
+}
+.eco-leaf--2 {
+  width: 130px; height: 130px;
+  bottom: 30px; left: 10px;
+  transform: rotate(35deg);
+  opacity: 0.05;
+}
+.eco-leaf--3 {
+  width: 90px; height: 90px;
+  top: 140px; left: 310px;
+  transform: rotate(-8deg);
+  opacity: 0.04;
+}
+.eco-network-graph {
+  position: absolute;
+  width: 520px; height: 260px;
+  top: -10px; right: -20px;
+  color: var(--eco-moss);
+  opacity: 0.45;
+}
+
+/* El-Plus 覆盖：表头 */
+:deep(.el-table th.el-table__cell) {
+  background-color: #c9edda !important;
+  color: var(--eco-forest-mid);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* El-Plus 覆盖：Tag */
+:deep(.el-tag--success) {
+  background-color: rgba(64, 145, 108, 0.12);
+  color: var(--eco-pine);
+  border-color: rgba(64, 145, 108, 0.28);
+}
+:deep(.el-tag--primary) {
+  background-color: rgba(116, 198, 157, 0.16);
+  color: var(--eco-forest-mid);
+  border-color: rgba(116, 198, 157, 0.35);
+}
+
+/* El-Plus 覆盖：Link Button */
+:deep(.el-button.is-link.el-button--primary)        { color: var(--eco-forest-mid); }
+:deep(.el-button.is-link.el-button--primary:hover)  { color: var(--eco-forest); }
+:deep(.el-button.is-link.el-button--danger)         { color: #b44b38; }
+:deep(.el-button.is-link.el-button--danger:hover)   { color: #902f20; }
+
+/* El-Plus 覆盖：Input */
+:deep(.el-input__wrapper) {
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--eco-border-light);
+}
+:deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px var(--eco-border);
+}
+:deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 1px var(--eco-moss) !important;
+}
+
+/* El-Plus 覆盖：Checkbox */
+:deep(.el-checkbox__inner) {
+  border-color: var(--eco-border);
+}
+:deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
+  background-color: var(--eco-moss);
+  border-color: var(--eco-moss);
 }
 
 /* 模板预览对话框 (append-to-body, 需要 :deep 或 :global) */
@@ -2520,12 +2823,12 @@ onMounted(() => {
 
 .template-preview-dialog .template-preview-summary {
   font-size: 13px;
-  color: #6b7280;
+  color: #2d6a4f;
   margin-bottom: 12px;
 }
 
 .template-preview-dialog .template-preview-summary strong {
-  color: #10b981;
+  color: #40916c;
 }
 
 .template-preview-dialog .template-preview-table {
@@ -2538,10 +2841,10 @@ onMounted(() => {
   text-align: left;
   padding: 8px 12px;
   font-weight: 600;
-  color: #6b7280;
+  color: #1b4332;
   font-size: 12px;
-  border-bottom: 2px solid #e2e8f0;
-  background: #f8fafc;
+  border-bottom: 2px solid #74c69d;
+  background: #c9edda;
   position: sticky;
   top: 0;
   z-index: 1;
@@ -2552,27 +2855,40 @@ onMounted(() => {
 }
 
 .template-preview-dialog .template-preview-table tbody tr:hover {
-  background: #f0fdf4;
+  background: #d8f3dc;
 }
 
 .template-preview-dialog .template-preview-table td {
   padding: 7px 12px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid #b7e4c7;
 }
 
 .template-preview-dialog .preview-col-name {
   font-weight: 600;
-  color: #1e293b;
+  color: #0d2b1a;
   font-family: "Courier New", monospace;
 }
 
 .template-preview-dialog .preview-value {
-  color: #374151;
+  color: #1b4332;
   font-family: "Courier New", monospace;
 }
 
 .template-preview-dialog .preview-unit {
-  color: #9ca3af;
+  color: #52b788;
   font-size: 12px;
+}
+
+/* 模板预览对话框头部绿色渐变 */
+.template-preview-dialog .el-dialog__header {
+  background: linear-gradient(135deg, #e8f8ee 0%, #d5eddc 100%);
+  border-bottom: 1px solid #9fd6b4;
+  padding: 16px 20px;
+  border-radius: 8px 8px 0 0;
+}
+.template-preview-dialog .el-dialog__title {
+  color: #1b4332;
+  font-weight: 600;
+  font-size: 15px;
 }
 </style>

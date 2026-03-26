@@ -55,6 +55,20 @@ export class CorrelationAnalysisService {
   }
 
   /**
+   * 重命名分析结果
+   */
+  async renameResult(id: number, name: string): Promise<boolean> {
+    return this.repository.rename(id, name);
+  }
+
+  /**
+   * 批量更新排序顺序
+   */
+  async reorderResults(orders: { id: number; sortOrder: number }[]): Promise<void> {
+    return this.repository.updateSortOrders(orders);
+  }
+
+  /**
    * 计算变量间的相关性矩阵
    */
   async calculateCorrelationMatrix(

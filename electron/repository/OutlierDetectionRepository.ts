@@ -214,6 +214,7 @@ export class OutlierDetectionRepository {
       max_threshold?: number;
       physical_min?: number;
       physical_max?: number;
+      unit?: string;
     }>
   ): number {
     const updateStmt = this.db.prepare(`
@@ -222,6 +223,7 @@ export class OutlierDetectionRepository {
           max_threshold = COALESCE(?, max_threshold),
           physical_min = COALESCE(?, physical_min),
           physical_max = COALESCE(?, physical_max),
+          unit = COALESCE(?, unit),
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `);
@@ -234,6 +236,7 @@ export class OutlierDetectionRepository {
           update.max_threshold ?? null,
           update.physical_min ?? null,
           update.physical_max ?? null,
+          update.unit ?? null,
           update.id
         );
         if (result.changes > 0) count++;
@@ -343,6 +346,23 @@ export class OutlierDetectionRepository {
       .run(name, id);
 
     return result.changes > 0;
+  }
+
+  /**
+   * 批量更新排序顺序
+   */
+  updateSortOrders(orders: { id: number; sortOrder: number }[]): void {
+    const stmt = this.db.prepare(`
+      UPDATE biz_outlier_result 
+      SET sort_order = ?, updated_at = CURRENT_TIMESTAMP 
+      WHERE id = ? AND is_del = 0
+    `);
+    const transaction = this.db.transaction(() => {
+      for (const order of orders) {
+        stmt.run(order.sortOrder, order.id);
+      }
+    });
+    transaction();
   }
 
   /**
@@ -819,6 +839,19 @@ export class OutlierDetectionRepository {
   }
 
   // ==================== 用户自定义阈值模板 ====================
+
+  /**
+   * 获取所有内置模板
+   */
+  getBuiltinTemplates(): ThresholdTemplateRecord[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM conf_threshold_template
+         WHERE is_builtin = 1 AND is_del = 0
+         ORDER BY name ASC`
+      )
+      .all() as ThresholdTemplateRecord[];
+  }
 
   /**
    * 创建阈值模板

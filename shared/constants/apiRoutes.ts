@@ -22,6 +22,8 @@ export const API_ROUTES = {
     DELETE: "datasets/delete",
     GET_VERSION_MISSING_STATS: "datasets/get-version-missing-stats",
     UPDATE: "datasets/update",
+    DELETE_VERSION: "datasets/delete-version",
+    UPDATE_VERSION: "datasets/update-version",
   },
 
   // 文件处理
@@ -46,6 +48,7 @@ export const API_ROUTES = {
     APPLY_TEMPLATE: "outlier/apply-template",
 
     // 用户自定义阈值模板
+    CREATE_USER_TEMPLATE: "outlier/create-user-template",
     SAVE_AS_TEMPLATE: "outlier/save-as-template",
     GET_USER_TEMPLATES: "outlier/get-user-templates",
     UPDATE_USER_TEMPLATE: "outlier/update-user-template",
@@ -73,6 +76,7 @@ export const API_ROUTES = {
     // 结果应用与回退
     APPLY_FILTERING: "outlier/apply-filtering",
     REVERT_FILTERING: "outlier/revert-filtering",
+    REORDER_RESULTS: "outlier/reorder-results",
   },
 
   // 系统设置
@@ -98,11 +102,19 @@ export const API_ROUTES = {
     // 结果管理
     GET_RESULT: "imputation:getResult",
     GET_RESULTS_BY_DATASET: "imputation:getResultsByDataset",
-    GET_DETAILS: "imputation:getDetails",
     GET_COLUMN_STATS: "imputation:getColumnStats",
     DELETE_RESULT: "imputation:deleteResult",
     APPLY_VERSION: "imputation:applyVersion",
     EXPORT_FILE: "imputation:exportFile",
+    RENAME_RESULT: "imputation:renameResult",
+    REORDER_RESULTS: "imputation:reorderResults",
+    // 自定义模型管理
+    REGISTER_CUSTOM_MODEL: "imputation:registerCustomModel",
+    GET_CUSTOM_MODELS: "imputation:getCustomModels",
+    DELETE_CUSTOM_MODEL: "imputation:deleteCustomModel",
+    IMPORT_MODEL_FROM_YAML: "imputation:importModelFromYaml",
+    VALIDATE_MODEL_FILE: "imputation:validateModelFile",
+    VALIDATE_SCRIPT_FILE: "imputation:validateScriptFile",
   },
 
   // 通量分割
@@ -111,6 +123,8 @@ export const API_ROUTES = {
     GET_RESULTS_BY_DATASET: "fluxPartitioning:getResultsByDataset",
     GET_RESULT: "fluxPartitioning:getResult",
     DELETE_RESULT: "fluxPartitioning:deleteResult",
+    RENAME_RESULT: "fluxPartitioning:renameResult",
+    REORDER_RESULTS: "fluxPartitioning:reorderResults",
   },
 
   // 数据导出
@@ -139,6 +153,17 @@ export const API_ROUTES = {
     CANCEL: "workflow:cancel",
     GET_EXECUTIONS: "workflow:getExecutions",
     GET_EXECUTION_DETAIL: "workflow:getExecutionDetail",
+    DELETE_EXECUTION: "workflow:deleteExecution",
+    RENAME_EXECUTION: "workflow:renameExecution",
+  },
+
+  // MySQL 数据库导入
+  MYSQL: {
+    TEST_CONNECTION: "mysql/test-connection",
+    GET_TABLES: "mysql/get-tables",
+    GET_TABLE_PREVIEW: "mysql/get-table-preview",
+    IMPORT: "mysql/import",
+    IMPORT_PROGRESS: "mysql/import-progress",
   },
 
   // 菜单事件

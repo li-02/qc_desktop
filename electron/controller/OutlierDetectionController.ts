@@ -200,6 +200,37 @@ export class OutlierDetectionController extends BaseController {
   // ==================== 用户自定义阈值模板 ====================
 
   /**
+   * 直接创建用户自定义模板（不依赖数据集）
+   */
+  async createUserTemplate(
+    args: { name: string; templateData: string; description?: string },
+    _event: IpcMainInvokeEvent
+  ) {
+    return this.handleAsync(async () => {
+      if (!args.name || !args.name.trim()) {
+        throw new Error("模板名称不能为空");
+      }
+      if (!args.templateData) {
+        throw new Error("模板数据不能为空");
+      }
+
+      let templateData: Record<string, { min: number; max: number; unit?: string }>;
+      try {
+        templateData = JSON.parse(args.templateData);
+      } catch {
+        throw new Error("模板数据格式无效");
+      }
+
+      const result = this.outlierService.createUserTemplate(args.name.trim(), templateData, args.description?.trim());
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      return result.data;
+    });
+  }
+
+  /**
    * 保存当前数据集阈值配置为模板
    */
   async saveAsTemplate(args: { datasetId: string; name: string; description?: string }, _event: IpcMainInvokeEvent) {
@@ -751,6 +782,19 @@ export class OutlierDetectionController extends BaseController {
         throw new Error(result.error);
       }
 
+      return { success: true };
+    });
+  }
+
+  /**
+   * 批量更新排序顺序
+   */
+  async reorderResults(args: { orders: { id: number; sortOrder: number }[] }, _event: IpcMainInvokeEvent) {
+    return this.handleAsync(async () => {
+      const result = this.outlierService.reorderResults(args.orders);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
       return { success: true };
     });
   }

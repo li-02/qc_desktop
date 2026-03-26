@@ -24,6 +24,11 @@ const routes: Array<RouteRecordRaw> = [
         component: DataProcessingPage,
       },
       {
+        path: "data-source",
+        name: "DataSource",
+        component: () => import("../views/data-source/index.vue"),
+      },
+      {
         path: "workflow",
         name: "Workflow",
         component: () => import("../views/workflow/index.vue"),

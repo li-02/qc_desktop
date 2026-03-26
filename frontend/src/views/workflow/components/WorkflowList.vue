@@ -15,12 +15,6 @@
     >
       <div class="item-main">
         <div class="item-name">{{ wf.name }}</div>
-        <div class="item-meta">
-          <span class="item-status" :class="'s-' + wf.status.toLowerCase()">
-            {{ statusText(wf.status) }}
-          </span>
-          <span class="item-time">{{ formatTime(wf.updatedAt) }}</span>
-        </div>
       </div>
       <div class="item-actions" @click.stop>
         <button class="action-btn" title="克隆" @click="$emit('clone', wf.id)">📋</button>
@@ -45,16 +39,6 @@ defineEmits<{
   (e: 'clone', id: number): void;
 }>();
 
-const statusText = (s: string) => {
-  const m: Record<string, string> = { DRAFT: '草稿', READY: '就绪', RUNNING: '运行中', COMPLETED: '完成', FAILED: '失败' };
-  return m[s] || s;
-};
-
-const formatTime = (t: string) => {
-  if (!t) return '';
-  const d = new Date(t);
-  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-};
 </script>
 
 <style scoped>

@@ -18,6 +18,10 @@ export class WorkflowController extends BaseController {
     super();
   }
 
+  setMainWindow(mainWindow: BrowserWindow | null) {
+    this.mainWindow = mainWindow;
+  }
+
   getRoutes(): Record<string, (args: any, event: Electron.IpcMainInvokeEvent) => Promise<any>> {
     return {
       // 工作流管理
@@ -38,6 +42,8 @@ export class WorkflowController extends BaseController {
       "workflow:cancel": this.cancel.bind(this),
       "workflow:getExecutions": this.getExecutions.bind(this),
       "workflow:getExecutionDetail": this.getExecutionDetail.bind(this),
+      "workflow:deleteExecution": this.deleteExecution.bind(this),
+      "workflow:renameExecution": this.renameExecution.bind(this),
     };
   }
 
@@ -105,5 +111,13 @@ export class WorkflowController extends BaseController {
 
   private async getExecutionDetail(args: { executionId: number }) {
     return this.handleAsync(() => Promise.resolve(this.workflowService.getExecutionDetail(args.executionId)));
+  }
+
+  private async deleteExecution(args: { executionId: number }) {
+    return this.handleAsync(() => Promise.resolve(this.workflowService.deleteExecution(args.executionId)));
+  }
+
+  private async renameExecution(args: { executionId: number; label: string }) {
+    return this.handleAsync(() => Promise.resolve(this.workflowService.renameExecution(args.executionId, args.label)));
   }
 }

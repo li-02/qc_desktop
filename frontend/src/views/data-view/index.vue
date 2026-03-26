@@ -2,11 +2,17 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { useDatasetStore } from "@/stores/useDatasetStore";
+import { useWorkflowStore } from "@/stores/useWorkflowStore";
+import { useRoute, useRouter } from "vue-router";
+import { Back } from "@element-plus/icons-vue";
 
 import DataAnalysisTabs from "./components/DataAnalysisTabs.vue";
 
-// Store
+// Store & Router
 const datasetStore = useDatasetStore();
+const workflowStore = useWorkflowStore();
+const route = useRoute();
+const router = useRouter();
 
 // 响应式状态
 const loading = ref(false);
@@ -92,13 +98,46 @@ const handleExportData = async (options: any = {}) => {
   }
 };
 
+// 处理路由参数以支持从工作流直接跳转
+const handleRouteQuery = async () => {
+  const { datasetId, tab } = route.query;
+  if (datasetId) {
+    // 强制选中这个 dataset 如果有必要
+    const idStr = String(datasetId);
+    if (!currentDataset.value || String(currentDataset.value.id) !== idStr) {
+      // 通过 setCurrentDataset 获取并设定
+      await datasetStore.setCurrentDataset(idStr);
+    }
+  }
+  
+  if (tab && typeof tab === 'string') {
+    currentTab.value = tab;
+  }
+};
+
+const returnToWorkflow = async () => {
+  // Navigating back; workflow page will clear workflowReturnState after restoring state
+  await router.push({ name: 'Workflow' });
+};
+
 // 生命周期
-onMounted(() => {
+onMounted(async () => {
   console.log("DataView 组件已挂载");
+  
+  await handleRouteQuery();
+  
   if (!currentDataset.value) {
     ElMessage.warning("请先从左侧选择一个数据集");
   }
 });
+
+// 监听路由参数变化（以防在同一个视图里直接 query 变化）
+watch(
+  () => route.query,
+  async () => {
+    await handleRouteQuery();
+  }
+);
 
 // 监听数据集变化
 watch(currentDataset, (newDataset, oldDataset) => {
@@ -122,6 +161,8 @@ watch(currentDataset, (newDataset, oldDataset) => {
             :dataset-info="currentDataset"
             :content-loading="loading"
             :default-tab="currentTab"
+            :initial-business-result-id="(route.query.businessResultId as string)"
+            :initial-version-id="(route.query.versionId as string)"
             @tab-change="handleTabChange"
             @refresh="refreshDatasetInfo"
             @start-outlier-detection="handleStartOutlierDetection"
@@ -142,6 +183,14 @@ watch(currentDataset, (newDataset, oldDataset) => {
           <div class="empty-state-tip">💡 支持异常值检测、缺失值处理、数据清洗等功能</div>
         </div>
       </div>
+    </div>
+
+    <!-- 返回工作流悬浮按钮 -->
+    <div v-if="workflowStore.workflowReturnState.active" class="return-workflow-float">
+      <el-button type="warning" size="large" class="btn-return" @click="returnToWorkflow">
+        <el-icon class="mr-2"><Back /></el-icon>
+        返回工作流
+      </el-button>
     </div>
   </div>
 </template>
@@ -338,5 +387,40 @@ watch(currentDataset, (newDataset, oldDataset) => {
 .data-view-container {
   background-size: 400% 400%;
   animation: gradient-shift 15s ease infinite;
+}
+
+/* 返回工作流悬浮按钮 */
+.return-workflow-float {
+  position: absolute;
+  top: 16px;
+  right: 24px;
+  z-index: 100;
+  animation: slide-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.btn-return {
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+  border-radius: 20px;
+  font-weight: 600;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  padding: 8px 20px;
+}
+
+.btn-return:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4);
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

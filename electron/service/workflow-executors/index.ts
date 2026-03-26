@@ -48,7 +48,7 @@ export class OutlierDetectionExecutor implements INodeExecutor {
       }
     }
 
-    ctx.onProgress(30, "正在执行异常检测...");
+    ctx.onProgress(30, "\u6b63\u5728\u6267\u884c\u5f02\u5e38\u68c0\u6d4b...");
 
     let detectionResult: any;
     try {
@@ -60,11 +60,32 @@ export class OutlierDetectionExecutor implements INodeExecutor {
         config.columnNames || undefined
       );
       if (!result.success) {
-        throw new Error(result.error || "异常检测失败");
+        // 如果是"没有配置阈值的列"，模板匹配了 0 列，跳过检测而不是错误
+        const isNoThresholdError =
+          result.error?.includes("\u6ca1\u6709\u914d\u7f6e\u9608\u503c\u7684\u5217") ||
+          result.error?.includes("\u6ca1\u6709\u53ef\u68c0\u6d4b\u7684\u5217");
+        if (method === "THRESHOLD_STATIC" && isNoThresholdError) {
+          console.warn(
+            `[OutlierDetection] \u6a21\u677f\u5173\u952e\u5b57\u672a\u5339\u914d\u4efb\u4f55\u5217\u540d\uff0c\u8df3\u8fc7\u9608\u503c\u68c0\u6d4b\u3002` +
+            `\u60a8\u53ef\u5728\u6570\u636e\u96c6\u8bbe\u7f6e\u9875\u624b\u52a8\u914d\u7f6e\u5217\u9608\u503c\uff0c\u6216\u4f7f\u7528\u81ea\u5b9a\u4e49\u6a21\u677f\u3002`
+          );
+          ctx.onProgress(100, "\u9608\u503c\u68c0\u6d4b\u8df3\u8fc7\uff08\u6a21\u677f\u672a\u5339\u914d\u4efb\u4f55\u5217\uff0c\u8bf7\u68c0\u67e5\u5217\u540d\u914d\u7f6e\uff09");
+          return {
+            outputVersionId: null,
+            resultData: {
+              businessResultId: null,
+              businessResultTable: "biz_outlier_result",
+              executionTimeMs: Date.now() - startTime,
+              skipped: true,
+              skipReason: result.error,
+            },
+          };
+        }
+        throw new Error(result.error || "\u5f02\u5e38\u68c0\u6d4b\u5931\u8d25");
       }
       detectionResult = result.data;
     } catch (error: any) {
-      throw new Error(`异常检测失败: ${error.message}`);
+      throw new Error(`\u5f02\u5e38\u68c0\u6d4b\u5931\u8d25: ${error.message}`);
     }
 
     ctx.onProgress(100, `异常检测完成，检出 ${detectionResult?.summary?.outlierCount ?? 0} 个异常值`);

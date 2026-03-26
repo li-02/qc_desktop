@@ -277,6 +277,20 @@ export class FluxPartitioningService {
     this.repository.deleteResult(resultId);
   }
 
+  /**
+   * 重命名分割结果
+   */
+  renameResult(resultId: number, name: string): boolean {
+    return this.repository.renameResult(resultId, name);
+  }
+
+  /**
+   * 批量更新排序顺序
+   */
+  reorderResults(orders: { id: number; sortOrder: number }[]): void {
+    this.repository.updateSortOrders(orders);
+  }
+
   // ==================== 内部方法 ====================
 
   private emitProgress(resultId: number, event: FluxPartitioningProgressEvent): void {
@@ -294,6 +308,7 @@ export class FluxPartitioningService {
       newVersionId: row.new_version_id || undefined,
       methodId: row.method_id as any,
       methodName: row.method_name,
+      name: row.name || undefined,
       columnMapping: JSON.parse(row.column_mapping),
       siteInfo: JSON.parse(row.site_info),
       options: row.options ? JSON.parse(row.options) : undefined,

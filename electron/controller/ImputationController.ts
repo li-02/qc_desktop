@@ -4,14 +4,12 @@ import type {
   ImputationMethod,
   ImputationMethodParam,
   ImputationResult,
-  ImputationDetail,
   ImputationColumnStat,
   ImputationModel,
   ImputationCategory,
   ExecuteImputationRequest,
   ExecuteImputationResponse,
   GetImputationResultsRequest,
-  GetImputationDetailsRequest,
   ImputationProgressEvent,
 } from '@shared/types/imputation';
 import { dialog, BrowserWindow } from 'electron';
@@ -39,11 +37,12 @@ export class ImputationController extends BaseController {
       // 结果管理
       'imputation:getResult': this.getResult.bind(this),
       'imputation:getResultsByDataset': this.getResultsByDataset.bind(this),
-      'imputation:getDetails': this.getDetails.bind(this),
       'imputation:getColumnStats': this.getColumnStats.bind(this),
       'imputation:deleteResult': this.deleteResult.bind(this),
       'imputation:applyVersion': this.applyVersion.bind(this),
       'imputation:exportFile': this.exportFile.bind(this),
+      'imputation:renameResult': this.renameResult.bind(this),
+      'imputation:reorderResults': this.reorderResults.bind(this),
 
       // 模型管理
       'imputation:createModel': this.createModel.bind(this),
@@ -203,26 +202,6 @@ export class ImputationController extends BaseController {
         request.offset
       );
       return { success: true, data: results };
-    } catch (error: any) {
-      return { success: false, error: error.message };
-    }
-  }
-
-  /**
-   * 获取插补详情
-   */
-  private async getDetails(
-    request: GetImputationDetailsRequest,
-    _event: Electron.IpcMainInvokeEvent
-  ): Promise<{ success: boolean; data?: ImputationDetail[]; error?: string }> {
-    try {
-      const details = this.service.getDetails(
-        request.resultId,
-        request.columnName,
-        request.limit,
-        request.offset
-      );
-      return { success: true, data: details };
     } catch (error: any) {
       return { success: false, error: error.message };
     }
@@ -418,6 +397,42 @@ export class ImputationController extends BaseController {
   ): Promise<{ success: boolean; error?: string }> {
     try {
       this.service.deleteModel(modelId);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 重命名插补结果
+   */
+  private async renameResult(
+    args: { resultId: number; name: string },
+    _event: Electron.IpcMainInvokeEvent
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (!args.name || !args.name.trim()) {
+        return { success: false, error: '名称不能为空' };
+      }
+      const success = this.service.renameResult(args.resultId, args.name.trim());
+      if (!success) {
+        return { success: false, error: '结果不存在' };
+      }
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 批量更新排序顺序
+   */
+  private async reorderResults(
+    args: { orders: { id: number; sortOrder: number }[] },
+    _event: Electron.IpcMainInvokeEvent
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.service.reorderResults(args.orders);
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };

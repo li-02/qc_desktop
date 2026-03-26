@@ -17,10 +17,6 @@ const props = withDefaults(defineProps<Props>(), {
   loading: false,
 });
 
-const emit = defineEmits<{
-  refresh: [];
-}>();
-
 // ==================== Store ====================
 const datasetStore = useDatasetStore();
 const currentVersion = computed(() => datasetStore.currentVersion);

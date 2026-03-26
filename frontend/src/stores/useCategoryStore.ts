@@ -84,6 +84,32 @@ export const useCategoryStore = defineStore("category", () => {
     }
   };
 
+  const updateCategory = async (categoryId: string, updates: { name?: string }): Promise<Result> => {
+    if (!window.electronAPI) {
+      return { success: false, error: "electron API not available" };
+    }
+    try {
+      loading.value = true;
+      const result = await window.electronAPI.invoke(API_ROUTES.CATEGORIES.UPDATE, { categoryId, updates });
+
+      if (result.success) {
+        if (currentCategory.value?.id === categoryId) {
+          Object.assign(currentCategory.value, updates);
+        }
+        await loadCategories();
+        ElMessage.success("分类更新成功");
+        return { success: true };
+      } else {
+        return { success: false, error: result.error || "分类更新失败" };
+      }
+    } catch (err: any) {
+      ElMessage.error(err.message || "分类更新失败");
+      return { success: false, error: "分类更新失败" };
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const deleteCategory = async (categoryId: string) => {
     if (!window.electronAPI) {
       throw new Error("electron API not available");
@@ -167,6 +193,7 @@ export const useCategoryStore = defineStore("category", () => {
     loadCategories,
     setCurrentCategory,
     createCategory,
+    updateCategory,
     deleteCategory,
     batchDeleteCategories,
     checkCategoryName,

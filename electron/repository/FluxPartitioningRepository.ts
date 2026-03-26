@@ -119,6 +119,37 @@ export class FluxPartitioningRepository {
   }
 
   /**
+   * 重命名分割结果
+   */
+  renameResult(id: number, name: string): boolean {
+    const result = this.db
+      .prepare(`
+        UPDATE biz_flux_partitioning_result 
+        SET name = ?, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = ? AND is_del = 0
+      `)
+      .run(name, id);
+    return result.changes > 0;
+  }
+
+  /**
+   * 批量更新排序顺序
+   */
+  updateSortOrders(orders: { id: number; sortOrder: number }[]): void {
+    const stmt = this.db.prepare(`
+      UPDATE biz_flux_partitioning_result 
+      SET sort_order = ?, updated_at = CURRENT_TIMESTAMP 
+      WHERE id = ? AND is_del = 0
+    `);
+    const transaction = this.db.transaction(() => {
+      for (const order of orders) {
+        stmt.run(order.sortOrder, order.id);
+      }
+    });
+    transaction();
+  }
+
+  /**
    * 更新结果的新版本ID
    */
   updateResultNewVersion(resultId: number, newVersionId: number): void {

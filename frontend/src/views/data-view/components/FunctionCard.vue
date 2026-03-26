@@ -78,10 +78,8 @@ import { ref, computed, watch } from "vue";
 import { ElMessage } from "element-plus";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import DataOverviewPanel from "./panels/DataOverviewPanel.vue";
-import OutlierDetectionPanel from "./OutlierDetectionPanel.vue";
-import MissingValuePanel from "./MissingValuePanel.vue";
-import DataCleaningPanel from "./DataCleaningPanel.vue";
-import DataExportPanel from "./DataExportPanel.vue";
+import OutlierDetectionPanel from "./panels/OutlierDetectionPanel.vue";
+import MissingValuePanel from "./panels/GapFillingPanel.vue";
 
 // Props
 interface Props {
@@ -102,7 +100,6 @@ const emit = defineEmits<{
   startOutlierDetection: [options: any];
   startMissingValueImputation: [options: any];
   startDataCleaning: [options: any];
-  exportData: [options: any];
 }>();
 
 // Reactive state
@@ -141,13 +138,6 @@ const tabs = computed(() => [
     icon: "🧹",
     disabled: !props.datasetInfo,
     description: "数据格式化和标准化处理",
-  },
-  {
-    id: "export",
-    name: "导出数据",
-    icon: "📤",
-    disabled: !props.datasetInfo,
-    description: "导出处理后的数据文件",
   },
 ]);
 
@@ -198,10 +188,6 @@ const handleStartMissingValueImputation = (options: any) => {
 
 const handleStartDataCleaning = (options: any) => {
   emit("startDataCleaning", options);
-};
-
-const handleExportData = (options: any) => {
-  emit("exportData", options);
 };
 
 // Watch for dataset changes

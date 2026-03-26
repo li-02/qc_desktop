@@ -55,6 +55,8 @@ export interface WorkflowExecution {
   id: number;
   workflowId: number;
   datasetId: number;
+  datasetName?: string;
+  label?: string | null;
   initialVersionId: number;
   status: ExecutionStatus;
   startedAt: string | null;
@@ -295,6 +297,8 @@ export interface WorkflowExecutionRow {
   id: number;
   workflow_id: number;
   dataset_id: number;
+  dataset_name?: string;
+  label?: string | null;
   initial_version_id: number;
   status: string;
   started_at: string | null;

@@ -579,6 +579,37 @@ export const useOutlierDetectionStore = defineStore("outlierDetection", () => {
   };
 
   /**
+   * 直接创建用户自定义模板（不依赖数据集）
+   */
+  const createUserTemplate = async (
+    name: string,
+    templateData: Record<string, { min: number; max: number; unit?: string }>,
+    description?: string
+  ) => {
+    try {
+      saving.value = true;
+      const result = await window.electronAPI.invoke(API_ROUTES.OUTLIER.CREATE_USER_TEMPLATE, {
+        name,
+        templateData: JSON.stringify(templateData),
+        description,
+      });
+      if (result.success) {
+        ElMessage.success(`模板「${name}」已创建`);
+        await loadUserTemplates();
+        return result.data as { id: number; columnCount: number };
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error: any) {
+      console.error("创建模板失败:", error);
+      ElMessage.error(error.message || "创建模板失败");
+      return null;
+    } finally {
+      saving.value = false;
+    }
+  };
+
+  /**
    * 保存当前阈值配置为模板
    */
   const saveAsTemplate = async (datasetId: string, name: string, description?: string) => {
@@ -743,6 +774,7 @@ export const useOutlierDetectionStore = defineStore("outlierDetection", () => {
     loadThresholdTemplates,
     applyThresholdTemplate,
     loadUserTemplates,
+    createUserTemplate,
     saveAsTemplate,
     updateUserTemplate,
     deleteUserTemplate,

@@ -20,6 +20,18 @@
         <span v-else-if="isCompleted" class="status-indicator completed-indicator">✅</span>
         <span v-else-if="isFailed" class="status-indicator failed-indicator">❌</span>
 
+        <!-- 查看结果按钮 -->
+        <el-button
+          v-if="hasResultData"
+          size="small"
+          type="primary"
+          link
+          class="btn-view-result"
+          title="查看结果"
+          @click.stop="$emit('view-result')">
+          <el-icon><View /></el-icon>
+        </el-button>
+
         <!-- 启用开关 -->
         <el-switch
           :model-value="node.isEnabled"
@@ -42,12 +54,14 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { WorkflowNode, WorkflowNodeType } from "@shared/types/workflow";
+import type { WorkflowNode, WorkflowNodeType, WorkflowNodeExecution } from "@shared/types/workflow";
 import { NODE_TYPE_META } from "@shared/types/workflow";
+import { View } from "@element-plus/icons-vue";
 
 const props = defineProps<{
   node: WorkflowNode;
   index: number;
+  nodeExecution?: WorkflowNodeExecution | null;
   isRunning: boolean;
   isCompleted: boolean;
   isFailed: boolean;
@@ -57,9 +71,15 @@ defineEmits<{
   (e: "click"): void;
   (e: "delete"): void;
   (e: "toggle", enabled: boolean): void;
+  (e: "view-result"): void;
 }>();
 
 const meta = computed(() => NODE_TYPE_META[props.node.nodeType as WorkflowNodeType]);
+
+const hasResultData = computed(() => {
+  if (!props.nodeExecution) return false;
+  return props.nodeExecution.status === "COMPLETED";
+});
 
 const configSummary = computed(() => {
   if (!props.node.configJson) return "";
@@ -205,6 +225,17 @@ const configSummary = computed(() => {
 .btn-delete:hover {
   opacity: 1 !important;
   background: rgba(239, 68, 68, 0.1);
+}
+
+.btn-view-result {
+  opacity: 0.8;
+  transition: opacity 0.15s;
+  font-size: 16px;
+  padding: 4px;
+}
+
+.btn-view-result:hover {
+  opacity: 1;
 }
 
 .node-body {

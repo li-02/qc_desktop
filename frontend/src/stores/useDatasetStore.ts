@@ -238,6 +238,57 @@ export const useDatasetStore = defineStore("dataset", () => {
     }
   };
 
+  const deleteVersion = async (versionId: number) => {
+    try {
+      loading.value = true;
+      const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.DELETE_VERSION, {
+        versionId: String(versionId),
+      });
+      if (result.success) {
+        if (currentVersion.value?.id === versionId) {
+          currentVersion.value = null;
+          currentVersionStats.value = null;
+        }
+        if (currentDataset.value) {
+          await loadDatasetVersions(currentDataset.value.id);
+          if (versions.value.length > 0 && !currentVersion.value) {
+            await setCurrentVersion(versions.value[0].id);
+          }
+        }
+        ElMessage.success("版本删除成功");
+        return true;
+      } else {
+        throw new Error(result.error || "版本删除失败");
+      }
+    } catch (err: any) {
+      ElMessage.error(err.message || "版本删除失败");
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const updateVersionRemark = async (versionId: number, remark: string) => {
+    try {
+      const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.UPDATE_VERSION, {
+        versionId: String(versionId),
+        updates: { remark },
+      });
+      if (result.success) {
+        const v = versions.value.find(v => v.id === versionId);
+        if (v) v.remark = remark;
+        if (currentVersion.value?.id === versionId) currentVersion.value.remark = remark;
+        ElMessage.success("备注更新成功");
+        return true;
+      } else {
+        throw new Error(result.error || "更新备注失败");
+      }
+    } catch (err: any) {
+      ElMessage.error(err.message || "更新备注失败");
+      throw err;
+    }
+  };
+
   const exportVersion = async (versionId: number, fileName?: string) => {
     try {
       loading.value = true;
@@ -305,6 +356,8 @@ export const useDatasetStore = defineStore("dataset", () => {
     batchImportData,
     updateMissingMarkers,
     deleteDataset,
+    deleteVersion,
+    updateVersionRemark,
     exportVersion,
   };
 });

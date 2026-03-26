@@ -14,6 +14,8 @@ import { ExportService } from "../service/ExportService";
 import { WorkflowController } from "../controller/WorkflowController";
 import { WorkflowRepository } from "../repository/WorkflowRepository";
 import { WorkflowService } from "../service/WorkflowService";
+import { MySQLController } from "../controller/MySQLController";
+import { MySQLService } from "../service/MySQLService";
 import {
   OutlierDetectionExecutor,
   ImputationExecutor,
@@ -65,6 +67,8 @@ export class ControllerRegistry {
   private workflowRepository!: WorkflowRepository;
   private workflowService!: WorkflowService;
   private workflowController!: WorkflowController;
+  private mysqlService!: MySQLService;
+  private mysqlController!: MySQLController;
 
   constructor(projectsDir: string) {
     this.initializeDependencies(projectsDir);
@@ -158,6 +162,12 @@ export class ControllerRegistry {
       this.workflowController = new WorkflowController(this.workflowService, null);
       console.log("✓ WorkflowController 初始化完成");
 
+      this.mysqlService = new MySQLService(this.datasetService);
+      console.log("✓ MySQLService 初始化完成");
+
+      this.mysqlController = new MySQLController(this.mysqlService);
+      console.log("✓ MySQLController 初始化完成");
+
       console.log("所有依赖关系初始化完成");
     } catch (error: any) {
       console.error("依赖初始化失败:", error);
@@ -180,6 +190,7 @@ export class ControllerRegistry {
       this.registerFluxPartitioningRoutes();
       this.registerExportRoutes();
       this.registerWorkflowRoutes();
+      this.registerMySQLRoutes();
 
       console.log("所有控制器路由已注册");
       console.log("已注册路由:", IPCManager.getRegisteredRoutes());
@@ -304,6 +315,16 @@ export class ControllerRegistry {
         handler: this.datasetController.performImputation.bind(this.datasetController),
         description: "执行缺失值插补",
       },
+      {
+        path: "datasets/delete-version",
+        handler: this.datasetController.deleteDatasetVersion.bind(this.datasetController),
+        description: "删除数据集版本",
+      },
+      {
+        path: "datasets/update-version",
+        handler: this.datasetController.updateDatasetVersion.bind(this.datasetController),
+        description: "更新数据集版本备注",
+      },
     ];
 
     routes.forEach(route => {
@@ -383,6 +404,11 @@ export class ControllerRegistry {
         description: "应用阈值模板",
       },
       // 用户自定义阈值模板
+      {
+        path: "outlier/create-user-template",
+        handler: this.outlierController.createUserTemplate.bind(this.outlierController),
+        description: "直接创建用户自定义模板",
+      },
       {
         path: "outlier/save-as-template",
         handler: this.outlierController.saveAsTemplate.bind(this.outlierController),
@@ -482,6 +508,11 @@ export class ControllerRegistry {
         handler: this.outlierController.revertOutlierFiltering.bind(this.outlierController),
         description: "撤销异常值过滤",
       },
+      {
+        path: "outlier/reorder-results",
+        handler: this.outlierController.reorderResults.bind(this.outlierController),
+        description: "更新排序顺序",
+      },
     ];
 
     routes.forEach(route => {
@@ -516,6 +547,16 @@ export class ControllerRegistry {
         path: "correlation/batch-delete-results",
         handler: this.correlationController.batchDeleteResults.bind(this.correlationController),
         description: "批量删除分析结果",
+      },
+      {
+        path: "correlation/rename-result",
+        handler: this.correlationController.renameResult.bind(this.correlationController),
+        description: "重命名分析结果",
+      },
+      {
+        path: "correlation/reorder-results",
+        handler: this.correlationController.reorderResults.bind(this.correlationController),
+        description: "更新排序顺序",
       },
     ];
 
@@ -640,7 +681,7 @@ export class ControllerRegistry {
    * 设置主窗口引用（用于工作流进度推送）
    */
   setMainWindow(mainWindow: Electron.BrowserWindow) {
-    this.workflowController = new WorkflowController(this.workflowService, mainWindow);
+    this.workflowController.setMainWindow(mainWindow);
   }
 
   /**
@@ -679,6 +720,41 @@ export class ControllerRegistry {
     } catch (error: any) {
       console.error("资源清理失败:", error);
     }
+  }
+
+  /**
+   * 注册 MySQL 数据库导入相关路由
+   */
+  private registerMySQLRoutes() {
+    const routes = [
+      {
+        path: "mysql/test-connection",
+        handler: this.mysqlController.testConnection.bind(this.mysqlController),
+        description: "测试 MySQL 连接",
+      },
+      {
+        path: "mysql/get-tables",
+        handler: this.mysqlController.getTables.bind(this.mysqlController),
+        description: "获取数据库表列表",
+      },
+      {
+        path: "mysql/get-table-preview",
+        handler: this.mysqlController.getTablePreview.bind(this.mysqlController),
+        description: "获取表数据预览",
+      },
+      {
+        path: "mysql/import",
+        handler: this.mysqlController.importTable.bind(this.mysqlController),
+        description: "从 MySQL 表导入数据集",
+      },
+    ];
+
+    routes.forEach(route => {
+      IPCManager.registerRoute(route.path, route.handler);
+      console.log(`✓ 注册路由: ${route.path} - ${route.description}`);
+    });
+
+    console.log(`MySQL 导入路由注册完成，共 ${routes.length} 个路由`);
   }
 
   // #region 临时兼容性方法

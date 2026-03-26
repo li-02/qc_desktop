@@ -126,6 +126,161 @@
         </div>
       </template>
 
+      <!-- ====== 缺失值插补节点：结构化配置 ====== -->
+      <template v-else-if="node.nodeType === 'IMPUTATION'">
+        <!-- 插补方法选择 -->
+        <div class="config-section">
+          <label class="config-label">插补方法</label>
+          <el-select
+            v-model="imputationMethod"
+            size="small"
+            placeholder="请选择插补方法"
+            style="width: 100%"
+            @change="onImputationMethodChange">
+            <el-option
+              v-for="m in availableImputationMethods"
+              :key="m.methodId"
+              :label="m.methodName"
+              :value="m.methodId"
+              :disabled="!m.isAvailable">
+              <div class="method-option">
+                <span>{{ m.methodName }}</span>
+                <span class="method-category">{{ imputationCategoryLabel(m.category) }}</span>
+              </div>
+            </el-option>
+          </el-select>
+          <div v-if="selectedImputationMethodInfo" class="method-desc">{{ selectedImputationMethodInfo.description }}</div>
+        </div>
+
+        <!-- 方法参数（动态加载） -->
+        <template v-if="imputationMethod && imputationMethodParams.length > 0">
+          <div v-for="param in imputationMethodParams" :key="param.paramKey" class="config-section">
+            <label class="config-label">{{ param.paramName }}</label>
+            <el-input-number
+              v-if="param.paramType === 'number'"
+              v-model="imputationParams[param.paramKey]"
+              :min="param.minValue"
+              :max="param.maxValue"
+              :step="param.stepValue || 1"
+              size="small"
+              style="width: 100%"
+              @change="onImputationConfigChange" />
+            <el-switch
+              v-else-if="param.paramType === 'boolean'"
+              v-model="imputationParams[param.paramKey]"
+              size="small"
+              @change="onImputationConfigChange" />
+            <el-select
+              v-else-if="param.paramType === 'select'"
+              v-model="imputationParams[param.paramKey]"
+              size="small"
+              style="width: 100%"
+              @change="onImputationConfigChange">
+              <el-option
+                v-for="opt in getImputationParamOptions(param)"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value" />
+            </el-select>
+            <div v-if="param.tooltip" class="param-tooltip">{{ param.tooltip }}</div>
+          </div>
+        </template>
+
+        <!-- 插补列（可选） -->
+        <div class="config-section">
+          <label class="config-label">插补列 (可选)</label>
+          <el-select
+            v-model="imputationTargetColumns"
+            multiple
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+            size="small"
+            placeholder="留空插补所有缺失列"
+            style="width: 100%"
+            @change="onImputationConfigChange">
+            <el-option v-for="col in datasetColumns" :key="col" :label="col" :value="col" />
+          </el-select>
+          <div class="param-tooltip">留空表示插补所有列，可多选指定列</div>
+        </div>
+
+        <!-- 验证集比例（可选） -->
+        <div class="config-section">
+          <label class="config-label">验证集比例 (可选)</label>
+          <div style="display: flex; align-items: center; gap: 10px; padding: 0 4px">
+            <el-slider
+              v-model="imputationValidateSplit"
+              :min="0"
+              :max="0.3"
+              :step="0.05"
+              style="flex: 1"
+              @change="onImputationConfigChange" />
+            <span style="font-size: 12px; color: #374151; min-width: 36px; text-align: right">
+              {{ imputationValidateSplit === 0 ? '关闭' : (imputationValidateSplit * 100).toFixed(0) + '%' }}
+            </span>
+          </div>
+          <div class="param-tooltip">{{ imputationValidateSplit === 0 ? '不启用验证集评估' : `使用 ${(imputationValidateSplit * 100).toFixed(0)}% 的数据评估插补效果` }}</div>
+        </div>
+      </template>
+
+      <!-- ====== 数据导出节点：结构化配置 ====== -->
+      <template v-else-if="node.nodeType === 'EXPORT'">
+        <!-- 导出格式 -->
+        <div class="config-section">
+          <label class="config-label">导出格式</label>
+          <el-select v-model="exportFormat" size="small" style="width: 100%" @change="onExportConfigChange">
+            <el-option label="CSV (UTF-8)" value="csv" />
+            <el-option label="CSV (带 BOM，Excel 兼容)" value="csv_bom" />
+            <el-option label="Excel (.xlsx)" value="xlsx" />
+          </el-select>
+        </div>
+
+        <!-- 分隔符（仅 CSV 格式显示） -->
+        <div v-if="exportFormat !== 'xlsx'" class="config-section">
+          <label class="config-label">CSV 分隔符</label>
+          <el-select v-model="exportDelimiter" size="small" style="width: 100%" @change="onExportConfigChange">
+            <el-option label="逗号 (,)" value="," />
+            <el-option label="分号 (;)" value=";" />
+            <el-option label="制表符 (Tab)" value="\t" />
+          </el-select>
+        </div>
+
+        <!-- 导出列（可选） -->
+        <div class="config-section">
+          <label class="config-label">导出列 (可选)</label>
+          <el-select
+            v-model="exportSelectedColumns"
+            multiple
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+            size="small"
+            placeholder="留空导出所有列"
+            style="width: 100%"
+            @change="onExportConfigChange">
+            <el-option v-for="col in datasetColumns" :key="col" :label="col" :value="col" />
+          </el-select>
+          <div class="param-tooltip">留空表示导出所有列，可多选指定列</div>
+        </div>
+
+        <!-- 缺失值表示 -->
+        <div class="config-section">
+          <label class="config-label">缺失值输出表示</label>
+          <el-input
+            v-model="exportMissingValueOutput"
+            size="small"
+            placeholder="留空则输出为空字符串"
+            @blur="onExportConfigChange" />
+          <div class="param-tooltip">例如填写 NaN、NA、-9999 等</div>
+        </div>
+
+        <!-- 包含表头 -->
+        <div class="config-section">
+          <label class="config-label">包含表头</label>
+          <el-switch v-model="exportIncludeHeader" size="small" @change="onExportConfigChange" />
+        </div>
+      </template>
+
       <!-- ====== 其他节点类型：JSON 编辑 ====== -->
       <template v-else>
         <div class="config-section">
@@ -143,13 +298,7 @@
         <div class="config-section">
           <label class="config-label">配置说明</label>
           <div class="config-help">
-            <template v-if="node.nodeType === 'IMPUTATION'">
-              <p><b>methodId</b>: 插补方法 ID (如 LINEAR, SPLINE, KNN 等)</p>
-              <p><b>targetColumns</b>: 列名数组 或 null(全部列)</p>
-              <p><b>params</b>: 方法参数对象(可选)</p>
-              <p><b>validateSplit</b>: 验证集比例 0~0.3(可选)</p>
-            </template>
-            <template v-else-if="node.nodeType === 'FLUX_PARTITIONING'">
+            <template v-if="node.nodeType === 'FLUX_PARTITIONING'">
               <p><b>methodId</b>: NIGHTTIME_REICHSTEIN / DAYTIME_LASSLOP</p>
               <p><b>columnMapping</b>: {neeCol, rgCol, tairCol, vpdCol, rhCol?, ustarCol?}</p>
               <p><b>siteInfo</b>: {latDeg, longDeg, timezoneHour}</p>
@@ -159,13 +308,6 @@
               <p><b>columns</b>: 要分析的列名数组</p>
               <p><b>method</b>: pearson / spearman / kendall</p>
               <p><b>significanceLevel</b>: 显著性水平(可选，默认0.05)</p>
-            </template>
-            <template v-else-if="node.nodeType === 'EXPORT'">
-              <p><b>format</b>: csv / csv_bom / xlsx</p>
-              <p><b>selectedColumns</b>: 列名数组(空数组=全部)</p>
-              <p><b>delimiter</b>: 分隔符 "," / ";" / "\t"</p>
-              <p><b>missingValueOutput</b>: 缺失值输出表示</p>
-              <p><b>includeHeader</b>: 是否包含表头(默认true)</p>
             </template>
           </div>
         </div>
@@ -181,6 +323,7 @@ import { NODE_TYPE_META } from "@shared/types/workflow";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
 import type { DetectionMethod, DetectionMethodId } from "@shared/types/database";
+import type { ImputationMethod, ImputationMethodParam, ImputationMethodId } from "@shared/types/imputation";
 
 const props = defineProps<{
   node: WorkflowNode;
@@ -216,7 +359,7 @@ const selectedMethodInfo = computed<DetectionMethod | undefined>(() =>
 const builtinTemplateOptions = computed(() => {
   return Object.entries(outlierStore.thresholdTemplates).map(([key]) => ({
     value: `builtin:${key}`,
-    label: key === "standard" ? "标准模板" : key === "strict" ? "严格模板" : key,
+    label: key === "standard" ? "标准模板" : key,
   }));
 });
 
@@ -231,6 +374,179 @@ const userTemplateOptions = computed(() => {
 const categoryLabel = (cat: string) => {
   const map: Record<string, string> = { threshold: "阈值", statistical: "统计", ml: "机器学习", dl: "深度学习" };
   return map[cat] || cat;
+};
+
+// ==================== 缺失值插补专用状态 ====================
+const imputationMethod = ref<ImputationMethodId | "">("");
+const imputationParams = ref<Record<string, any>>({});
+const imputationTargetColumns = ref<string[]>([]);
+const imputationValidateSplit = ref<number>(0);
+const imputationMethods = ref<ImputationMethod[]>([]);
+const imputationMethodParams = ref<ImputationMethodParam[]>([]);
+const imputationMethodParamsCache = ref<Record<string, ImputationMethodParam[]>>({});
+
+const availableImputationMethods = computed(() => imputationMethods.value);
+
+const selectedImputationMethodInfo = computed<ImputationMethod | undefined>(() =>
+  imputationMethods.value.find(m => m.methodId === imputationMethod.value)
+);
+
+const imputationCategoryLabel = (cat: string) => {
+  const map: Record<string, string> = {
+    basic: "基础",
+    statistical: "统计",
+    ml: "机器学习",
+    dl: "深度学习",
+  };
+  return map[cat] || cat;
+};
+
+const getImputationParamOptions = (param: ImputationMethodParam): { label: string; value: any }[] => {
+  if (!param.options) return [];
+  try {
+    const opts = JSON.parse(param.options);
+    return opts.map((o: any) => ({ label: o.label, value: o.value }));
+  } catch {
+    return [];
+  }
+};
+
+// 加载插补方法列表
+const loadImputationMethods = async () => {
+  try {
+    const result = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.GET_AVAILABLE_METHODS);
+    if (result.success) {
+      imputationMethods.value = result.data;
+    }
+  } catch (e) {
+    console.warn("加载插补方法失败:", e);
+  }
+};
+
+// 加载选中方法的参数定义
+const loadImputationMethodParams = async (methodId: string) => {
+  if (!methodId) {
+    imputationMethodParams.value = [];
+    return;
+  }
+  if (imputationMethodParamsCache.value[methodId]) {
+    imputationMethodParams.value = imputationMethodParamsCache.value[methodId];
+    return;
+  }
+  try {
+    const result = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.GET_METHOD_PARAMS, methodId);
+    if (result.success) {
+      imputationMethodParamsCache.value[methodId] = result.data;
+      imputationMethodParams.value = result.data;
+    }
+  } catch (e) {
+    console.warn("加载插补方法参数失败:", e);
+    imputationMethodParams.value = [];
+  }
+};
+
+// 从 configJson 解析插补配置
+const parseImputationConfig = async (configStr: string) => {
+  try {
+    const cfg = JSON.parse(configStr);
+    imputationMethod.value = cfg.methodId || "";
+    imputationParams.value = cfg.params || {};
+    imputationTargetColumns.value = cfg.targetColumns || [];
+    imputationValidateSplit.value = cfg.validateSplit || 0;
+
+    if (imputationMethod.value) {
+      await loadImputationMethodParams(imputationMethod.value);
+      // 填充缺省参数值
+      for (const p of imputationMethodParams.value) {
+        if (imputationParams.value[p.paramKey] === undefined && p.defaultValue !== null) {
+          const val = p.paramType === "number" ? Number(p.defaultValue) :
+                      p.paramType === "boolean" ? p.defaultValue === "true" : p.defaultValue;
+          imputationParams.value[p.paramKey] = val;
+        }
+      }
+    }
+  } catch {
+    imputationMethod.value = "";
+    imputationParams.value = {};
+    imputationTargetColumns.value = [];
+    imputationValidateSplit.value = 0;
+    imputationMethodParams.value = [];
+  }
+};
+
+// 切换方法时重置参数
+const onImputationMethodChange = async () => {
+  imputationParams.value = {};
+  await loadImputationMethodParams(imputationMethod.value as string);
+  // 填充默认值
+  for (const p of imputationMethodParams.value) {
+    if (p.defaultValue !== null) {
+      const val = p.paramType === "number" ? Number(p.defaultValue) :
+                  p.paramType === "boolean" ? p.defaultValue === "true" : p.defaultValue;
+      imputationParams.value[p.paramKey] = val;
+    }
+  }
+  onImputationConfigChange();
+};
+
+// 配置变更 → 序列化
+const onImputationConfigChange = () => {
+  const cfg: Record<string, any> = { methodId: imputationMethod.value };
+  if (Object.keys(imputationParams.value).length > 0) {
+    cfg.params = { ...imputationParams.value };
+  }
+  if (imputationTargetColumns.value.length > 0) {
+    cfg.targetColumns = imputationTargetColumns.value;
+  } else {
+    cfg.targetColumns = null;
+  }
+  if (imputationValidateSplit.value > 0) {
+    cfg.validateSplit = imputationValidateSplit.value;
+  }
+  const json = JSON.stringify(cfg, null, 2);
+  localConfig.value = json;
+  emit("update", props.node.id, { configJson: json });
+};
+
+// ==================== 数据导出专用状态 ====================
+const exportFormat = ref<"csv" | "csv_bom" | "xlsx">("csv");
+const exportDelimiter = ref<"," | ";" | "\t">(",");
+const exportSelectedColumns = ref<string[]>([]);
+const exportMissingValueOutput = ref("");
+const exportIncludeHeader = ref(true);
+
+const parseExportConfig = (configStr: string) => {
+  try {
+    const cfg = JSON.parse(configStr);
+    exportFormat.value = cfg.format || "csv";
+    exportDelimiter.value = cfg.delimiter || ",";
+    exportSelectedColumns.value = cfg.selectedColumns || [];
+    exportMissingValueOutput.value = cfg.missingValueOutput ?? "";
+    exportIncludeHeader.value = cfg.includeHeader !== false;
+  } catch {
+    exportFormat.value = "csv";
+    exportDelimiter.value = ",";
+    exportSelectedColumns.value = [];
+    exportMissingValueOutput.value = "";
+    exportIncludeHeader.value = true;
+  }
+};
+
+const onExportConfigChange = () => {
+  const cfg: Record<string, any> = {
+    format: exportFormat.value,
+    selectedColumns: exportSelectedColumns.value,
+    includeHeader: exportIncludeHeader.value,
+  };
+  if (exportFormat.value !== "xlsx") {
+    cfg.delimiter = exportDelimiter.value;
+  }
+  if (exportMissingValueOutput.value !== "") {
+    cfg.missingValueOutput = exportMissingValueOutput.value;
+  }
+  const json = JSON.stringify(cfg, null, 2);
+  localConfig.value = json;
+  emit("update", props.node.id, { configJson: json });
 };
 
 // ==================== 初始化：从 configJson 解析异常检测状态 ====================
@@ -310,6 +626,10 @@ watch(
     configError.value = "";
     if (n.nodeType === "OUTLIER_DETECTION") {
       parseOutlierConfig(n.configJson || "{}");
+    } else if (n.nodeType === "IMPUTATION") {
+      parseImputationConfig(n.configJson || "{}");
+    } else if (n.nodeType === "EXPORT") {
+      parseExportConfig(n.configJson || "{}");
     }
   },
   { immediate: true }
@@ -379,6 +699,19 @@ onMounted(async () => {
     }
     // 重新解析，因为 store 数据可能刚加载完
     parseOutlierConfig(props.node.configJson || "{}");
+  } else if (props.node.nodeType === "IMPUTATION") {
+    await loadImputationMethods();
+    // 加载数据集列（复用同一份列表）
+    if (props.datasetId) {
+      await loadDatasetColumns(props.datasetId);
+    }
+    // 重新解析（方法列表已加载完）
+    await parseImputationConfig(props.node.configJson || "{}");
+  } else if (props.node.nodeType === "EXPORT") {
+    if (props.datasetId) {
+      await loadDatasetColumns(props.datasetId);
+    }
+    parseExportConfig(props.node.configJson || "{}");
   }
 });
 </script>

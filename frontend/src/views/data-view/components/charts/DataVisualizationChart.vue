@@ -97,27 +97,6 @@ const sampleTimeSeriesData = (
   return sampledData;
 };
 
-/**
- * 自适应采样：根据缩放级别动态调整采样率
- */
-const adaptiveSampleData = (
-  timeData: Array<{ time: string; value: number }>,
-  zoomStart: number = 0,
-  zoomEnd: number = 100
-): Array<{ time: string; value: number }> => {
-  const zoomRange = (zoomEnd - zoomStart) / 100;
-
-  // 如果缩放范围很小，显示更多数据点
-  let maxPoints = SAMPLING_CONFIG.MAX_POINTS;
-  if (zoomRange < 0.1) {
-    maxPoints = SAMPLING_CONFIG.MAX_POINTS * 2;
-  } else if (zoomRange < 0.5) {
-    maxPoints = SAMPLING_CONFIG.MAX_POINTS * 1.5;
-  }
-
-  return sampleTimeSeriesData(timeData, maxPoints);
-};
-
 // 全屏切换函数
 const toggleFullscreen = () => {
   const chartViz = document.querySelector(".chart-visualization") as HTMLElement;
@@ -431,23 +410,7 @@ const generateTimeSeriesData = (columnName: string) => {
 
     data.push({ time: d.toISOString(), value });
   }
-
   return data;
-};
-
-// 获取列的中文标签
-const getColumnLabel = (columnName: string) => {
-  const labelMap: Record<string, string> = {
-    RH: "相对湿度(%)",
-    NEE_VUT_REF: "净生态系统交换",
-    TS_F_MDS_1: "土壤温度(°C)",
-    SWC_F_MDS_1: "土壤含水量",
-    VPD_F_MDS: "水汽压差(Pa)",
-    TA_F_MDS: "空气温度(°C)",
-    NETRAD: "净辐射(W/m²)",
-    SW_IN_F: "短波入射辐射(W/m²)",
-  };
-  return labelMap[columnName] || columnName;
 };
 
 // 生成直方图配置

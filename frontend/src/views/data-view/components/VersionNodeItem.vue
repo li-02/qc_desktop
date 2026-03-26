@@ -13,11 +13,11 @@ interface VersionNode {
   isCurrent: boolean;
 }
 
-const props = defineProps<{
+defineProps<{
   node: VersionNode;
 }>();
 
-const emit = defineEmits<{
+defineEmits<{
   (e: "switch", id: number): void;
   (e: "delete", id: number): void;
   (e: "export", id: number): void;

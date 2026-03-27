@@ -32,9 +32,9 @@ export class PythonBridgeService {
 
   private constructor() {
     // 开发环境使用项目根目录下的 python 文件夹
-    // 生产环境使用 app.getPath('userData') 下的 python 文件夹
+    // 生产环境使用 resources/python（通过 electron-builder extraResources 打包）
     this.pythonDir = app.isPackaged
-      ? path.join(app.getPath("userData"), "python")
+      ? path.join(process.resourcesPath, "python")
       : path.join(__dirname, "..", "..", "..", "python");
   }
 

@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html>
+<head><title>R: Post Processing of (Half-)Hourly Eddy-Covariance Measurements</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+<link rel="stylesheet" type="text/css" href="R.css" />
+</head><body><div class="container">
+<h1> Post Processing of (Half-)Hourly Eddy-Covariance Measurements
+<img class="toplogo" src="../../../doc/html/Rlogo.svg" alt="[R logo]" />
+</h1>
+<hr/>
+<div style="text-align: center;">
+<a href="../../../doc/html/packages.html"><img class="arrow" src="../../../doc/html/left.jpg" alt="[Up]" /></a>
+<a href="../../../doc/html/index.html"><img class="arrow" src="../../../doc/html/up.jpg" alt="[Top]" /></a>
+</div><h2>Documentation for package &lsquo;REddyProc&rsquo; version 1.3.4</h2>
+
+<ul><li><a href="../DESCRIPTION">DESCRIPTION file</a>.</li>
+<li><a href="../doc/index.html">User guides, package vignettes and other documentation.</a></li>
+<li><a href="../NEWS.md">Package NEWS</a>.</li>
+</ul>
+
+<h2>Help Pages</h2>
+
+
+<p style="text-align: center;">
+<a href="# "> </a>
+<a href="#B">B</a>
+<a href="#D">D</a>
+<a href="#E">E</a>
+<a href="#F">F</a>
+<a href="#G">G</a>
+<a href="#H">H</a>
+<a href="#L">L</a>
+<a href="#N">N</a>
+<a href="#P">P</a>
+<a href="#R">R</a>
+<a href="#S">S</a>
+<a href="#U">U</a>
+<a href="#misc">misc</a>
+</p>
+
+<table style="width: 100%;">
+<tr><td style="width: 25%;"><a href="REddyProc-package.html">REddyProc-package</a></td>
+<td>Post Processing of (Half-)Hourly Eddy-Covariance Measurements</td></tr>
+</table>
+
+<h2><a id="B">-- B --</a></h2>
+
+<table style="width: 100%;">
+<tr><td style="width: 25%;"><a href="BerkeleyJulianDateToPOSIXct.html">BerkeleyJulianDateToPOSIXct</a></td>
+<td>BerkeleyJulianDateToPOSIXct</td></tr>
+</table>
+
+<h2><a id="D">-- D --</a></h2>
+
+<table style="width: 100%;">
+<tr><td style="width: 25%;"><a href="DEGebExample.html">DEGebExample</a></td>
+<td>Eddy covariance data from Gebesee crop site, Germany</td></tr>
+</table>
+
+<h2><a id="E">-- E --</a></h2>
+
+<table style="width: 100%;">
+<tr><td style="width: 25%;"><a href="estimate_vpd_from_dew.html">estimate_vpd_from_dew</a></td>
+<td>Estimate VPD from assuming dewpoint at daily minimum temperature</td></tr>
+<tr><td style="width: 25%;"><a href="Example_DETha98.html">Example_DETha98</a></td>
+<td>Eddy covariance data from Tharandt, Germany</td></tr>
+<tr><td style="width: 25%;"><a href="extract_FN15.html">extract_FN15</a></td>
+<td>extract processing results with columns corresponding to Fluxnet15 release</td></tr>
+</table>
+
+<h2><a id="F">-- F --</a></h2>
+
+<table style="width: 100%;">
+<tr><td style="width: 25%;"><a href="fCalcAVPfromVMFandPress.html">fCalcAVPfromVMFandPress</a></td>
+<td>fCalcAVPfromVMFandPress</td></tr>
+<tr><td style="width: 25%;"><a href="fCalcETfromLE.html">fCalcETfromLE</a></td>
+<td>fCalcETfromLE</td></tr>
+<tr><td style="width: 25%;"><a href="fCalcExtRadiation.html">fCalcExtRadiation</a></td>
+<td>fCalcExtRadiation</td></tr>
+<tr><td style="width: 25%;"><a href="fCalcPotRadiation.html">fCalcPotRadiation</a></td>
+<td>fCalcPotRadiation</td></tr>
+<tr><td style="width: 25%;"><a href="fCalcRHfromAVPandTair.html">fCalcRHfromAVPandTair</a></td>
+<td>fCalcRHfromAVPandTair</td></tr>
+<tr><td style="width: 25%;"><a href="fCalcSVPfromTair.html">fCalcSVPfromTair</a></td>
+<td>fCalcSVPfromTair</td></tr>
+<tr><td style="width: 25%;"><a href="fCalcVPDfromRHandTair.html">fCalcVPDfromRHandTair</a></td>
+<td>fCalcVPDfromRHandTair</td></tr>
+<tr><td style="width: 25%;"><a href="fCheckHHTimeSeries.html">fCheckHHTimeSeries</a></td>
+<td>fCheckHHTimeSeries</td></tr>
+<tr><td style="width: 25%;"><a href="fConvertCtoK.html">fConvertCtoK</a></td>
+<td>fConvertCtoK</td></tr>
+<tr><td style="width: 25%;"><a href="fConvertGlobalToVisible.html">fConvertGlobalToVisible</a></td>
+<td>fConvertGlobalToVisible</td></tr>
+<tr><td style="width: 25%;"><a href="fConvertKtoC.html">fConvertKtoC</a></td>
+<td>fConvertKtoC</td></tr>
+<tr><td style="width: 25%;"><a href="fConvertTimeToPosix.html">fConvertTimeToPosix</a></td>
+<td>fConvertTimeToPosix</td></tr>
+<tr><td style="width: 25%;"><a href="fConvertVisibleWm2toPhotons.html">fConvertVisibleWm2toPhotons</a></td>
+<td>fConvertVisibleWm2toPhotons</td></tr>
+<tr><td style="width: 25%;"><a href="filterLongRuns.html">filterLongRuns</a></td>
+<td>filterLongRuns</td></tr>
+<tr><td style="width: 25%;"><a href="filterLongRunsInVector.html">filterLongRunsInVector</a></td>
+<td>filterLongRunsInVector</td></tr>
+<tr><td style="width: 25%;"><a href="filter_entire_days.html">filter_entire_days</a></td>
+<td>filter entire days</td></tr>
+<tr><td style="width: 25%;"><a href="filter_years_eop.html">filter_years_eop</a></td>
+<td>filter years eop</td></tr>
+<tr><td style="width: 25%;"><a href="fKeepColumnAttributes.html">fKeepColumnAttributes</a></td>
+<td>fKeepColumnAttributes</td></tr>
+<tr><td style="width: 25%;"><a href="fLloydTaylor.html">fLloydTaylor</a></td>
+<td>Temperature dependence of soil respiration</td></tr>
+<tr><td style="width: 25%;"><a href="fLoadAmeriflux22.html">fLoadAmeriflux22</a></td>
+<td>Read basic variables from Ameriflux standard (as of 2022) files</td></tr>
+<tr><td style="width: 25%;"><a href="fLoadEuroFlux16.html">fLoadEuroFlux16</a></td>
+<td>fLoadEuroFlux16</td></tr>
+<tr><td style="width: 25%;"><a href="fLoadFluxnet15.html">fLoadFluxnet15</a></td>
+<td>Read a file in the format of Fluxnet 2015 release</td></tr>
+<tr><td style="width: 25%;"><a href="fLoadTXTIntoDataframe.html">fLoadTXTIntoDataframe</a></td>
+<td>Load text file with one header and one unit row into data frame</td></tr>
+<tr><td style="width: 25%;"><a href="fSplitDateTime.html">fSplitDateTime</a></td>
+<td>fSplitDateTime</td></tr>
+<tr><td style="width: 25%;"><a href="fWriteDataframeToFile.html">fWriteDataframeToFile</a></td>
+<td>fWriteDataframeToFile</td></tr>
+<tr><td style="width: 25%;"><a href="fWriteFrench23.html">fWriteFrench23</a></td>
+<td>fWriteFrench23</td></tr>
+</table>
+
+<h2><a id="G">-- G --</a></h2>
+
+<table style="width: 100%;">
+<tr><td style="width: 25%;"><a href="getAmerifluxToBGC05VariableNameMapping.html">getAmerifluxToBGC05VariableNameMapping</a></td>
+<td>getAmerifluxToBGC05VariableNameMapping</td></tr>
+<tr><td style="width: 25%;"><a href="getBGC05ToAmerifluxVariableNameMapping.html">getBGC05ToAmerifluxVariableNameMapping</a></td>
+<td>getBGC05ToAmerifluxVariableNameMapping</td></tr>
+<tr><td style="width: 25%;"><a href="getExamplePath.html">getExamplePath</a></td>
+<td>getExamplePath</td></tr>
+<tr><td style="width: 25%;"><a href="getFilledExampleDETha98Data.html">getFilledExampleDETha98Data</a></td>
+<td>getFilledExampleDETha98Data</td></tr>
+<tr><td style="width: 25%;"><a href="getREddyProcExampleDir.html">getREddyProcExampleDir</a></td>
+<td>getREddyProcExampleDir</td></tr>
+<tr><td style="width: 25%;"><a href="getTZone.html">getTZone</a></td>
+<td>getTZone</td></tr>
+<tr><td style="width: 25%;"><a href="get_day_boundaries.html">get_day_boundaries</a></td>
+<td>get day boundaries</td></tr>
+<tr><td style="width: 25%;"><a href="get_timestep_hours.html">get_timestep_hours</a></td>
+<td>Get the timestep in fractional hours</td></tr>
+</table>
+
+<h2><a id="H">-- H --</a></h2>
+
+<table style="width: 100%;">
+<tr><td style="width: 25%;"><a href="help_DateTimes.html">help_DateTimes</a></td>
+<td>help DateTimes</td></tr>
+<tr><td style="width: 25%;"><a href="help_export.html">help_export</a></td>
+<td>help export</td></tr>
+</table>
+
+<h2><a id="L">-- L --</a></h2>
+
+<table style="width: 100%;">
+<tr><td style="width: 25%;"><a href="LightResponseCurveFitter.html">LightResponseCurveFitter</a></td>
+<td>LightResponseCurveFitter</td></tr>
+<tr><td style="width: 25%;"><a href="LightResponseCurveFitter-class.html">LightResponseCurveFitter-class</a></td>
+<td>Class '"LightResponseCurveFitter"'</td></tr>
+<tr><td style="width: 25%;"><a href="LightResponseCurveFitter_computeCost.html">LightResponseCurveFitter_computeCost</a></td>
+<td>LightResponseCurveFitter computeCost</td></tr>
+<tr><td style="width: 25%;"><a href="LightResponseCurveFitter_computeLRCGradient.html">LightResponseCurveFitter_computeLRCGradient</a></td>
+<td>LightResponseCurveFitter computeLRCGradient</td></tr>
+<tr><td style="width: 25%;"><a href="LightResponseCurveFitter_fitLRC.html">LightResponseCurveFitter_fitLRC</a></td>
+<td>LightResponseCurveFitter fitLRC</td></tr>
+<tr><td style="width: 25%;"><a href="LightResponseCurveFitter_getOptimizedParameterPositions.html">LightResponseCurveFitter_getOptimizedParameterPositions</a></td>
+<td>LightResponseCurveFitter getOptimizedParameterPositions</td></tr>
+<tr><td style="width: 25%;"><a href="LightResponseCurveFitter_getParameterInitials.html">LightResponseCurveFitter_getParameterInitials</a></td>
+<td>LightResponseCurveFitter getParameterInitials</td></tr>
+<tr><td style="width: 25%;"><a href="LightResponseCurveFitter_getParameterNames.html">LightResponseCurveFitter_getParameterNames</a></td>
+<td>LightResponseCurveFitter getParameterNames</td></tr>
+<tr><td style="width: 25%;"><a href="LightResponseCurveFitter_getPriorLocation.html">LightResponseCurveFitter_getPriorLocation</a></td>
+<td>LightResponseCurveFitter getPriorLocation</td></tr>
+<tr><td style="width: 25%;"><a href="LightResponseCurveFitter_getPriorScale.html">LightResponseCurveFitter_getPriorScale</a></td>
+<td>LightResponseCurveFitter getPriorScale</td></tr>
+<tr><td style="width: 25%;"><a href="LightResponseCurveFitter_isParameterInBounds.html">LightResponseCurveFitter_isParameterInBounds</a></td>
+<td>LightResponseCurveFitter isParameterInBounds</td></tr>
+<tr><td style="width: 25%;"><a href="LightResponseCurveFitter_optimLRC.html">LightResponseCurveFitter_optimLRC</a></td>
+<td>LightResponseCurveFitter optimLRC</td></tr>
+<tr><td style="width: 25%;"><a href="LightResponseCurveFitter_optimLRCBounds.html">LightResponseCurveFitter_optimLRCBounds</a></td>
+<td>LightResponseCurveFitter optimLRCBounds</td></tr>
+<tr><td style="width: 25%;"><a href="LightResponseCurveFitter_optimLRCOnAdjustedPrior.html">LightResponseCurveFitter_optimLRCOnAdjustedPrior</a></td>
+<td>LightResponseCurveFitter optimLRCOnAdjustedPrior</td></tr>
+<tr><td style="width: 25%;"><a href="LightResponseCurveFitter_predictGPP.html">LightResponseCurveFitter_predictGPP</a></td>
+<td>LightResponseCurveFitter predictGPP</td></tr>
+<tr><td style="width: 25%;"><a href="LightResponseCurveFitter_predictLRC.html">LightResponseCurveFitter_predictLRC</a></td>
+<td>LightResponseCurveFitter predictLRC</td></tr>
+<tr><td style="width: 25%;"><a href="LogisticSigmoidLRCFitter.html">LogisticSigmoidLRCFitter</a></td>
+<td>LogisticSigmoidLRCFitter</td></tr>
+<tr><td style="width: 25%;"><a href="LogisticSigmoidLRCFitter-class.html">LogisticSigmoidLRCFitter-class</a></td>
+<td>Class '"LogisticSigmoidLRCFitter"'</td></tr>
+<tr><td style="width: 25%;"><a href="LogisticSigmoidLRCFitter_predictGPP.html">LogisticSigmoidLRCFitter_predictGPP</a></td>
+<td>LogisticSigmoidLRCFitter predictGPP</td></tr>
+</table>
+
+<h2><a id="N">-- N --</a></h2>
+
+<table style="width: 100%;">
+<tr><td style="width: 25%;"><a href="NonrectangularLRCFitter.html">NonrectangularLRCFitter</a></td>
+<td>NonrectangularLRCFitter</td></tr>
+<tr><td style="width: 25%;"><a href="NonrectangularLRCFitter-class.html">NonrectangularLRCFitter-class</a></td>
+<td>Class '"NonrectangularLRCFitter"'</td></tr>
+<tr><td style="width: 25%;"><a href="NonrectangularLRCFitter_getParameterNames.html">NonrectangularLRCFitter_getParameterNames</a></td>
+<td>NonrectangularLRCFitter getParameterNames</td></tr>
+<tr><td style="width: 25%;"><a href="NonrectangularLRCFitter_predictGPP.html">NonrectangularLRCFitter_predictGPP</a></td>
+<td>NonrectangularLRCFitter predictGPP</td></tr>
+</table>
+
+<h2><a id="P">-- P --</a></h2>
+
+<table style="width: 100%;">
+<tr><td style="width: 25%;"><a href="partGLControl.html">partGLControl</a></td>
+<td>partGLControl</td></tr>
+<tr><td style="width: 25%;"><a href="partGLControlLasslopCompatible.html">partGLControlLasslopCompatible</a></td>
+<td>partGLControlLasslopCompatible</td></tr>
+<tr><td style="width: 25%;"><a href="partGLExtractStandardData.html">partGLExtractStandardData</a></td>
+<td>partGLExtractStandardData</td></tr>
+<tr><td style="width: 25%;"><a href="partitionNEEGL.html">partitionNEEGL</a></td>
+<td>partitionNEEGL</td></tr>
+<tr><td style="width: 25%;"><a href="POSIXctToBerkeleyJulianDate.html">POSIXctToBerkeleyJulianDate</a></td>
+<td>POSIXctToBerkeleyJulianDate</td></tr>
+</table>
+
+<h2><a id="R">-- R --</a></h2>
+
+<table style="width: 100%;">
+<tr><td style="width: 25%;"><a href="read_from_ameriflux22.html">read_from_ameriflux22</a></td>
+<td>Extract basic variables from Ameriflux standard (as of 2022) data.frames</td></tr>
+<tr><td style="width: 25%;"><a href="read_from_fluxnet15.html">read_from_fluxnet15</a></td>
+<td>extract REddyProc input columns from data.frame in Fluxnet15 format</td></tr>
+<tr><td style="width: 25%;"><a href="RectangularLRCFitter.html">RectangularLRCFitter</a></td>
+<td>RectangularLRCFitter</td></tr>
+<tr><td style="width: 25%;"><a href="RectangularLRCFitter-class.html">RectangularLRCFitter-class</a></td>
+<td>Class '"RectangularLRCFitter"'</td></tr>
+<tr><td style="width: 25%;"><a href="RectangularLRCFitterCVersion.html">RectangularLRCFitterCVersion</a></td>
+<td>RectangularLRCFitterCVersion</td></tr>
+<tr><td style="width: 25%;"><a href="RectangularLRCFitterCVersion-class.html">RectangularLRCFitterCVersion-class</a></td>
+<td>Class '"RectangularLRCFitterCVersion"'</td></tr>
+<tr><td style="width: 25%;"><a href="RectangularLRCFitter_predictGPP.html">RectangularLRCFitter_predictGPP</a></td>
+<td>RectangularLRCFitter predictGPP</td></tr>
+<tr><td style="width: 25%;"><a href="REddyProc-package.html">REddyProc</a></td>
+<td>Post Processing of (Half-)Hourly Eddy-Covariance Measurements</td></tr>
+<tr><td style="width: 25%;"><a href="REddyProc_defaultunits.html">REddyProc_defaultunits</a></td>
+<td>Get the default units for given variables</td></tr>
+<tr><td style="width: 25%;"><a href="renameVariablesInDataframe.html">renameVariablesInDataframe</a></td>
+<td>renameVariablesInDataframe</td></tr>
+<tr><td style="width: 25%;"><a href="RHLightResponseCostC.html">RHLightResponseCostC</a></td>
+<td>RHLightResponseCostC</td></tr>
+</table>
+
+<h2><a id="S">-- S --</a></h2>
+
+<table style="width: 100%;">
+<tr><td style="width: 25%;"><a href="globalDummyVars.html">sDATA</a></td>
+<td>globalDummyVars</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc.html">sEddyProc</a></td>
+<td>sEddyProc</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc-class.html">sEddyProc-class</a></td>
+<td>Class '"sEddyProc"'</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_initialize.html">sEddyProc_initialize</a></td>
+<td>sEddyProc initialize</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sApplyUStarScen.html">sEddyProc_sApplyUStarScen</a></td>
+<td>sEddyProc sApplyUStarScen</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sCalcPotRadiation.html">sEddyProc_sCalcPotRadiation</a></td>
+<td>sEddyProc sCalcPotRadiation</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sEstimateUstarScenarios.html">sEddyProc_sEstimateUstarScenarios</a></td>
+<td>sEddyProc sEstimateUstarScenarios</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sEstUstarThold.html">sEddyProc_sEstUstarThold</a></td>
+<td>sEddyProc$sEstUstarThreshold - Estimating ustar threshold</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sEstUstarThreshold.html">sEddyProc_sEstUstarThreshold</a></td>
+<td>sEddyProc$sEstUstarThreshold - Estimating ustar threshold</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sEstUstarThresholdDistribution.html">sEddyProc_sEstUstarThresholdDistribution</a></td>
+<td>sEddyProc sEstUstarThresholdDistribution</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sExportData.html">sEddyProc_sExportData</a></td>
+<td>sEddyProc sExportData</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sExportResults.html">sEddyProc_sExportResults</a></td>
+<td>sEddyProc sExportResults</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sFillInit.html">sEddyProc_sFillInit</a></td>
+<td>sEddyProc$sFillInit - Initialize gap filling</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sFillLUT.html">sEddyProc_sFillLUT</a></td>
+<td>sEddyProc sFillLUT</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sFillMDC.html">sEddyProc_sFillMDC</a></td>
+<td>sEddyProc sFillMDC</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sFillVPDFromDew.html">sEddyProc_sFillVPDFromDew</a></td>
+<td>Estimate VPD from daily minimum temperature</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sGetData.html">sEddyProc_sGetData</a></td>
+<td>sEddyProc sGetData</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sGetEstimatedUstarThresholdDistribution.html">sEddyProc_sGetEstimatedUstarThresholdDistribution</a></td>
+<td>sEddyProc sGetEstimatedUstarThresholdDistribution</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sGetUstarScenarios.html">sEddyProc_sGetUstarScenarios</a></td>
+<td>sEddyProc sGetUstarScenarios</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sGetUstarSuffixes.html">sEddyProc_sGetUstarSuffixes</a></td>
+<td>sEddyProc sGetUstarSuffixes</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sGLFluxPartition.html">sEddyProc_sGLFluxPartition</a></td>
+<td>sEddyProc sGLFluxPartition</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sGLFluxPartitionUStarScens.html">sEddyProc_sGLFluxPartitionUStarScens</a></td>
+<td>sEddyProc sGLFluxPartitionUStarScens</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sMDSGapFill.html">sEddyProc_sMDSGapFill</a></td>
+<td>sEddyProc sMDSGapFill</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sMDSGapFillAfterUstar.html">sEddyProc_sMDSGapFillAfterUstar</a></td>
+<td>sEddyProc sMDSGapFillAfterUstar</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sMDSGapFillAfterUStarDistr.html">sEddyProc_sMDSGapFillAfterUStarDistr</a></td>
+<td>sEddyProc sMDSGapFillAfterUStarDistr</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sMDSGapFillUStarScens.html">sEddyProc_sMDSGapFillUStarScens</a></td>
+<td>sEddyProc sMDSGapFillUStarScens</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sMRFluxPartition.html">sEddyProc_sMRFluxPartition</a></td>
+<td>sEddyProc sMRFluxPartition</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sMRFluxPartitionUStarScens.html">sEddyProc_sMRFluxPartitionUStarScens</a></td>
+<td>sEddyProc sMRFluxPartitionUStarScens</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sPlotDailySums.html">sEddyProc_sPlotDailySums</a></td>
+<td>sEddyProc$sPlotDailySums - Image with daily sums of each year</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sPlotDailySumsY.html">sEddyProc_sPlotDailySumsY</a></td>
+<td>sEddyProc sPlotDailySumsY</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sPlotDiurnalCycle.html">sEddyProc_sPlotDiurnalCycle</a></td>
+<td>sEddyProc sPlotDiurnalCycle</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sPlotDiurnalCycleM.html">sEddyProc_sPlotDiurnalCycleM</a></td>
+<td>sEddyProc sPlotDiurnalCycleM</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sPlotFingerprint.html">sEddyProc_sPlotFingerprint</a></td>
+<td>sEddyProc sPlotFingerprint</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sPlotFingerprintY.html">sEddyProc_sPlotFingerprintY</a></td>
+<td>sEddyProc sPlotFingerprintY</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sPlotHHFluxes.html">sEddyProc_sPlotHHFluxes</a></td>
+<td>sEddyProc sPlotHHFluxes</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sPlotHHFluxesY.html">sEddyProc_sPlotHHFluxesY</a></td>
+<td>sEddyProc sPlotHHFluxesY</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sPlotNEEVersusUStarForSeason.html">sEddyProc_sPlotNEEVersusUStarForSeason</a></td>
+<td>sEddyProc sPlotNEEVersusUStarForSeason</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sSetLocationInfo.html">sEddyProc_sSetLocationInfo</a></td>
+<td>sEddyProc sSetLocationInfo</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sSetUstarScenarios.html">sEddyProc_sSetUstarScenarios</a></td>
+<td>sEddyProc sSetUstarScenarios</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sSetUStarSeasons.html">sEddyProc_sSetUStarSeasons</a></td>
+<td>sEddyProc sSetUStarSeasons</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sTKFluxPartition.html">sEddyProc_sTKFluxPartition</a></td>
+<td>sEddyProc sTKFluxPartition</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sTKFluxPartitionUStarScens.html">sEddyProc_sTKFluxPartitionUStarScens</a></td>
+<td>sEddyProc sTKFluxPartitionUStarScens</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_update_ustarthreshold_columns.html">sEddyProc_update_ustarthreshold_columns</a></td>
+<td>Add columns reporting the uStar threshold for each scenario to sDATA</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_useAnnualUStarThresholds.html">sEddyProc_useAnnualUStarThresholds</a></td>
+<td>sEddyProc useAnnualUStarThresholds</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_useSeaonsalUStarThresholds.html">sEddyProc_useSeaonsalUStarThresholds</a></td>
+<td>sEddyProc useSeaonsalUStarThresholds</td></tr>
+<tr><td style="width: 25%;"><a href="globalDummyVars.html">sID</a></td>
+<td>globalDummyVars</td></tr>
+<tr><td style="width: 25%;"><a href="globalDummyVars.html">sINFO</a></td>
+<td>globalDummyVars</td></tr>
+<tr><td style="width: 25%;"><a href="globalDummyVars.html">sLOCATION</a></td>
+<td>globalDummyVars</td></tr>
+<tr><td style="width: 25%;"><a href="sEddyProc_sPlotFingerprint.html">sPlotFingerprint</a></td>
+<td>sEddyProc sPlotFingerprint</td></tr>
+<tr><td style="width: 25%;"><a href="globalDummyVars.html">sTEMP</a></td>
+<td>globalDummyVars</td></tr>
+<tr><td style="width: 25%;"><a href="globalDummyVars.html">sUSTAR</a></td>
+<td>globalDummyVars</td></tr>
+</table>
+
+<h2><a id="U">-- U --</a></h2>
+
+<table style="width: 100%;">
+<tr><td style="width: 25%;"><a href="usControlUstarEst.html">usControlUstarEst</a></td>
+<td>usControlUstarEst</td></tr>
+<tr><td style="width: 25%;"><a href="usControlUstarSubsetting.html">usControlUstarSubsetting</a></td>
+<td>usControlUstarSubsetting</td></tr>
+<tr><td style="width: 25%;"><a href="usCreateSeasonFactorMonth.html">usCreateSeasonFactorMonth</a></td>
+<td>usCreateSeasonFactorMonth</td></tr>
+<tr><td style="width: 25%;"><a href="usCreateSeasonFactorMonthWithinYear.html">usCreateSeasonFactorMonthWithinYear</a></td>
+<td>usCreateSeasonFactorMonthWithinYear</td></tr>
+<tr><td style="width: 25%;"><a href="usCreateSeasonFactorYday.html">usCreateSeasonFactorYday</a></td>
+<td>usCreateSeasonFactorYday</td></tr>
+<tr><td style="width: 25%;"><a href="usCreateSeasonFactorYdayYear.html">usCreateSeasonFactorYdayYear</a></td>
+<td>usCreateSeasonFactorYdayYear</td></tr>
+<tr><td style="width: 25%;"><a href="usEstUstarThreshold.html">usEstUstarThreshold</a></td>
+<td>usEstUstarThreshold - Estimating ustar threshold</td></tr>
+<tr><td style="width: 25%;"><a href="usEstUstarThresholdSingleFw1Binned.html">usEstUstarThresholdSingleFw1Binned</a></td>
+<td>usEstUstarThresholdSingleFw1Binned</td></tr>
+<tr><td style="width: 25%;"><a href="usEstUstarThresholdSingleFw2Binned.html">usEstUstarThresholdSingleFw2Binned</a></td>
+<td>usEstUstarThresholdSingleFw2Binned</td></tr>
+<tr><td style="width: 25%;"><a href="usGetAnnualSeasonUStarMap.html">usGetAnnualSeasonUStarMap</a></td>
+<td>usGetAnnualSeasonUStarMap</td></tr>
+<tr><td style="width: 25%;"><a href="usGetSeasonalSeasonUStarMap.html">usGetSeasonalSeasonUStarMap</a></td>
+<td>usGetSeasonalSeasonUStarMap</td></tr>
+<tr><td style="width: 25%;"><a href="usGetYearOfSeason.html">usGetYearOfSeason</a></td>
+<td>usGetYearOfSeason</td></tr>
+</table>
+
+<h2><a id="misc">-- misc --</a></h2>
+
+<table style="width: 100%;">
+<tr><td style="width: 25%;"><a href="RHLightResponseCostC.html">_REddyProc_RHLightResponseCostC</a></td>
+<td>RHLightResponseCostC</td></tr>
+</table>
+</div></body></html>

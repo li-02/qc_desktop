@@ -1,0 +1,27 @@
+computeEffectiveAutoCorr
+                        Estimate vector of effective components of the
+                        autocorrelation
+computeEffectiveNumObs
+                        Compute the effective number of observations
+                        taking into account autocorrelation
+estimateDiffLognormal   Inference on the difference of two lognormals
+estimateParmsLognormFromSample
+                        Estimate lognormal distribution parameters from
+                        a sample
+estimateSumLognormalSample
+                        Estimate the parameters of the lognormal
+                        approximation to the sum
+getCorrMatFromAcf       Construct the full correlation matrix from
+                        autocorrelation components.
+getLognormMoments       Compute summary statistics of a log-normal
+                        distribution
+getParmsLognormForMedianAndUpper
+                        Calculate mu and sigma of lognormal from
+                        summary statistics.
+scaleLogToOrig          Scale standard deviation between log and
+                        original scale.
+seCor                   Compute the standard error accounting for
+                        empirical autocorrelations
+setMatrixOffDiagonals   set off-diagonal values of a matrix
+varCor                  Compute the unbiased variance accounting for
+                        empirical autocorrelations

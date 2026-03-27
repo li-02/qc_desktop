@@ -29,13 +29,15 @@ data
 开发文档
 docs
 
-.claude
 .agents
-.cursor
+.claude
+.github
 .idea
 .ropeproject
 .sisyphus
+.venv
 .vscode
+.cursor
 .windsurf
 
 __pycache__/

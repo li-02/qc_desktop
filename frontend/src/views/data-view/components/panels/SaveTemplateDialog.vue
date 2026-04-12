@@ -54,8 +54,8 @@ const currentTemplateData = computed(() => {
   return result;
 });
 
-const selectedTemplate = computed(() =>
-  outlierStore.userTemplates.find(t => t.id === selectedTemplateId.value) ?? null
+const selectedTemplate = computed(
+  () => outlierStore.userTemplates.find(t => t.id === selectedTemplateId.value) ?? null
 );
 
 const conflictList = computed<ConflictItem[]>(() => {
@@ -188,20 +188,13 @@ const handleClose = () => {
     append-to-body
     class="save-template-dialog">
     <div class="dialog-body">
-
       <!-- 模式选择器 -->
       <div class="mode-selector">
-        <div
-          class="mode-btn"
-          :class="{ active: saveMode === 'new' }"
-          @click="saveMode = 'new'">
+        <div class="mode-btn" :class="{ active: saveMode === 'new' }" @click="saveMode = 'new'">
           <span class="mode-icon">✨</span>
           <span class="mode-label">保存为新模板</span>
         </div>
-        <div
-          class="mode-btn"
-          :class="{ active: saveMode === 'existing' }"
-          @click="saveMode = 'existing'">
+        <div class="mode-btn" :class="{ active: saveMode === 'existing' }" @click="saveMode = 'existing'">
           <span class="mode-icon">📋</span>
           <span class="mode-label">合并到已有模板</span>
         </div>
@@ -211,7 +204,9 @@ const handleClose = () => {
       <template v-if="saveMode === 'new'">
         <div class="info-banner">
           <span class="info-icon">📋</span>
-          <span>将当前 <strong>{{ columnCount }}</strong> 列的阈值配置保存为可复用模板</span>
+          <span
+            >将当前 <strong>{{ columnCount }}</strong> 列的阈值配置保存为可复用模板</span
+          >
         </div>
 
         <div class="form-item" :class="{ error: nameError }">
@@ -256,11 +251,7 @@ const handleClose = () => {
               placeholder="请选择要合并到的模板"
               style="width: 100%"
               :no-data-text="'暂无模板'">
-              <el-option
-                v-for="tpl in outlierStore.userTemplates"
-                :key="tpl.id"
-                :label="tpl.name"
-                :value="tpl.id">
+              <el-option v-for="tpl in outlierStore.userTemplates" :key="tpl.id" :label="tpl.name" :value="tpl.id">
                 <div class="template-option">
                   <span class="tpl-opt-name">{{ tpl.name }}</span>
                   <span class="tpl-opt-meta">{{ tpl.columnCount }} 列</span>
@@ -277,9 +268,13 @@ const handleClose = () => {
               <div class="summary-text">
                 <div class="summary-title">无冲突，可直接合并</div>
                 <div class="summary-detail">
-                  <template v-if="newColumnCount > 0">将新增 <strong>{{ newColumnCount }}</strong> 列到模板</template>
+                  <template v-if="newColumnCount > 0"
+                    >将新增 <strong>{{ newColumnCount }}</strong> 列到模板</template
+                  >
                   <template v-if="newColumnCount > 0 && sameColumnCount > 0">，</template>
-                  <template v-if="sameColumnCount > 0"><strong>{{ sameColumnCount }}</strong> 列值相同无需变更</template>
+                  <template v-if="sameColumnCount > 0"
+                    ><strong>{{ sameColumnCount }}</strong> 列值相同无需变更</template
+                  >
                   <template v-if="newColumnCount === 0 && sameColumnCount === 0">所有列已是最新状态</template>
                 </div>
               </div>
@@ -311,10 +306,7 @@ const handleClose = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr
-                      v-for="conflict in conflictList"
-                      :key="conflict.columnName"
-                      class="conflict-row">
+                    <tr v-for="conflict in conflictList" :key="conflict.columnName" class="conflict-row">
                       <td class="ct-col-name">{{ conflict.columnName }}</td>
                       <td
                         class="ct-col-val value-cell"
@@ -334,7 +326,7 @@ const handleClose = () => {
                         <span
                           class="choice-tag"
                           :class="conflictChoices[conflict.columnName] === 'overwrite' ? 'tag-new' : 'tag-old'">
-                          {{ conflictChoices[conflict.columnName] === 'overwrite' ? '当前值' : '原值' }}
+                          {{ conflictChoices[conflict.columnName] === "overwrite" ? "当前值" : "原值" }}
                         </span>
                       </td>
                     </tr>
@@ -349,7 +341,6 @@ const handleClose = () => {
           </template>
         </template>
       </template>
-
     </div>
 
     <template #footer>
@@ -360,7 +351,7 @@ const handleClose = () => {
           :loading="saving"
           :disabled="saveMode === 'existing' && !selectedTemplateId"
           @click="handleConfirm">
-          {{ saveMode === 'new' ? '创建并保存' : '合并保存' }}
+          {{ saveMode === "new" ? "创建并保存" : "合并保存" }}
         </el-button>
       </div>
     </template>
@@ -371,14 +362,14 @@ const handleClose = () => {
 .dialog-body {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-3);
   padding: 4px 0;
 }
 
 /* ====== 模式选择 ====== */
 .mode-selector {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .mode-btn {
@@ -386,33 +377,33 @@ const handleClose = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--space-1);
   padding: 9px 12px;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  background: #f8fafc;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-muted);
   cursor: pointer;
-  font-size: 13px;
-  color: #64748b;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
   font-weight: 500;
   transition: all 0.15s ease;
 }
 
 .mode-btn:hover {
-  border-color: rgba(16, 185, 129, 0.4);
-  background: rgba(16, 185, 129, 0.04);
-  color: #059669;
+  border-color: var(--c-brand-border);
+  background: var(--c-brand-soft);
+  color: var(--c-brand-hover);
 }
 
 .mode-btn.active {
-  border-color: #10b981;
-  background: rgba(16, 185, 129, 0.08);
-  color: #047857;
+  border-color: var(--c-brand);
+  background: var(--c-brand-soft);
+  color: var(--c-brand-active);
   font-weight: 600;
 }
 
 .mode-icon {
-  font-size: 15px;
+  font-size: var(--text-lg);
   flex-shrink: 0;
 }
 
@@ -420,18 +411,18 @@ const handleClose = () => {
 .info-banner {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 10px 14px;
-  background: rgba(16, 185, 129, 0.07);
-  border: 1px solid rgba(16, 185, 129, 0.2);
-  border-radius: 8px;
-  font-size: 13px;
-  color: #374151;
+  background: var(--c-brand-soft);
+  border: 1px solid var(--c-brand-border);
+  border-radius: var(--radius-panel);
+  font-size: var(--text-sm);
+  color: var(--c-text-base);
   line-height: 1.5;
 }
 
 .info-icon {
-  font-size: 16px;
+  font-size: var(--text-xl);
   flex-shrink: 0;
 }
 
@@ -439,51 +430,51 @@ const handleClose = () => {
 .form-item {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1);
 }
 
 .form-label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #374151;
+  color: var(--c-text-base);
 }
 
 .required {
-  color: #ef4444;
+  color: var(--c-danger);
   margin-left: 2px;
 }
 
 .optional {
   font-weight: 400;
-  color: #9ca3af;
-  font-size: 12px;
+  color: var(--c-text-disabled);
+  font-size: var(--text-sm);
 }
 
 .error-msg {
-  font-size: 12px;
-  color: #ef4444;
+  font-size: var(--text-sm);
+  color: var(--c-danger);
 }
 
 .form-item.error :deep(.el-input__wrapper) {
-  box-shadow: 0 0 0 1px #ef4444 inset;
+  box-shadow: 0 0 0 1px var(--c-danger) inset;
 }
 
 /* ====== 无模板提示 ====== */
 .no-templates-hint {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 14px;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #92400e;
+  background: var(--c-warning-bg);
+  border: 1px solid var(--c-warning-border);
+  border-radius: var(--radius-panel);
+  font-size: var(--text-sm);
+  color: var(--c-warning-text);
   line-height: 1.5;
 }
 
 .hint-icon {
-  font-size: 16px;
+  font-size: var(--text-xl);
   flex-shrink: 0;
 }
 
@@ -493,17 +484,17 @@ const handleClose = () => {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .tpl-opt-name {
-  font-size: 13px;
-  color: #1e293b;
+  font-size: var(--text-sm);
+  color: var(--c-text-base);
 }
 
 .tpl-opt-meta {
-  font-size: 11px;
-  color: #94a3b8;
+  font-size: var(--text-xs);
+  color: var(--c-text-disabled);
   flex-shrink: 0;
 }
 
@@ -513,30 +504,30 @@ const handleClose = () => {
   align-items: flex-start;
   gap: 10px;
   padding: 12px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
 }
 
 .merge-summary.no-conflict {
-  background: rgba(16, 185, 129, 0.07);
-  border: 1px solid rgba(16, 185, 129, 0.25);
+  background: var(--c-brand-soft);
+  border: 1px solid var(--c-brand-border);
 }
 
 .summary-icon {
-  font-size: 16px;
+  font-size: var(--text-xl);
   flex-shrink: 0;
   line-height: 1.4;
 }
 
 .summary-title {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #047857;
+  color: var(--c-brand-active);
   margin-bottom: 3px;
 }
 
 .summary-detail {
-  font-size: 12px;
-  color: #374151;
+  font-size: var(--text-sm);
+  color: var(--c-text-base);
 }
 
 /* ====== 冲突区域 ====== */
@@ -551,47 +542,47 @@ const handleClose = () => {
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-1);
 }
 
 .conflict-title-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .conflict-badge {
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
-  border-radius: 12px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #dc2626;
-  font-size: 12px;
+  border-radius: var(--radius-control);
+  background: var(--c-danger-bg);
+  border: 1px solid var(--c-danger-border);
+  color: var(--c-danger-hover);
+  font-size: var(--text-sm);
   font-weight: 600;
   flex-shrink: 0;
 }
 
 .conflict-desc {
-  font-size: 12px;
-  color: #64748b;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
 }
 
 .conflict-batch {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   flex-shrink: 0;
 }
 
 .batch-label {
-  color: #94a3b8;
+  color: var(--c-text-disabled);
 }
 
 .batch-link {
-  color: #059669;
+  color: var(--c-brand-hover);
   cursor: pointer;
   font-weight: 500;
 }
@@ -601,13 +592,13 @@ const handleClose = () => {
 }
 
 .batch-sep {
-  color: #cbd5e1;
+  color: var(--c-border-strong);
 }
 
 /* ====== 冲突表格 ====== */
 .conflict-table-wrap {
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   overflow: hidden;
   max-height: 220px;
   overflow-y: auto;
@@ -616,21 +607,21 @@ const handleClose = () => {
 .conflict-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .conflict-table thead th {
   padding: 7px 10px;
-  background: #f8fafc;
-  color: #64748b;
+  background: var(--c-bg-muted);
+  color: var(--c-text-muted);
   font-weight: 600;
   text-align: left;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--c-border);
   white-space: nowrap;
 }
 
 .conflict-table tbody tr:not(:last-child) {
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--c-border-subtle);
 }
 
 .conflict-row td {
@@ -641,8 +632,8 @@ const handleClose = () => {
 .ct-col-name {
   width: 110px;
   font-weight: 500;
-  color: #334155;
-  font-size: 12px;
+  color: var(--c-text-base);
+  font-size: var(--text-sm);
 }
 
 .ct-col-val {
@@ -657,61 +648,61 @@ const handleClose = () => {
 /* 可点击选择的值单元格 */
 .value-cell {
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: background 0.12s ease;
   position: relative;
 }
 
 .value-cell:hover {
-  background: rgba(16, 185, 129, 0.06);
+  background: var(--c-brand-soft);
 }
 
 .value-cell.chosen {
-  background: rgba(16, 185, 129, 0.1);
+  background: var(--c-brand-muted);
 }
 
 .value-cell.alt:hover {
-  background: rgba(99, 102, 241, 0.06);
+  background: var(--c-info-bg);
 }
 
 .value-cell.alt.chosen {
-  background: rgba(99, 102, 241, 0.1);
+  background: var(--c-info-border);
 }
 
 .val-range {
-  color: #1e293b;
+  color: var(--c-text-base);
   font-weight: 500;
 }
 
 .val-unit {
   margin-left: 4px;
-  color: #94a3b8;
-  font-size: 11px;
+  color: var(--c-text-disabled);
+  font-size: var(--text-xs);
 }
 
 .choice-tag {
   display: inline-block;
   padding: 2px 6px;
-  border-radius: 10px;
-  font-size: 11px;
+  border-radius: var(--radius-control);
+  font-size: var(--text-xs);
   font-weight: 600;
   white-space: nowrap;
 }
 
 .tag-new {
-  background: rgba(16, 185, 129, 0.12);
-  color: #047857;
+  background: var(--c-brand-muted);
+  color: var(--c-brand-active);
 }
 
 .tag-old {
-  background: rgba(99, 102, 241, 0.12);
-  color: #4338ca;
+  background: var(--c-info-border);
+  color: var(--color-blue-700);
 }
 
 /* ====== 新增列提示 ====== */
 .new-cols-hint {
-  font-size: 12px;
-  color: #64748b;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
   padding: 4px 2px;
 }
 
@@ -719,6 +710,6 @@ const handleClose = () => {
 .dialog-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
 }
 </style>

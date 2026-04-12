@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import { ElMessage } from "element-plus";
-import { Plus } from "@element-plus/icons-vue";
+import { Plus } from "lucide-vue-next";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 
 const datasetStore = useDatasetStore();
@@ -130,7 +130,7 @@ watch(
               class="marker-input"
               @keydown="handleInputKeydown" />
             <button class="add-btn" @click="addMarker" title="添加标记">
-              <el-icon><Plus /></el-icon>
+              <Plus :size="14" />
             </button>
           </div>
         </div>
@@ -149,34 +149,34 @@ watch(
 .markers-editor {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 18px;
-  background: rgba(255, 255, 255, 0.7);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--c-bg-surface);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-radius: 12px;
-  border: 1px solid rgba(229, 231, 235, 0.5);
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--c-border);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
   flex-wrap: wrap;
   flex: 1;
   min-width: 0;
-  margin-bottom: 14px;
+  margin-bottom: var(--space-3);
   transition: all 0.2s ease;
 }
 
 .markers-editor:hover {
-  border-color: rgba(16, 185, 129, 0.25);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.06);
+  border-color: var(--c-brand-border);
+  box-shadow: 0 2px 8px var(--c-brand-soft);
 }
 
 .markers-label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #1e293b;
+  color: var(--c-text-base);
   white-space: nowrap;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1);
 }
 
 .markers-label::before {
@@ -184,31 +184,31 @@ watch(
   display: inline-block;
   width: 3px;
   height: 14px;
-  background: linear-gradient(180deg, #10b981, #059669);
-  border-radius: 2px;
+  background: linear-gradient(180deg, var(--c-brand), var(--c-brand-hover));
+  border-radius: var(--radius-xs);
 }
 
 .markers-display {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-1);
   flex: 1;
 }
 
 .marker-tag {
-  font-family: "Courier New", monospace;
-  font-size: 12px;
-  border-radius: 6px !important;
-  border-color: rgba(229, 231, 235, 0.6) !important;
-  background: rgba(248, 250, 252, 0.8) !important;
-  color: #475569 !important;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  border-radius: var(--radius-control) !important;
+  border-color: var(--c-border) !important;
+  background: var(--c-bg-muted) !important;
+  color: var(--c-text-secondary) !important;
   transition: all 0.2s ease;
 }
 
 .marker-tag:hover {
-  border-color: rgba(16, 185, 129, 0.3) !important;
-  background: rgba(236, 253, 245, 0.6) !important;
-  color: #059669 !important;
+  border-color: var(--c-brand-border) !important;
+  background: var(--c-brand-soft) !important;
+  color: var(--c-brand-hover) !important;
 }
 
 .edit-btn {
@@ -217,21 +217,21 @@ watch(
   justify-content: center;
   width: 30px;
   height: 30px;
-  border: 1px solid rgba(229, 231, 235, 0.5);
-  background: rgba(255, 255, 255, 0.8);
-  color: #94a3b8;
-  border-radius: 8px;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-surface);
+  color: var(--c-text-disabled);
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.25s ease;
   flex-shrink: 0;
 }
 
 .edit-btn:hover {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(5, 150, 105, 0.12));
-  border-color: rgba(16, 185, 129, 0.35);
-  color: #059669;
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
+  color: var(--c-brand-hover);
   transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.12);
+  box-shadow: 0 2px 6px var(--c-brand-soft);
 }
 
 /* 编辑区域 */
@@ -239,43 +239,43 @@ watch(
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2);
 }
 
 .markers-edit-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-1);
   align-items: center;
 }
 
 .add-marker-input {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1);
 }
 
 .marker-input {
   width: 130px;
   height: 28px;
-  border: 1px solid rgba(229, 231, 235, 0.6);
-  border-radius: 8px;
-  padding: 0 10px;
-  font-size: 12px;
-  font-family: "Courier New", monospace;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-control);
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
   outline: none;
-  background: rgba(255, 255, 255, 0.9);
-  color: #334155;
+  background: var(--c-bg-surface);
+  color: var(--c-text-base);
   transition: all 0.2s ease;
 }
 
 .marker-input::placeholder {
-  color: #cbd5e1;
+  color: var(--c-border-strong);
 }
 
 .marker-input:focus {
-  border-color: #10b981;
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.08);
+  border-color: var(--c-brand);
+  box-shadow: 0 0 0 3px var(--c-brand-soft);
 }
 
 .add-btn {
@@ -284,43 +284,43 @@ watch(
   justify-content: center;
   width: 28px;
   height: 28px;
-  border: 1px dashed rgba(16, 185, 129, 0.4);
-  background: rgba(236, 253, 245, 0.5);
-  color: #10b981;
-  border-radius: 8px;
+  border: 1px dashed var(--c-brand-border);
+  background: var(--c-brand-soft);
+  color: var(--c-brand);
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 
 .add-btn:hover {
-  background: rgba(16, 185, 129, 0.1);
-  border-color: #10b981;
+  background: var(--c-brand-muted);
+  border-color: var(--c-brand);
   border-style: solid;
   transform: scale(1.05);
 }
 
 .edit-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
 }
 
 .save-btn {
   padding: 5px 20px;
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: white;
+  background: linear-gradient(135deg, var(--c-brand), var(--c-brand-hover));
+  color: var(--c-text-inverse);
   border: none;
-  border-radius: 8px;
-  font-size: 12px;
+  border-radius: var(--radius-control);
+  font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 1px 3px rgba(16, 185, 129, 0.25);
+  box-shadow: 0 1px 3px var(--c-brand-soft);
 }
 
 .save-btn:hover {
-  box-shadow: 0 3px 8px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 3px 8px var(--c-brand-border);
   transform: translateY(-1px);
 }
 
@@ -333,20 +333,20 @@ watch(
 
 .cancel-btn {
   padding: 5px 20px;
-  background: rgba(255, 255, 255, 0.8);
-  color: #64748b;
-  border: 1px solid rgba(229, 231, 235, 0.6);
-  border-radius: 8px;
-  font-size: 12px;
+  background: var(--c-bg-surface);
+  color: var(--c-text-muted);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-control);
+  font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .cancel-btn:hover {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #475569;
+  background: var(--c-bg-muted);
+  border-color: var(--c-border-strong);
+  color: var(--c-text-secondary);
 }
 
 .cancel-btn:disabled {

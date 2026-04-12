@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import { ElMessage } from "element-plus";
-import { Download, Refresh, Setting, Document, Select, InfoFilled } from "@element-plus/icons-vue";
+import { Download, RefreshCw, Settings, FileText, CheckSquare, Info } from "lucide-vue-next";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
@@ -320,7 +320,7 @@ watch(
         </div>
         <div class="header-actions">
           <el-button class="action-btn" plain @click="loadPreview" :loading="previewLoading">
-            <el-icon><Refresh /></el-icon> 刷新
+            <RefreshCw :size="14" /> 刷新
           </el-button>
           <el-button
             class="action-btn primary-gradient-btn"
@@ -328,7 +328,7 @@ watch(
             :loading="isExporting"
             :disabled="!canExport"
             @click="executeExport">
-            <el-icon><Download /></el-icon> 导出文件
+            <Download :size="14" /> 导出文件
           </el-button>
         </div>
       </div>
@@ -345,7 +345,7 @@ watch(
         <el-scrollbar>
           <!-- 加载中 -->
           <div v-if="previewLoading" class="loading-overlay">
-            <el-icon class="is-loading" :size="32" color="#10b981"><Refresh /></el-icon>
+            <RefreshCw :size="32" class="is-loading" />
             <span>正在加载数据预览...</span>
           </div>
 
@@ -353,9 +353,7 @@ watch(
             <!-- 导出选项区域 -->
             <div class="config-block">
               <div class="config-block-header">
-                <h3>
-                  <el-icon class="block-icon"><Setting /></el-icon> 导出选项
-                </h3>
+                <h3><Settings :size="16" class="block-icon" /> 导出选项</h3>
               </div>
               <div class="options-grid">
                 <!-- 文件格式 -->
@@ -402,9 +400,7 @@ watch(
             <!-- 列选择区域 -->
             <div class="config-block">
               <div class="config-block-header">
-                <h3>
-                  <el-icon class="block-icon"><Select /></el-icon> 选择导出列
-                </h3>
+                <h3><CheckSquare :size="16" class="block-icon" /> 选择导出列</h3>
                 <div class="column-select-actions">
                   <span class="column-count">{{ selectedColumnNames.length }} / {{ previewColumns.length }} 列</span>
                   <el-button size="small" text type="primary" @click="toggleSelectAll">
@@ -454,9 +450,7 @@ watch(
             <!-- 数据预览 -->
             <div class="config-block">
               <div class="config-block-header">
-                <h3>
-                  <el-icon class="block-icon"><Document /></el-icon> 数据预览
-                </h3>
+                <h3><FileText :size="16" class="block-icon" /> 数据预览</h3>
                 <span class="preview-hint">显示前 {{ previewData.length }} 行</span>
               </div>
               <div class="preview-table-wrapper">
@@ -483,7 +477,7 @@ watch(
                   </tbody>
                 </table>
                 <div v-else class="preview-empty">
-                  <el-icon><InfoFilled /></el-icon>
+                  <Info :size="16" />
                   <span>暂无预览数据</span>
                 </div>
               </div>
@@ -501,7 +495,7 @@ watch(
   display: flex;
   height: 100%;
   width: 100%;
-  background: #f8fafc;
+  background: var(--c-bg-subtle);
   overflow: hidden;
   padding: 8px;
   gap: 8px;
@@ -511,9 +505,9 @@ watch(
 /* ==================== 侧边栏 ==================== */
 .panel-sidebar {
   width: 280px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -522,7 +516,7 @@ watch(
 
 .sidebar-header {
   padding: 16px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--c-border);
 }
 
 .dataset-info-section {
@@ -532,9 +526,9 @@ watch(
 }
 
 .dataset-name {
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 600;
-  color: #1e293b;
+  color: var(--c-text-base);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -544,24 +538,24 @@ watch(
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
-  color: #64748b;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
 }
 
 .meta-sep {
-  color: #cbd5e1;
+  color: var(--c-border-strong);
 }
 
 .no-data-hint {
-  font-size: 13px;
-  color: #9ca3af;
+  font-size: var(--text-sm);
+  color: var(--c-text-disabled);
 }
 
 .sidebar-subtitle {
   padding: 16px 20px 8px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 700;
-  color: #6b7280;
+  color: var(--c-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -584,29 +578,29 @@ watch(
 .version-empty {
   text-align: center;
   padding: 40px 16px;
-  color: #9ca3af;
-  font-size: 14px;
+  color: var(--c-text-disabled);
+  font-size: var(--text-base);
 }
 
 .version-item {
   padding: 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   cursor: pointer;
   margin-bottom: 6px;
   border: 1px solid transparent;
   transition: all 0.2s ease;
-  background: #f8fafc;
+  background: var(--c-bg-subtle);
 }
 
 .version-item:hover {
-  background: #ffffff;
-  border-color: #e2e8f0;
+  background: var(--c-bg-surface);
+  border-color: var(--c-border);
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .version-item--active {
-  background: #f8fffb;
-  border-color: #86efac;
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
 }
 
 .version-item-header {
@@ -617,15 +611,15 @@ watch(
 }
 
 .version-id {
-  font-size: 11px;
-  color: #9ca3af;
-  font-family: "Courier New", monospace;
+  font-size: var(--text-xs);
+  color: var(--c-text-disabled);
+  font-family: var(--font-mono);
 }
 
 .version-item-remark {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 500;
-  color: #1e293b;
+  color: var(--c-text-base);
   margin-bottom: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -633,13 +627,13 @@ watch(
 }
 
 .version-item-time {
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: var(--text-xs);
+  color: var(--c-text-disabled);
 }
 
 /* ==================== 统计摘要 ==================== */
 .stats-summary {
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--c-border);
   flex-shrink: 0;
 }
 
@@ -658,19 +652,19 @@ watch(
 }
 
 .stat-label {
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: var(--text-xs);
+  color: var(--c-text-disabled);
 }
 
 .stat-value {
-  font-size: 16px;
+  font-size: var(--text-xl);
   font-weight: 700;
-  color: #1e293b;
-  font-family: "Courier New", monospace;
+  color: var(--c-text-base);
+  font-family: var(--font-mono);
 }
 
 .stat-value--accent {
-  color: #10b981;
+  color: var(--c-brand);
 }
 
 /* ==================== 主内容区 ==================== */
@@ -680,9 +674,9 @@ watch(
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   padding: 20px;
 }
 
@@ -696,9 +690,9 @@ watch(
 }
 
 .header-title h2 {
-  font-size: 20px;
+  font-size: var(--text-2xl);
   font-weight: 600;
-  color: #1e293b;
+  color: var(--c-text-base);
   margin: 0;
   display: flex;
   align-items: center;
@@ -706,8 +700,8 @@ watch(
 }
 
 .header-desc {
-  font-size: 13px;
-  color: #64748b;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
   margin-top: 6px;
   display: block;
 }
@@ -719,12 +713,12 @@ watch(
 }
 
 .action-btn {
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: var(--radius-control);
+  font-size: var(--text-sm);
 }
 
 .primary-gradient-btn {
-  background: #10b981 !important;
+  background: var(--c-brand) !important;
   border: none !important;
   height: 36px;
   min-width: 110px;
@@ -732,12 +726,12 @@ watch(
 }
 
 .primary-gradient-btn:hover {
-  background: #059669 !important;
+  background: var(--c-brand-hover) !important;
 }
 
 .primary-gradient-btn:disabled {
-  background: #9ca3af !important;
-  color: #ffffff !important;
+  background: var(--c-text-disabled) !important;
+  color: var(--c-text-inverse) !important;
   cursor: not-allowed;
 }
 
@@ -750,24 +744,24 @@ watch(
   justify-content: center;
   text-align: center;
   gap: 8px;
-  color: #64748b;
+  color: var(--c-text-secondary);
 }
 
 .empty-icon {
-  font-size: 48px;
+  font-size: var(--text-display-lg);
   margin-bottom: 8px;
 }
 
 .empty-state-main h3 {
-  font-size: 18px;
+  font-size: var(--text-xl);
   font-weight: 600;
-  color: #374151;
+  color: var(--c-text-base);
   margin: 0;
 }
 
 .empty-state-main p {
-  font-size: 14px;
-  color: #9ca3af;
+  font-size: var(--text-base);
+  color: var(--c-text-disabled);
   margin: 0;
 }
 
@@ -793,15 +787,15 @@ watch(
   justify-content: center;
   padding: 48px;
   gap: 12px;
-  color: #64748b;
-  font-size: 14px;
+  color: var(--c-text-secondary);
+  font-size: var(--text-base);
 }
 
 /* ==================== 配置块 ==================== */
 .config-block {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   padding: 16px;
   margin-bottom: 16px;
 }
@@ -814,9 +808,9 @@ watch(
 }
 
 .config-block-header h3 {
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 600;
-  color: #1e293b;
+  color: var(--c-text-base);
   margin: 0;
   display: flex;
   align-items: center;
@@ -824,8 +818,8 @@ watch(
 }
 
 .block-icon {
-  color: #10b981;
-  font-size: 16px;
+  color: var(--c-brand);
+  font-size: var(--text-xl);
 }
 
 /* ==================== 导出选项 ==================== */
@@ -848,9 +842,9 @@ watch(
 }
 
 .option-label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #374151;
+  color: var(--c-text-base);
 }
 
 .option-select {
@@ -865,8 +859,8 @@ watch(
 }
 
 .option-hint {
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: var(--text-xs);
+  color: var(--c-text-disabled);
 }
 
 /* ==================== 列选择 ==================== */
@@ -877,9 +871,9 @@ watch(
 }
 
 .column-count {
-  font-size: 12px;
-  color: #64748b;
-  font-family: "Courier New", monospace;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
+  font-family: var(--font-mono);
 }
 
 .column-search {
@@ -893,8 +887,8 @@ watch(
 .column-list {
   max-height: 320px;
   overflow-y: auto;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
 }
 
 .column-item {
@@ -903,7 +897,7 @@ watch(
   gap: 10px;
   padding: 8px 12px;
   cursor: pointer;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--c-border-subtle);
   transition: all 0.15s ease;
 }
 
@@ -912,15 +906,15 @@ watch(
 }
 
 .column-item:hover {
-  background: #f8fafc;
+  background: var(--c-bg-subtle);
 }
 
 .column-item--selected {
-  background: #f0fdf4;
+  background: var(--c-brand-soft);
 }
 
 .column-item--selected:hover {
-  background: #ecfdf5;
+  background: var(--c-brand-muted);
 }
 
 .column-info {
@@ -932,27 +926,27 @@ watch(
 }
 
 .column-name {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 500;
-  color: #1e293b;
-  font-family: "Courier New", monospace;
+  color: var(--c-text-base);
+  font-family: var(--font-mono);
 }
 
 .column-meta {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: var(--text-xs);
+  color: var(--c-text-disabled);
 }
 
 .missing-badge {
-  background: #fef2f2;
-  color: #dc2626;
+  background: var(--c-danger-bg);
+  color: var(--c-danger);
   padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 11px;
-  border: 1px solid #fecaca;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  border: 1px solid var(--c-danger-border);
 }
 
 .sample-values {
@@ -965,26 +959,26 @@ watch(
 .column-empty {
   text-align: center;
   padding: 24px;
-  color: #9ca3af;
-  font-size: 13px;
+  color: var(--c-text-disabled);
+  font-size: var(--text-sm);
 }
 
 /* ==================== 数据预览表格 ==================== */
 .preview-hint {
-  font-size: 12px;
-  color: #9ca3af;
+  font-size: var(--text-sm);
+  color: var(--c-text-disabled);
 }
 
 .preview-table-wrapper {
   overflow-x: auto;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
 }
 
 .preview-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 
@@ -995,39 +989,39 @@ watch(
 }
 
 .preview-table th {
-  background: #f8fafc;
-  color: #374151;
+  background: var(--c-bg-subtle);
+  color: var(--c-text-base);
   font-weight: 600;
   padding: 8px 12px;
   text-align: left;
-  border-bottom: 2px solid #e2e8f0;
-  font-family: "Courier New", monospace;
-  font-size: 12px;
+  border-bottom: 2px solid var(--c-border);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
 }
 
 .preview-table td {
   padding: 6px 12px;
-  border-bottom: 1px solid #f1f5f9;
-  color: #374151;
-  font-family: "Courier New", monospace;
+  border-bottom: 1px solid var(--c-border-subtle);
+  color: var(--c-text-base);
+  font-family: var(--font-mono);
   max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .preview-table tr:hover td {
-  background: #f8fafc;
+  background: var(--c-bg-subtle);
 }
 
 .row-num-col {
   width: 40px;
   text-align: center;
-  color: #9ca3af !important;
-  font-size: 11px !important;
+  color: var(--c-text-disabled) !important;
+  font-size: var(--text-xs) !important;
 }
 
 .missing-cell {
-  color: #dc2626 !important;
+  color: var(--c-danger) !important;
   font-style: italic;
 }
 
@@ -1037,8 +1031,8 @@ watch(
   justify-content: center;
   gap: 8px;
   padding: 32px;
-  color: #9ca3af;
-  font-size: 13px;
+  color: var(--c-text-disabled);
+  font-size: var(--text-sm);
 }
 
 /* ==================== 滚动条样式 ==================== */
@@ -1051,7 +1045,7 @@ watch(
 }
 ::-webkit-scrollbar-thumb {
   background: rgba(156, 163, 175, 0.3);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(156, 163, 175, 0.5);

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Setting, VideoPlay, Refresh, InfoFilled, ArrowRight, Plus, Delete, Edit, Rank } from "@element-plus/icons-vue";
+import { Settings, Play, RefreshCw, Info, ChevronRight, Plus, Trash2, Pencil, GripVertical } from "lucide-vue-next";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
@@ -574,7 +574,7 @@ const formatStat = (val?: number) => {
 const chartFilePath = ref<string>("");
 
 const loadChartFilePath = async (result: PartitioningResult) => {
-  if (result.status !== 'COMPLETED') {
+  if (result.status !== "COMPLETED") {
     chartFilePath.value = "";
     return;
   }
@@ -584,29 +584,25 @@ const loadChartFilePath = async (result: PartitioningResult) => {
       datasetId: props.datasetInfo?.id,
     });
     if (!versionsResp?.success) {
-      console.warn('[FluxPanel] 获取版本列表失败:', versionsResp?.error);
+      console.warn("[FluxPanel] 获取版本列表失败:", versionsResp?.error);
       return;
     }
 
-    let targetVersion = result.newVersionId
-      ? versionsResp.data.find((v: any) => v.id === result.newVersionId)
-      : null;
+    let targetVersion = result.newVersionId ? versionsResp.data.find((v: any) => v.id === result.newVersionId) : null;
     if (!targetVersion) {
       console.warn(`[FluxPanel] 未找到 newVersionId=${result.newVersionId} 对应版本，尝试查找 QC 版本`);
-      targetVersion = [...versionsResp.data]
-        .reverse()
-        .find((v: any) => v.stageType === 'QC' && v.filePath);
+      targetVersion = [...versionsResp.data].reverse().find((v: any) => v.stageType === "QC" && v.filePath);
     }
     chartFilePath.value = targetVersion?.filePath || "";
-    console.log('[FluxPanel] 图表文件路径:', chartFilePath.value || '(空)');
+    console.log("[FluxPanel] 图表文件路径:", chartFilePath.value || "(空)");
   } catch (e: any) {
-    console.error('获取图表文件路径失败:', e);
+    console.error("获取图表文件路径失败:", e);
     chartFilePath.value = "";
   }
 };
 
-watch(currentResult, (newResult) => {
-  if (newResult && newResult.status === 'COMPLETED') {
+watch(currentResult, newResult => {
+  if (newResult && newResult.status === "COMPLETED") {
     loadChartFilePath(newResult);
   } else {
     chartFilePath.value = "";
@@ -632,7 +628,7 @@ onBeforeUnmount(() => {
       <!-- 新建按钮 -->
       <div class="sidebar-header">
         <button class="new-partition-btn" @click="switchToConfig">
-          <el-icon><Plus /></el-icon>
+          <Plus :size="16" />
           <span>新建分割</span>
         </button>
       </div>
@@ -658,7 +654,7 @@ onBeforeUnmount(() => {
             @dragend="onDragEnd"
             @click="viewResult(result)">
             <div class="history-item-header">
-              <el-icon class="drag-handle"><Rank /></el-icon>
+              <GripVertical :size="14" class="drag-handle" />
               <div v-if="editingResultId === result.id" class="history-name-edit" @click.stop>
                 <input
                   v-model="editingName"
@@ -666,16 +662,20 @@ onBeforeUnmount(() => {
                   @keyup.enter="saveRenaming"
                   @keyup.escape="cancelRenaming"
                   @blur="saveRenaming"
-                  autofocus
-                />
+                  autofocus />
               </div>
-              <span v-else class="history-method" :title="getResultDisplayName(result)">{{ getResultDisplayName(result) }}</span>
+              <span v-else class="history-method" :title="getResultDisplayName(result)">{{
+                getResultDisplayName(result)
+              }}</span>
               <div class="history-item-actions">
                 <button class="history-action-btn" @click.stop="startRenaming(result)" title="重命名">
-                  <el-icon><Edit /></el-icon>
+                  <Pencil :size="14" />
                 </button>
-                <button class="history-action-btn history-delete-btn" @click.stop="deleteResult(result.id)" title="删除">
-                  <el-icon><Delete /></el-icon>
+                <button
+                  class="history-action-btn history-delete-btn"
+                  @click.stop="deleteResult(result.id)"
+                  title="删除">
+                  <Trash2 :size="14" />
                 </button>
               </div>
             </div>
@@ -719,16 +719,14 @@ onBeforeUnmount(() => {
               <span class="header-desc">基于 REddyProc 包的 NEE 分割方法，将 NEE 分割为 GPP 和 Reco</span>
             </div>
             <div class="header-actions">
-              <el-button class="action-btn" plain @click="emit('refresh')">
-                <el-icon><Refresh /></el-icon> 刷新
-              </el-button>
+              <el-button class="action-btn" plain @click="emit('refresh')"> <RefreshCw :size="16" /> 刷新 </el-button>
               <el-button
                 class="action-btn primary-gradient-btn"
                 type="primary"
                 :loading="isExecuting"
                 :disabled="!canExecute"
                 @click="executePartitioning">
-                <el-icon><VideoPlay /></el-icon> 开始分割
+                <Play :size="16" /> 开始分割
               </el-button>
             </div>
           </div>
@@ -765,8 +763,8 @@ onBeforeUnmount(() => {
             <!-- 方法详情折叠面板 -->
             <div class="method-details-compact" v-if="selectedMethod">
               <div class="details-collapse-header" @click="showDetails = !showDetails">
-                <el-icon class="collapse-arrow" :class="{ 'is-active': showDetails }"><ArrowRight /></el-icon>
-                <el-icon class="info-icon"><InfoFilled /></el-icon>
+                <ChevronRight :size="14" class="collapse-arrow" :class="{ 'is-active': showDetails }" />
+                <Info :size="14" class="info-icon" />
                 <span class="info-title">算法说明与参考文献</span>
               </div>
 
@@ -805,14 +803,14 @@ onBeforeUnmount(() => {
                   <div class="config-block-header">
                     <h3>变量映射</h3>
                     <el-button size="small" text type="primary" @click="autoMatchColumns">
-                      <el-icon><Refresh /></el-icon> 自动匹配
+                      <RefreshCw :size="14" /> 自动匹配
                     </el-button>
                   </div>
                   <div class="column-mapping-grid">
                     <div v-for="col in requiredColumns" :key="col" class="mapping-row">
                       <div class="mapping-label">
                         <span class="mapping-var">{{ col }}</span>
-                        <el-icon class="mapping-arrow"><ArrowRight /></el-icon>
+                        <ChevronRight :size="14" class="mapping-arrow" />
                       </div>
                       <el-select
                         v-model="columnMapping[col]"
@@ -844,7 +842,7 @@ onBeforeUnmount(() => {
                   <div class="config-block">
                     <div class="config-block-header">
                       <h3>站点位置信息</h3>
-                      <el-icon class="config-icon"><Setting /></el-icon>
+                      <Settings :size="14" class="config-icon" />
                     </div>
                     <div class="params-grid">
                       <div class="param-item">
@@ -886,7 +884,7 @@ onBeforeUnmount(() => {
                   <div class="config-block">
                     <div class="config-block-header">
                       <h3>高级选项</h3>
-                      <el-icon class="config-icon"><Setting /></el-icon>
+                      <Settings :size="14" class="config-icon" />
                     </div>
 
                     <div class="ustar-option">
@@ -900,7 +898,7 @@ onBeforeUnmount(() => {
 
                       <!-- 没有 u* 列时的警告 -->
                       <div v-if="!hasUstarColumn" class="ustar-warning">
-                        <el-icon style="color: #f59e0b; margin-right: 6px"><InfoFilled /></el-icon>
+                        <Info :size="14" style="color: var(--c-warning); margin-right: 6px" />
                         <span>未检测到 u* 列</span>
                       </div>
 
@@ -909,7 +907,7 @@ onBeforeUnmount(() => {
                         <div class="mapping-row">
                           <div class="mapping-label">
                             <span class="mapping-var">u*</span>
-                            <el-icon class="mapping-arrow"><ArrowRight /></el-icon>
+                            <ChevronRight :size="14" class="mapping-arrow" />
                           </div>
                           <el-select
                             v-model="columnMapping['ustar']"
@@ -955,9 +953,7 @@ onBeforeUnmount(() => {
               <span class="header-desc" v-if="currentResult">{{ getResultDisplayName(currentResult) }}</span>
             </div>
             <div class="header-actions">
-              <el-button class="action-btn" plain @click="switchToConfig">
-                <el-icon><Plus /></el-icon> 新建分割
-              </el-button>
+              <el-button class="action-btn" plain @click="switchToConfig"> <Plus :size="16" /> 新建分割 </el-button>
             </div>
           </div>
 
@@ -1049,13 +1045,14 @@ onBeforeUnmount(() => {
                 </div>
 
                 <!-- 可视化图表 -->
-                <div v-if="currentResult.status === 'COMPLETED' && chartFilePath" class="config-block" style="border: none; padding: 0; background: transparent">
-                  <FluxPartitioningCharts
-                    :file-path="chartFilePath"
-                  />
+                <div
+                  v-if="currentResult.status === 'COMPLETED' && chartFilePath"
+                  class="config-block"
+                  style="border: none; padding: 0; background: transparent">
+                  <FluxPartitioningCharts :file-path="chartFilePath" />
                 </div>
                 <div v-else-if="currentResult.status === 'COMPLETED' && !chartFilePath" class="config-block">
-                  <div style="text-align: center; padding: 40px; color: #64748b">
+                  <div style="text-align: center; padding: 40px; color: var(--c-text-secondary)">
                     <p>正在加载图表数据...</p>
                   </div>
                 </div>
@@ -1066,9 +1063,10 @@ onBeforeUnmount(() => {
                   class="config-block"
                   style="border-color: rgba(239, 68, 68, 0.3)">
                   <div class="config-block-header">
-                    <h3 style="color: #ef4444">错误信息</h3>
+                    <h3 style="color: var(--c-danger)">错误信息</h3>
                   </div>
-                  <p style="color: #6b7280; font-size: 13px; margin: 0; white-space: pre-wrap">
+                  <p
+                    style="color: var(--c-text-secondary); font-size: var(--text-sm); margin: 0; white-space: pre-wrap">
                     {{ currentResult.errorMessage }}
                   </p>
                 </div>
@@ -1123,7 +1121,7 @@ onBeforeUnmount(() => {
   display: flex;
   height: 100%;
   width: 100%;
-  background: #f8fafc;
+  background: var(--c-bg-muted);
   overflow: hidden;
   padding: 8px;
   gap: 8px;
@@ -1133,9 +1131,9 @@ onBeforeUnmount(() => {
 /* ==================== 中间：操作历史侧边栏 ==================== */
 .panel-sidebar {
   width: 280px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -1144,7 +1142,7 @@ onBeforeUnmount(() => {
 
 .sidebar-header {
   padding: 16px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--c-border);
 }
 
 .new-partition-btn {
@@ -1154,25 +1152,25 @@ onBeforeUnmount(() => {
   gap: 8px;
   width: 100%;
   height: 36px;
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
-  color: white;
-  background: #10b981;
+  color: var(--c-text-inverse);
+  background: var(--c-brand);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .new-partition-btn:hover {
-  background: #059669;
+  background: var(--c-brand-active);
 }
 
 .sidebar-subtitle {
   padding: 16px 20px 8px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 700;
-  color: #6b7280;
+  color: var(--c-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -1193,23 +1191,23 @@ onBeforeUnmount(() => {
 .history-empty {
   text-align: center;
   padding: 40px 16px;
-  color: #9ca3af;
-  font-size: 14px;
+  color: var(--c-text-muted);
+  font-size: var(--text-md);
 }
 
 .history-item {
   padding: 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   cursor: pointer;
   margin-bottom: 8px;
   border: 1px solid transparent;
   transition: all 0.2s ease;
-  background: #f8fafc;
+  background: var(--c-bg-muted);
 }
 
 .history-item:hover {
-  background: #ffffff;
-  border-color: #e2e8f0;
+  background: var(--c-bg-surface);
+  border-color: var(--c-border);
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
@@ -1228,8 +1226,8 @@ onBeforeUnmount(() => {
 
 .drag-handle {
   cursor: grab;
-  color: #9ca3af;
-  font-size: 14px;
+  color: var(--c-text-muted);
+  font-size: var(--text-md);
   flex-shrink: 0;
 }
 
@@ -1238,7 +1236,7 @@ onBeforeUnmount(() => {
 }
 
 .history-item--drag-over {
-  border-top: 2px solid #3b82f6 !important;
+  border-top: 2px solid var(--c-info) !important;
 }
 
 .history-name-edit {
@@ -1249,11 +1247,11 @@ onBeforeUnmount(() => {
 .history-name-input {
   width: 100%;
   padding: 2px 6px;
-  border: 1px solid #3b82f6;
-  border-radius: 4px;
-  font-size: 13px;
+  border: 1px solid var(--c-info);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   outline: none;
-  background: #fff;
+  background: var(--c-bg-surface);
 }
 
 .history-item-actions {
@@ -1267,26 +1265,26 @@ onBeforeUnmount(() => {
   padding: 4px;
   background: transparent;
   border: none;
-  color: #9ca3af;
+  color: var(--c-text-muted);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: all 0.2s ease;
 }
 
 .history-action-btn:hover {
   background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
+  color: var(--c-info);
 }
 
 .history-delete-btn:hover {
   background: rgba(239, 68, 68, 0.1) !important;
-  color: #ef4444 !important;
+  color: var(--c-danger) !important;
 }
 
 .history-method {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #1e293b;
+  color: var(--c-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1297,8 +1295,8 @@ onBeforeUnmount(() => {
 .history-item-stats {
   display: flex;
   gap: 12px;
-  font-size: 11px;
-  color: #6b7280;
+  font-size: var(--text-xs);
+  color: var(--c-text-secondary);
 }
 
 /* 滚动条样式 */
@@ -1311,7 +1309,7 @@ onBeforeUnmount(() => {
 }
 ::-webkit-scrollbar-thumb {
   background: rgba(156, 163, 175, 0.3);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(156, 163, 175, 0.5);
@@ -1324,9 +1322,9 @@ onBeforeUnmount(() => {
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   padding: 20px;
 }
 
@@ -1342,20 +1340,18 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 18px;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  background: #ffffff;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-surface);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 500;
-  color: #6b7280;
+  color: var(--c-text-secondary);
   transition: all 0.2s ease;
 }
 
 .partition-type-tab:hover {
   border-color: #cbd5e1;
-  color: #1e293b;
+  color: var(--c-text-primary);
 }
 
 .partition-type-tab--active {
@@ -1366,7 +1362,7 @@ onBeforeUnmount(() => {
 }
 
 .tab-icon {
-  font-size: 16px;
+  font-size: var(--text-xl);
 }
 
 .config-view {
@@ -1387,9 +1383,9 @@ onBeforeUnmount(() => {
 }
 
 .header-title h2 {
-  font-size: 20px;
+  font-size: var(--text-3xl);
   font-weight: 600;
-  color: #1e293b;
+  color: var(--c-text-primary);
   margin: 0;
   display: flex;
   align-items: center;
@@ -1397,8 +1393,8 @@ onBeforeUnmount(() => {
 }
 
 .header-desc {
-  font-size: 13px;
-  color: #64748b;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
   margin-top: 6px;
   display: block;
 }
@@ -1410,12 +1406,12 @@ onBeforeUnmount(() => {
 }
 
 .action-btn {
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: var(--radius-control);
+  font-size: var(--text-sm);
 }
 
 .primary-gradient-btn {
-  background: #10b981 !important;
+  background: var(--c-brand) !important;
   border: none !important;
   height: 36px;
   min-width: 110px;
@@ -1423,20 +1419,20 @@ onBeforeUnmount(() => {
 }
 
 .primary-gradient-btn:hover {
-  background: #059669 !important;
+  background: var(--c-brand-active) !important;
 }
 
 .primary-gradient-btn:disabled {
-  background: #9ca3af !important;
-  color: #ffffff !important;
+  background: var(--c-text-muted) !important;
+  color: var(--c-text-inverse) !important;
   cursor: not-allowed;
 }
 
 /* ==================== 顶部选择区域 ==================== */
 .top-selection-panel {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   padding: 12px;
   margin-bottom: 16px;
   flex-shrink: 0;
@@ -1451,9 +1447,9 @@ onBeforeUnmount(() => {
 
 .category-tabs-compact {
   display: flex;
-  background: #f8fafc;
+  background: var(--c-bg-muted);
   padding: 3px;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
 }
 
 .category-tab-compact {
@@ -1461,23 +1457,23 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border: none;
   background: transparent;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: 13px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
   font-weight: 500;
 }
 
 .category-tab-compact:hover {
-  color: #374151;
+  color: var(--c-text-base);
 }
 
 .category-tab-compact--active {
-  background: white;
-  color: #10b981;
+  background: var(--c-bg-surface);
+  color: var(--c-brand);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   font-weight: 600;
 }
@@ -1485,7 +1481,7 @@ onBeforeUnmount(() => {
 .divider-vertical {
   width: 1px;
   height: 24px;
-  background: #e2e8f0;
+  background: var(--c-border);
 }
 
 .method-radio-group {
@@ -1495,21 +1491,21 @@ onBeforeUnmount(() => {
 }
 
 .method-select-label {
-  font-size: 13px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
   font-weight: 500;
 }
 
 /* ==================== 方法详情折叠面板 ==================== */
 .method-details-compact {
   margin-top: 12px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--c-border);
   padding-top: 4px;
 }
 
 .collapse-arrow {
-  font-size: 12px;
-  color: #9ca3af;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
   transition: transform 0.2s;
   cursor: pointer;
   margin-right: 2px;
@@ -1533,7 +1529,7 @@ onBeforeUnmount(() => {
 }
 
 .info-icon {
-  color: #10b981;
+  color: var(--c-brand);
 }
 
 .info-title {
@@ -1542,7 +1538,7 @@ onBeforeUnmount(() => {
 
 .details-content {
   padding: 8px 4px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: #4b5563;
 }
 
@@ -1566,17 +1562,17 @@ onBeforeUnmount(() => {
 
 .meta-label {
   font-weight: 600;
-  color: #9ca3af;
-  font-size: 11px;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
 }
 
 .ref-list-compact {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  background: rgba(243, 244, 246, 0.5);
+  background: var(--c-bg-muted);
   padding: 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-panel);
 }
 
 /* ==================== 两列布局 ==================== */
@@ -1618,21 +1614,21 @@ onBeforeUnmount(() => {
 
 /* ==================== 复用样式: 来源与文献 ==================== */
 .source-package {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: #4b5563;
   font-weight: 500;
   background: rgba(99, 102, 241, 0.08);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .source-function {
-  font-size: 11px;
-  color: #7c3aed;
+  font-size: var(--text-xs);
+  color: var(--color-purple-600);
   background: rgba(124, 58, 237, 0.06);
   padding: 2px 6px;
-  border-radius: 4px;
-  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
 }
 
 .ref-item {
@@ -1644,19 +1640,19 @@ onBeforeUnmount(() => {
 
 .ref-tag {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
-  color: #6b7280;
+  color: var(--c-text-secondary);
   background: rgba(107, 114, 128, 0.08);
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   margin-top: 2px;
   white-space: nowrap;
 }
 
 .ref-text {
-  font-size: 11px;
-  color: #6b7280;
+  font-size: var(--text-xs);
+  color: var(--c-text-secondary);
   line-height: 1.5;
 }
 
@@ -1667,12 +1663,12 @@ onBeforeUnmount(() => {
 
 .ref-doi {
   display: inline-block;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   color: #2563eb;
   background: rgba(37, 99, 235, 0.06);
   padding: 0 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   text-decoration: none;
   margin-left: 2px;
   transition: all 0.15s;
@@ -1699,9 +1695,9 @@ onBeforeUnmount(() => {
 }
 
 .config-block {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  background: var(--c-bg-muted);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   padding: 16px;
 }
 
@@ -1713,19 +1709,19 @@ onBeforeUnmount(() => {
 }
 
 .config-block-header h3 {
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 700;
-  color: #1e293b;
+  color: var(--c-text-primary);
   margin: 0;
 }
 
 .config-icon {
-  color: #9ca3af;
+  color: var(--c-text-muted);
 }
 
 .config-hint {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
   margin: 0 0 12px;
 }
 
@@ -1750,18 +1746,18 @@ onBeforeUnmount(() => {
 }
 
 .mapping-var {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #1e293b;
-  font-family: "Courier New", monospace;
+  color: var(--c-text-primary);
+  font-family: var(--font-mono);
   background: rgba(236, 253, 245, 0.5);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .mapping-arrow {
-  color: #9ca3af;
-  font-size: 14px;
+  color: var(--c-text-muted);
+  font-size: var(--text-md);
 }
 
 .mapping-select {
@@ -1787,9 +1783,9 @@ onBeforeUnmount(() => {
 }
 
 .param-label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 500;
-  color: #374151;
+  color: var(--c-text-base);
 }
 
 .param-input {
@@ -1818,13 +1814,13 @@ onBeforeUnmount(() => {
 }
 
 .ustar-hint {
-  font-size: 12px;
-  color: #9ca3af;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
   line-height: 1.5;
 }
 
 .ustar-hint strong {
-  color: #6b7280;
+  color: var(--c-text-secondary);
 }
 
 .ustar-warning {
@@ -1833,8 +1829,8 @@ onBeforeUnmount(() => {
   padding: 10px 14px;
   background: rgba(245, 158, 11, 0.06);
   border: 1px solid rgba(245, 158, 11, 0.2);
-  border-radius: 8px;
-  font-size: 12px;
+  border-radius: var(--radius-panel);
+  font-size: var(--text-sm);
   color: #92400e;
   line-height: 1.5;
 }
@@ -1851,7 +1847,7 @@ onBeforeUnmount(() => {
 .execution-card {
   background: #ecfdf5;
   border: 1px solid #86efac;
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   padding: 20px;
 }
 
@@ -1863,15 +1859,15 @@ onBeforeUnmount(() => {
 }
 
 .execution-title {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: #065f46;
 }
 
 .execution-percent {
-  font-size: 16px;
+  font-size: var(--text-xl);
   font-weight: 700;
-  color: #059669;
+  color: var(--c-brand-active);
 }
 
 .execution-progress {
@@ -1879,8 +1875,8 @@ onBeforeUnmount(() => {
 }
 
 .execution-message {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
   margin: 0;
 }
 
@@ -1891,20 +1887,20 @@ onBeforeUnmount(() => {
 }
 
 .result-placeholder .placeholder-emoji {
-  font-size: 56px;
+  font-size: var(--text-display-xl);
   margin-bottom: 16px;
 }
 
 .result-placeholder h3 {
-  font-size: 20px;
+  font-size: var(--text-3xl);
   font-weight: 700;
-  color: #1e293b;
+  color: var(--c-text-primary);
   margin: 0 0 8px;
 }
 
 .result-placeholder p {
-  font-size: 15px;
-  color: #64748b;
+  font-size: var(--text-lg);
+  color: var(--c-text-secondary);
   line-height: 1.6;
   max-width: 400px;
   margin: 0 auto;
@@ -1931,15 +1927,15 @@ onBeforeUnmount(() => {
 }
 
 .result-info-label {
-  font-size: 13px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
   min-width: 80px;
   flex-shrink: 0;
 }
 
 .result-info-value {
-  font-size: 13px;
-  color: #1e293b;
+  font-size: var(--text-sm);
+  color: var(--c-text-primary);
   font-weight: 500;
 }
 
@@ -1950,27 +1946,27 @@ onBeforeUnmount(() => {
 }
 
 .stat-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   padding: 12px;
   text-align: center;
 }
 
 .stat-label {
   display: block;
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
   margin-bottom: 4px;
 }
 
 .stat-value {
   display: block;
-  font-size: 22px;
+  font-size: var(--text-3xl);
   font-weight: 700;
-  color: #111827;
+  color: var(--c-text-primary);
   letter-spacing: -0.02em;
-  font-family: "Courier New", monospace;
+  font-family: var(--font-mono);
 }
 
 /* ==================== 蒸散发占位 ==================== */
@@ -1985,20 +1981,20 @@ onBeforeUnmount(() => {
 }
 
 .et-placeholder .placeholder-emoji {
-  font-size: 56px;
+  font-size: var(--text-display-xl);
   margin-bottom: 16px;
 }
 
 .et-placeholder h3 {
-  font-size: 20px;
+  font-size: var(--text-3xl);
   font-weight: 700;
-  color: #1e293b;
+  color: var(--c-text-primary);
   margin: 0 0 8px;
 }
 
 .et-placeholder p {
-  font-size: 15px;
-  color: #64748b;
+  font-size: var(--text-lg);
+  color: var(--c-text-secondary);
   margin: 0 0 24px;
 }
 
@@ -2014,19 +2010,19 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   padding: 10px 16px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  background: var(--c-bg-muted);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   text-align: left;
 }
 
 .feature-icon {
-  font-size: 18px;
+  font-size: var(--text-2xl);
   flex-shrink: 0;
 }
 
 .feature-text {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: #4b5563;
   line-height: 1.5;
 }
@@ -2048,7 +2044,7 @@ onBeforeUnmount(() => {
     min-width: 100%;
     max-height: 200px;
     border-right: none;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--c-border);
   }
 }
 </style>

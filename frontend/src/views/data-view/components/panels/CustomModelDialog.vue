@@ -1,16 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, reactive } from "vue";
 import { ElMessage, ElNotification } from "element-plus";
-import {
-  Plus,
-  Delete,
-  Document,
-  FolderOpened,
-  InfoFilled,
-  Check,
-  Close,
-  WarningFilled,
-} from "@element-plus/icons-vue";
+import { Plus, Trash2, FileText, FolderOpen, Info, Check, X, AlertCircle } from "lucide-vue-next";
 import type {
   CustomModelConfig,
   CustomModelParamDef,
@@ -239,9 +230,7 @@ const parseYamlPreview = () => {
     // 简单的 YAML 解析验证（前端仅做基本格式检查）
     const lines = yamlContent.value.split("\n");
     const requiredKeys = ["model_name", "model_file", "inference_script"];
-    const foundKeys = lines
-      .filter(l => l.includes(":"))
-      .map(l => l.split(":")[0].trim());
+    const foundKeys = lines.filter(l => l.includes(":")).map(l => l.split(":")[0].trim());
 
     const missing = requiredKeys.filter(k => !foundKeys.includes(k));
     if (missing.length > 0) {
@@ -272,7 +261,10 @@ const validateScriptFile = async () => {
   if (!formData.inferenceScriptPath) return;
   scriptFileValidating.value = true;
   try {
-    const result = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.VALIDATE_SCRIPT_FILE, formData.inferenceScriptPath);
+    const result = await window.electronAPI.invoke(
+      API_ROUTES.IMPUTATION.VALIDATE_SCRIPT_FILE,
+      formData.inferenceScriptPath
+    );
     scriptFileValid.value = result?.success ?? true;
   } catch {
     scriptFileValid.value = true;
@@ -396,14 +388,8 @@ const submitRegistration = async () => {
       ElMessage.error("注册失败: " + (result?.error || "未知错误"));
     }
   } catch (error: any) {
-    // 后端未实现，展示演示效果
-    ElNotification({
-      title: "注册成功（演示）",
-      message: `自定义模型 "${formData.modelName}" 已验证可注册，后端接口尚未实现`,
-      type: "success",
-    });
-    emit("registered");
-    dialogVisible.value = false;
+    console.error("注册自定义模型失败:", error);
+    ElMessage.error("注册失败: " + (error.message || "未知错误"));
   }
 };
 
@@ -462,7 +448,7 @@ params:
     required: false`;
 
 // 监听对话框关闭
-watch(dialogVisible, (val) => {
+watch(dialogVisible, val => {
   if (!val) {
     resetForm();
   }
@@ -481,20 +467,14 @@ watch(dialogVisible, (val) => {
     <div class="dialog-body">
       <!-- 导入模式切换 -->
       <div class="import-mode-selector">
-        <div
-          class="mode-card"
-          :class="{ active: importMode === 'file' }"
-          @click="importMode = 'file'">
+        <div class="mode-card" :class="{ active: importMode === 'file' }" @click="importMode = 'file'">
           <span class="mode-card-icon">📝</span>
           <div class="mode-card-content">
             <span class="mode-card-title">图形界面配置</span>
             <span class="mode-card-desc">分步填写模型信息与参数</span>
           </div>
         </div>
-        <div
-          class="mode-card"
-          :class="{ active: importMode === 'yaml' }"
-          @click="importMode = 'yaml'">
+        <div class="mode-card" :class="{ active: importMode === 'yaml' }" @click="importMode = 'yaml'">
           <span class="mode-card-icon">📄</span>
           <div class="mode-card-content">
             <span class="mode-card-title">YAML 配置导入</span>
@@ -516,7 +496,7 @@ watch(dialogVisible, (val) => {
               'step-item--completed': activeStep > index,
             }">
             <div class="step-dot">
-              <el-icon v-if="activeStep > index" :size="12"><Check /></el-icon>
+              <Check v-if="activeStep > index" :size="12" />
               <span v-else>{{ index + 1 }}</span>
             </div>
             <span class="step-label">{{ step.title }}</span>
@@ -554,21 +534,13 @@ watch(dialogVisible, (val) => {
               <div class="form-item form-item--half">
                 <label class="form-label">预估耗时</label>
                 <el-select v-model="formData.estimatedTime" style="width: 100%">
-                  <el-option
-                    v-for="opt in timeOptions"
-                    :key="opt.value"
-                    :label="opt.label"
-                    :value="opt.value" />
+                  <el-option v-for="opt in timeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                 </el-select>
               </div>
               <div class="form-item form-item--half">
                 <label class="form-label">准确度等级</label>
                 <el-select v-model="formData.accuracy" style="width: 100%">
-                  <el-option
-                    v-for="opt in accuracyOptions"
-                    :key="opt.value"
-                    :label="opt.label"
-                    :value="opt.value" />
+                  <el-option v-for="opt in accuracyOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                 </el-select>
               </div>
             </div>
@@ -597,7 +569,7 @@ watch(dialogVisible, (val) => {
               <label class="form-label">
                 模型文件 <span class="required">*</span>
                 <el-tooltip content="训练好的模型权重文件" placement="top">
-                  <el-icon class="label-hint"><InfoFilled /></el-icon>
+                  <Info :size="14" class="label-hint" />
                 </el-tooltip>
               </label>
               <div class="file-picker">
@@ -606,15 +578,11 @@ watch(dialogVisible, (val) => {
                   placeholder="选择或输入模型文件路径 (.pypots/.pt/.onnx)"
                   @blur="validateModelFile">
                   <template #suffix>
-                    <el-icon
-                      v-if="modelFileValid === true"
-                      class="valid-icon"><Check /></el-icon>
-                    <el-icon
-                      v-else-if="modelFileValid === false"
-                      class="invalid-icon"><Close /></el-icon>
+                    <Check v-if="modelFileValid === true" :size="14" class="valid-icon" />
+                    <X v-else-if="modelFileValid === false" :size="14" class="invalid-icon" />
                   </template>
                 </el-input>
-                <el-button @click="selectModelFile" :icon="FolderOpened">浏览</el-button>
+                <el-button @click="selectModelFile" :icon="FolderOpen">浏览</el-button>
               </div>
             </div>
 
@@ -622,7 +590,7 @@ watch(dialogVisible, (val) => {
               <label class="form-label">
                 推理脚本 <span class="required">*</span>
                 <el-tooltip content="执行插补推理的 Python 脚本" placement="top">
-                  <el-icon class="label-hint"><InfoFilled /></el-icon>
+                  <Info :size="14" class="label-hint" />
                 </el-tooltip>
               </label>
               <div class="file-picker">
@@ -631,15 +599,11 @@ watch(dialogVisible, (val) => {
                   placeholder="选择或输入推理脚本路径 (.py)"
                   @blur="validateScriptFile">
                   <template #suffix>
-                    <el-icon
-                      v-if="scriptFileValid === true"
-                      class="valid-icon"><Check /></el-icon>
-                    <el-icon
-                      v-else-if="scriptFileValid === false"
-                      class="invalid-icon"><Close /></el-icon>
+                    <Check v-if="scriptFileValid === true" :size="14" class="valid-icon" />
+                    <X v-else-if="scriptFileValid === false" :size="14" class="invalid-icon" />
                   </template>
                 </el-input>
-                <el-button @click="selectScriptFile" :icon="FolderOpened">浏览</el-button>
+                <el-button @click="selectScriptFile" :icon="FolderOpen">浏览</el-button>
               </div>
             </div>
 
@@ -648,31 +612,22 @@ watch(dialogVisible, (val) => {
             <div class="form-row">
               <div class="form-item form-item--half">
                 <label class="form-label">时间列名称</label>
-                <el-input
-                  v-model="formData.timeColumn"
-                  placeholder="record_time" />
+                <el-input v-model="formData.timeColumn" placeholder="record_time" />
               </div>
               <div class="form-item form-item--half">
                 <label class="form-label">
                   序列长度
                   <el-tooltip content="时序模型的输入窗口长度" placement="top">
-                    <el-icon class="label-hint"><InfoFilled /></el-icon>
+                    <Info :size="14" class="label-hint" />
                   </el-tooltip>
                 </label>
-                <el-input-number
-                  v-model="formData.seqLen"
-                  :min="8"
-                  :max="1024"
-                  :step="8"
-                  style="width: 100%" />
+                <el-input-number v-model="formData.seqLen" :min="8" :max="1024" :step="8" style="width: 100%" />
               </div>
             </div>
 
             <div class="form-item">
               <label class="form-label">目标插补列</label>
-              <el-input
-                v-model="formData.targetColumn"
-                placeholder="例如：pm2_5（留空表示通用多列模型）" />
+              <el-input v-model="formData.targetColumn" placeholder="例如：pm2_5（留空表示通用多列模型）" />
             </div>
 
             <div class="form-item">
@@ -706,7 +661,7 @@ watch(dialogVisible, (val) => {
         <div v-show="activeStep === 2" class="step-content">
           <div class="form-section">
             <div class="section-desc">
-              <el-icon><InfoFilled /></el-icon>
+              <Info :size="15" />
               <span>定义模型推理时的可配置参数，用户在使用此模型进行插补时可以调整这些参数。</span>
             </div>
 
@@ -723,7 +678,7 @@ watch(dialogVisible, (val) => {
                     <el-tag v-if="param.isRequired" size="small" type="danger" effect="plain">必填</el-tag>
                     <el-tag v-if="param.isAdvanced" size="small" type="warning" effect="plain">高级</el-tag>
                     <button class="param-delete-btn" @click="removeParam(index)">
-                      <el-icon><Delete /></el-icon>
+                      <Trash2 :size="14" />
                     </button>
                   </div>
                 </div>
@@ -745,7 +700,7 @@ watch(dialogVisible, (val) => {
               <div class="new-param-header">
                 <h4>添加参数</h4>
                 <button class="close-btn" @click="showNewParamForm = false">
-                  <el-icon><Close /></el-icon>
+                  <X :size="15" />
                 </button>
               </div>
 
@@ -814,7 +769,7 @@ watch(dialogVisible, (val) => {
 
             <!-- 添加参数按钮 -->
             <button v-if="!showNewParamForm" class="add-param-btn" @click="showNewParamForm = true">
-              <el-icon><Plus /></el-icon>
+              <Plus :size="15" />
               <span>添加参数</span>
             </button>
           </div>
@@ -842,11 +797,15 @@ watch(dialogVisible, (val) => {
                 </div>
                 <div class="summary-row">
                   <span class="summary-label">预估耗时</span>
-                  <span class="summary-value">{{ timeOptions.find(t => t.value === formData.estimatedTime)?.label }}</span>
+                  <span class="summary-value">{{
+                    timeOptions.find(t => t.value === formData.estimatedTime)?.label
+                  }}</span>
                 </div>
                 <div class="summary-row">
                   <span class="summary-label">准确度</span>
-                  <span class="summary-value">{{ accuracyOptions.find(a => a.value === formData.accuracy)?.label }}</span>
+                  <span class="summary-value">{{
+                    accuracyOptions.find(a => a.value === formData.accuracy)?.label
+                  }}</span>
                 </div>
               </div>
 
@@ -854,19 +813,25 @@ watch(dialogVisible, (val) => {
                 <h5 class="summary-group-title">模型配置</h5>
                 <div class="summary-row">
                   <span class="summary-label">框架</span>
-                  <span class="summary-value">{{ frameworkOptions.find(f => f.value === formData.framework)?.label }}</span>
+                  <span class="summary-value">{{
+                    frameworkOptions.find(f => f.value === formData.framework)?.label
+                  }}</span>
                 </div>
                 <div class="summary-row">
                   <span class="summary-label">模型文件</span>
-                  <span class="summary-value summary-path" :title="formData.modelFilePath">{{ getFileName(formData.modelFilePath) }}</span>
+                  <span class="summary-value summary-path" :title="formData.modelFilePath">{{
+                    getFileName(formData.modelFilePath)
+                  }}</span>
                 </div>
                 <div class="summary-row">
                   <span class="summary-label">推理脚本</span>
-                  <span class="summary-value summary-path" :title="formData.inferenceScriptPath">{{ getFileName(formData.inferenceScriptPath) }}</span>
+                  <span class="summary-value summary-path" :title="formData.inferenceScriptPath">{{
+                    getFileName(formData.inferenceScriptPath)
+                  }}</span>
                 </div>
                 <div class="summary-row">
                   <span class="summary-label">时间列</span>
-                  <span class="summary-value">{{ formData.timeColumn || '默认' }}</span>
+                  <span class="summary-value">{{ formData.timeColumn || "默认" }}</span>
                 </div>
                 <div class="summary-row">
                   <span class="summary-label">序列长度</span>
@@ -878,7 +843,7 @@ watch(dialogVisible, (val) => {
                 </div>
                 <div v-if="formData.featureColumns.length > 0" class="summary-row">
                   <span class="summary-label">特征列</span>
-                  <span class="summary-value">{{ formData.featureColumns.join(', ') }}</span>
+                  <span class="summary-value">{{ formData.featureColumns.join(", ") }}</span>
                 </div>
               </div>
 
@@ -887,7 +852,7 @@ watch(dialogVisible, (val) => {
                 <div v-for="param in formData.params" :key="param.paramKey" class="summary-row">
                   <span class="summary-label">{{ param.paramName }}</span>
                   <span class="summary-value">
-                    {{ param.paramType }} · 默认: {{ param.defaultValue || '无' }}
+                    {{ param.paramType }} · 默认: {{ param.defaultValue || "无" }}
                     <span v-if="param.isRequired" class="tag-inline tag-required">必填</span>
                   </span>
                 </div>
@@ -901,19 +866,8 @@ watch(dialogVisible, (val) => {
           <el-button v-if="activeStep > 0" @click="goPrev">上一步</el-button>
           <div class="step-actions-right">
             <el-button @click="dialogVisible = false">取消</el-button>
-            <el-button
-              v-if="!isLastStep"
-              type="primary"
-              :disabled="!canGoNext"
-              @click="goNext">
-              下一步
-            </el-button>
-            <el-button
-              v-else
-              type="primary"
-              @click="submitRegistration">
-              确认注册
-            </el-button>
+            <el-button v-if="!isLastStep" type="primary" :disabled="!canGoNext" @click="goNext"> 下一步 </el-button>
+            <el-button v-else type="primary" @click="submitRegistration"> 确认注册 </el-button>
           </div>
         </div>
       </template>
@@ -923,11 +877,9 @@ watch(dialogVisible, (val) => {
         <div class="yaml-import-section">
           <!-- 选择文件 -->
           <div class="yaml-file-bar">
-            <el-button @click="selectYamlFile" :icon="FolderOpened">
-              选择 YAML 文件
-            </el-button>
+            <el-button @click="selectYamlFile" :icon="FolderOpen"> 选择 YAML 文件 </el-button>
             <span v-if="yamlFileName" class="yaml-file-name">
-              <el-icon><Document /></el-icon>
+              <FileText :size="14" />
               {{ getFileName(yamlFileName) }}
             </span>
           </div>
@@ -950,12 +902,12 @@ watch(dialogVisible, (val) => {
 
           <!-- 验证提示 -->
           <div v-if="yamlParseError" class="yaml-error">
-            <el-icon><WarningFilled /></el-icon>
+            <AlertCircle :size="15" />
             <span>{{ yamlParseError }}</span>
           </div>
 
           <div v-else-if="yamlContent.trim()" class="yaml-valid">
-            <el-icon><Check /></el-icon>
+            <Check :size="15" />
             <span>配置格式基本验证通过</span>
           </div>
         </div>
@@ -964,10 +916,7 @@ watch(dialogVisible, (val) => {
         <div class="step-actions">
           <div class="step-actions-right">
             <el-button @click="dialogVisible = false">取消</el-button>
-            <el-button
-              type="primary"
-              :disabled="!yamlContent.trim() || !!yamlParseError"
-              @click="importFromYaml">
+            <el-button type="primary" :disabled="!yamlContent.trim() || !!yamlParseError" @click="importFromYaml">
               导入并注册
             </el-button>
           </div>
@@ -995,24 +944,24 @@ watch(dialogVisible, (val) => {
   align-items: center;
   gap: 12px;
   padding: 14px 16px;
-  background: #f8fafc;
-  border: 2px solid #e2e8f0;
-  border-radius: 10px;
+  background: var(--c-bg-subtle);
+  border: 2px solid var(--c-border);
+  border-radius: var(--radius-panel);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .mode-card:hover {
-  border-color: #94a3b8;
+  border-color: var(--c-text-disabled);
 }
 
 .mode-card.active {
-  background: #f0fdf4;
-  border-color: #10b981;
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand);
 }
 
 .mode-card-icon {
-  font-size: 24px;
+  font-size: var(--text-4xl);
 }
 
 .mode-card-content {
@@ -1022,14 +971,14 @@ watch(dialogVisible, (val) => {
 }
 
 .mode-card-title {
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
-  color: #1e293b;
+  color: var(--c-text-base);
 }
 
 .mode-card-desc {
-  font-size: 12px;
-  color: #64748b;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
 }
 
 /* ==================== 步骤条 ==================== */
@@ -1060,55 +1009,55 @@ watch(dialogVisible, (val) => {
   top: 50%;
   width: 8px;
   height: 2px;
-  background: #cbd5e1;
+  background: var(--c-border-strong);
   transform: translateY(-50%);
 }
 
 .step-item--completed:not(:last-child)::after {
-  background: #10b981;
+  background: var(--c-brand);
 }
 
 .step-dot {
   width: 28px;
   height: 28px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  background: #f1f5f9;
-  color: #94a3b8;
-  border: 2px solid #e2e8f0;
+  background: var(--c-border-subtle);
+  color: var(--c-text-disabled);
+  border: 2px solid var(--c-border);
   transition: all 0.2s ease;
 }
 
 .step-item--active .step-dot {
-  background: #10b981;
-  color: white;
-  border-color: #10b981;
+  background: var(--c-brand);
+  color: var(--c-text-inverse);
+  border-color: var(--c-brand);
 }
 
 .step-item--completed .step-dot {
-  background: #d1fae5;
-  color: #10b981;
-  border-color: #10b981;
+  background: var(--c-brand-muted);
+  color: var(--c-brand);
+  border-color: var(--c-brand);
 }
 
 .step-label {
-  font-size: 13px;
-  color: #94a3b8;
+  font-size: var(--text-sm);
+  color: var(--c-text-disabled);
   font-weight: 500;
   white-space: nowrap;
 }
 
 .step-item--active .step-label {
-  color: #1e293b;
+  color: var(--c-text-base);
   font-weight: 600;
 }
 
 .step-item--completed .step-label {
-  color: #10b981;
+  color: var(--c-brand);
 }
 
 /* ==================== 步骤内容 ==================== */
@@ -1129,21 +1078,21 @@ watch(dialogVisible, (val) => {
 }
 
 .form-label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #374151;
+  color: var(--c-text-base);
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
 .required {
-  color: #ef4444;
+  color: var(--c-danger);
 }
 
 .label-hint {
-  font-size: 14px;
-  color: #94a3b8;
+  font-size: var(--text-base);
+  color: var(--c-text-disabled);
   cursor: help;
 }
 
@@ -1161,21 +1110,21 @@ watch(dialogVisible, (val) => {
 }
 
 .hint-text {
-  font-size: 12px;
-  color: #64748b;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
 }
 
 .hint-text code {
-  background: #f1f5f9;
+  background: var(--c-border-subtle);
   padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   color: #0d9488;
 }
 
 .form-divider {
   height: 1px;
-  background: #e2e8f0;
+  background: var(--c-border);
   margin: 4px 0;
 }
 
@@ -1192,32 +1141,32 @@ watch(dialogVisible, (val) => {
   align-items: center;
   gap: 4px;
   padding: 12px 8px;
-  background: #f8fafc;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
+  background: var(--c-bg-subtle);
+  border: 2px solid var(--c-border);
+  border-radius: var(--radius-panel);
   cursor: pointer;
   transition: all 0.2s ease;
   text-align: center;
 }
 
 .framework-card:hover {
-  border-color: #94a3b8;
+  border-color: var(--c-text-disabled);
 }
 
 .framework-card--selected {
-  background: #f0fdf4;
-  border-color: #10b981;
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand);
 }
 
 .framework-name {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #1e293b;
+  color: var(--c-text-base);
 }
 
 .framework-desc {
-  font-size: 11px;
-  color: #94a3b8;
+  font-size: var(--text-xs);
+  color: var(--c-text-disabled);
 }
 
 /* ==================== 文件选择器 ==================== */
@@ -1231,11 +1180,11 @@ watch(dialogVisible, (val) => {
 }
 
 .valid-icon {
-  color: #10b981;
+  color: var(--c-brand);
 }
 
 .invalid-icon {
-  color: #ef4444;
+  color: var(--c-danger);
 }
 
 /* ==================== 特征列 ==================== */
@@ -1257,10 +1206,10 @@ watch(dialogVisible, (val) => {
   align-items: flex-start;
   gap: 8px;
   padding: 12px 14px;
-  background: #f0f9ff;
-  border: 1px solid #bae6fd;
-  border-radius: 8px;
-  font-size: 13px;
+  background: var(--c-info-bg);
+  border: 1px solid var(--c-info-border);
+  border-radius: var(--radius-panel);
+  font-size: var(--text-sm);
   color: #0369a1;
 }
 
@@ -1272,9 +1221,9 @@ watch(dialogVisible, (val) => {
 
 .param-card {
   padding: 12px 14px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  background: var(--c-bg-subtle);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
 }
 
 .param-card-header {
@@ -1291,17 +1240,17 @@ watch(dialogVisible, (val) => {
 }
 
 .param-card-name {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #1e293b;
+  color: var(--c-text-base);
 }
 
 .param-card-key {
-  font-size: 11px;
-  background: #f1f5f9;
+  font-size: var(--text-xs);
+  background: var(--c-border-subtle);
   padding: 1px 6px;
-  border-radius: 4px;
-  color: #64748b;
+  border-radius: var(--radius-sm);
+  color: var(--c-text-secondary);
 }
 
 .param-card-meta {
@@ -1313,54 +1262,54 @@ watch(dialogVisible, (val) => {
 .param-card-body {
   display: flex;
   gap: 12px;
-  font-size: 12px;
-  color: #64748b;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
 }
 
 .param-card-tooltip {
-  color: #94a3b8;
+  color: var(--c-text-disabled);
   font-style: italic;
 }
 
 .param-delete-btn {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--c-text-disabled);
   cursor: pointer;
   padding: 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
 }
 
 .param-delete-btn:hover {
-  color: #ef4444;
-  background: #fef2f2;
+  color: var(--c-danger);
+  background: var(--c-danger-bg);
 }
 
 .empty-params {
   text-align: center;
   padding: 32px 16px;
-  color: #94a3b8;
+  color: var(--c-text-disabled);
 }
 
 .empty-params span {
-  font-size: 14px;
+  font-size: var(--text-base);
   display: block;
   margin-bottom: 4px;
 }
 
 .empty-params p {
-  font-size: 12px;
+  font-size: var(--text-sm);
   margin: 0;
 }
 
 /* ==================== 新增参数表单 ==================== */
 .new-param-form {
   padding: 16px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1374,28 +1323,28 @@ watch(dialogVisible, (val) => {
 
 .new-param-header h4 {
   margin: 0;
-  font-size: 14px;
-  color: #1e293b;
+  font-size: var(--text-base);
+  color: var(--c-text-base);
 }
 
 .close-btn {
   background: none;
   border: none;
   cursor: pointer;
-  color: #94a3b8;
+  color: var(--c-text-disabled);
   padding: 4px;
 }
 
 .close-btn:hover {
-  color: #64748b;
+  color: var(--c-text-secondary);
 }
 
 .checkbox-inline {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
-  color: #475569;
+  font-size: var(--text-sm);
+  color: var(--c-text-base);
   cursor: pointer;
 }
 
@@ -1412,19 +1361,19 @@ watch(dialogVisible, (val) => {
   gap: 6px;
   width: 100%;
   padding: 10px;
-  background: #ffffff;
-  border: 2px dashed #cbd5e1;
-  border-radius: 8px;
-  color: #64748b;
-  font-size: 13px;
+  background: var(--c-bg-surface);
+  border: 2px dashed var(--c-border-strong);
+  border-radius: var(--radius-panel);
+  color: var(--c-text-secondary);
+  font-size: var(--text-sm);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .add-param-btn:hover {
-  border-color: #10b981;
-  color: #10b981;
-  background: #f0fdf4;
+  border-color: var(--c-brand);
+  color: var(--c-brand);
+  background: var(--c-brand-soft);
 }
 
 /* ==================== 确认信息 ==================== */
@@ -1433,16 +1382,16 @@ watch(dialogVisible, (val) => {
 }
 
 .summary-title {
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 600;
-  color: #1e293b;
+  color: var(--c-text-base);
   margin: 0 0 16px;
 }
 
 .summary-card {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  background: var(--c-bg-subtle);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -1457,13 +1406,13 @@ watch(dialogVisible, (val) => {
 
 .summary-group:not(:last-child) {
   padding-bottom: 12px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--c-border);
 }
 
 .summary-group-title {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #475569;
+  color: var(--c-text-base);
   margin: 0;
 }
 
@@ -1475,13 +1424,13 @@ watch(dialogVisible, (val) => {
 }
 
 .summary-label {
-  font-size: 13px;
-  color: #64748b;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
 }
 
 .summary-value {
-  font-size: 13px;
-  color: #1e293b;
+  font-size: var(--text-sm);
+  color: var(--c-text-base);
   font-weight: 500;
   text-align: right;
   max-width: 60%;
@@ -1491,29 +1440,29 @@ watch(dialogVisible, (val) => {
 }
 
 .summary-code {
-  font-family: 'Fira Code', 'Consolas', monospace;
-  background: #f1f5f9;
+  font-family: var(--font-mono);
+  background: var(--c-border-subtle);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: #0d9488;
 }
 
 .summary-path {
-  font-family: 'Fira Code', 'Consolas', monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
 }
 
 .tag-inline {
   display: inline-block;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   margin-left: 6px;
 }
 
 .tag-required {
-  background: #fef2f2;
-  color: #ef4444;
+  background: var(--c-danger-bg);
+  color: var(--c-danger);
 }
 
 /* ==================== 步骤导航 ==================== */
@@ -1523,7 +1472,7 @@ watch(dialogVisible, (val) => {
   align-items: center;
   margin-top: 24px;
   padding-top: 16px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--c-border);
 }
 
 .step-actions-right {
@@ -1549,16 +1498,16 @@ watch(dialogVisible, (val) => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
-  color: #475569;
-  background: #f1f5f9;
+  font-size: var(--text-sm);
+  color: var(--c-text-base);
+  background: var(--c-border-subtle);
   padding: 4px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
 }
 
 .yaml-editor-wrapper {
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   overflow: hidden;
 }
 
@@ -1567,26 +1516,26 @@ watch(dialogVisible, (val) => {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
-  font-size: 13px;
+  background: var(--c-bg-subtle);
+  border-bottom: 1px solid var(--c-border);
+  font-size: var(--text-sm);
   font-weight: 500;
-  color: #475569;
+  color: var(--c-text-base);
 }
 
 .yaml-textarea :deep(.el-textarea__inner) {
-  font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
-  font-size: 12.5px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
   line-height: 1.6;
   border: none;
   border-radius: 0;
-  background: #1e293b;
-  color: #e2e8f0;
+  background: var(--c-text-base);
+  color: var(--c-border);
   padding: 12px 16px;
 }
 
 .yaml-textarea :deep(.el-textarea__inner::placeholder) {
-  color: #64748b;
+  color: var(--c-text-secondary);
 }
 
 .yaml-error {
@@ -1594,11 +1543,11 @@ watch(dialogVisible, (val) => {
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #dc2626;
+  background: var(--c-danger-bg);
+  border: 1px solid var(--c-danger-border);
+  border-radius: var(--radius-panel);
+  font-size: var(--text-sm);
+  color: var(--c-danger);
 }
 
 .yaml-valid {
@@ -1606,10 +1555,10 @@ watch(dialogVisible, (val) => {
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #16a34a;
+  background: var(--c-brand-soft);
+  border: 1px solid var(--c-brand-border);
+  border-radius: var(--radius-panel);
+  font-size: var(--text-sm);
+  color: var(--c-brand-hover);
 }
 </style>

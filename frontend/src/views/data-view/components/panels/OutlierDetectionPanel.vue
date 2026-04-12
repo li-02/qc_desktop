@@ -2,24 +2,24 @@
 import { ref, computed, watch, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
-  Loading,
-  Refresh,
+  Loader2,
+  RefreshCw,
   Search,
-  Setting,
+  Settings,
   Check,
-  Close,
-  VideoPlay,
-  Delete,
+  X,
+  Play,
+  Trash2,
   Plus,
-  ArrowLeft,
-  MagicStick,
-  RefreshLeft,
+  ChevronLeft,
+  Wand2,
+  RotateCcw,
   Download,
-  Edit,
-  Connection,
-  View,
-  Rank,
-} from "@element-plus/icons-vue";
+  Pencil,
+  Link,
+  Eye,
+  GripVertical,
+} from "lucide-vue-next";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
@@ -120,6 +120,9 @@ const selectMethod = (method: DetectionMethod) => {
   }
   methodParamsForm.value = defaults;
 };
+
+// 列配置折叠状态（默认展开）
+const columnConfigCollapse = ref<string[]>(["column-config"]);
 
 // 本地状态
 const searchText = ref("");
@@ -814,6 +817,17 @@ watch(
   { immediate: true }
 );
 
+// 列阈值加载完成后，默认全选所有列
+watch(
+  () => outlierStore.columnThresholds,
+  thresholds => {
+    if (thresholds.length > 0 && selectedColumns.value.length === 0) {
+      const timeColumn = datasetInfo.value?.timeColumn;
+      selectedColumns.value = thresholds.filter(col => !timeColumn || col.column_name !== timeColumn).map(c => c.id);
+    }
+  }
+);
+
 onMounted(() => {
   if (datasetInfo.value?.id) {
     loadData();
@@ -827,46 +841,57 @@ onMounted(() => {
     <div class="eco-backdrop" aria-hidden="true">
       <!-- 大叶片 — 右上角 -->
       <svg class="eco-leaf eco-leaf--1" viewBox="0 0 200 200" fill="currentColor">
-        <path d="M100 10C100 10 30 50 20 110C14 148 40 175 80 180C60 160 55 130 70 108C85 86 100 75 100 75C100 75 115 86 130 108C145 130 140 160 120 180C160 175 186 148 180 110C170 50 100 10 100 10Z"/>
-        <line x1="100" y1="185" x2="100" y2="90" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+        <path
+          d="M100 10C100 10 30 50 20 110C14 148 40 175 80 180C60 160 55 130 70 108C85 86 100 75 100 75C100 75 115 86 130 108C145 130 140 160 120 180C160 175 186 148 180 110C170 50 100 10 100 10Z" />
+        <line
+          x1="100"
+          y1="185"
+          x2="100"
+          y2="90"
+          stroke="currentColor"
+          stroke-width="3"
+          stroke-linecap="round"
+          opacity="0.5" />
       </svg>
       <!-- 小叶片 — 左下 -->
       <svg class="eco-leaf eco-leaf--2" viewBox="0 0 130 130" fill="currentColor">
-        <path d="M65 8C65 8 20 35 15 72C11 97 28 114 52 117C39 104 37 85 46 70C55 56 65 49 65 49C65 49 75 56 84 70C93 85 91 104 78 117C102 114 119 97 115 72C110 35 65 8 65 8Z"/>
+        <path
+          d="M65 8C65 8 20 35 15 72C11 97 28 114 52 117C39 104 37 85 46 70C55 56 65 49 65 49C65 49 75 56 84 70C93 85 91 104 78 117C102 114 119 97 115 72C110 35 65 8 65 8Z" />
       </svg>
       <!-- 微叶 — 中左 -->
       <svg class="eco-leaf eco-leaf--3" viewBox="0 0 90 90" fill="currentColor">
-        <path d="M45 5C45 5 14 24 10 50C7 67 19 79 36 81C27 72 26 59 32 48C38 38 45 34 45 34C45 34 52 38 58 48C64 59 63 72 54 81C71 79 83 67 80 50C76 24 45 5 45 5Z"/>
+        <path
+          d="M45 5C45 5 14 24 10 50C7 67 19 79 36 81C27 72 26 59 32 48C38 38 45 34 45 34C45 34 52 38 58 48C64 59 63 72 54 81C71 79 83 67 80 50C76 24 45 5 45 5Z" />
       </svg>
       <!-- 监测站网络图 -->
       <svg class="eco-network-graph" viewBox="0 0 520 260" fill="none">
-        <circle cx="80"  cy="60"  r="5" fill="currentColor" opacity="0.7"/>
-        <circle cx="200" cy="30"  r="5" fill="currentColor" opacity="0.7"/>
-        <circle cx="340" cy="70"  r="5" fill="currentColor" opacity="0.7"/>
-        <circle cx="460" cy="40"  r="5" fill="currentColor" opacity="0.7"/>
-        <circle cx="140" cy="140" r="5" fill="currentColor" opacity="0.7"/>
-        <circle cx="280" cy="160" r="5" fill="currentColor" opacity="0.7"/>
-        <circle cx="400" cy="130" r="5" fill="currentColor" opacity="0.7"/>
-        <circle cx="60"  cy="200" r="5" fill="currentColor" opacity="0.7"/>
-        <circle cx="480" cy="190" r="5" fill="currentColor" opacity="0.7"/>
-        <line x1="80"  y1="60"  x2="200" y2="30"  stroke="currentColor" stroke-width="1" opacity="0.35"/>
-        <line x1="200" y1="30"  x2="340" y2="70"  stroke="currentColor" stroke-width="1" opacity="0.35"/>
-        <line x1="340" y1="70"  x2="460" y2="40"  stroke="currentColor" stroke-width="1" opacity="0.35"/>
-        <line x1="80"  y1="60"  x2="140" y2="140" stroke="currentColor" stroke-width="1" opacity="0.35"/>
-        <line x1="200" y1="30"  x2="280" y2="160" stroke="currentColor" stroke-width="1" opacity="0.35"/>
-        <line x1="340" y1="70"  x2="400" y2="130" stroke="currentColor" stroke-width="1" opacity="0.35"/>
-        <line x1="140" y1="140" x2="280" y2="160" stroke="currentColor" stroke-width="1" opacity="0.35"/>
-        <line x1="280" y1="160" x2="400" y2="130" stroke="currentColor" stroke-width="1" opacity="0.35"/>
-        <line x1="60"  y1="200" x2="140" y2="140" stroke="currentColor" stroke-width="1" opacity="0.35"/>
-        <line x1="400" y1="130" x2="480" y2="190" stroke="currentColor" stroke-width="1" opacity="0.35"/>
-        <line x1="460" y1="40"  x2="400" y2="130" stroke="currentColor" stroke-width="1" opacity="0.35"/>
+        <circle cx="80" cy="60" r="5" fill="currentColor" opacity="0.7" />
+        <circle cx="200" cy="30" r="5" fill="currentColor" opacity="0.7" />
+        <circle cx="340" cy="70" r="5" fill="currentColor" opacity="0.7" />
+        <circle cx="460" cy="40" r="5" fill="currentColor" opacity="0.7" />
+        <circle cx="140" cy="140" r="5" fill="currentColor" opacity="0.7" />
+        <circle cx="280" cy="160" r="5" fill="currentColor" opacity="0.7" />
+        <circle cx="400" cy="130" r="5" fill="currentColor" opacity="0.7" />
+        <circle cx="60" cy="200" r="5" fill="currentColor" opacity="0.7" />
+        <circle cx="480" cy="190" r="5" fill="currentColor" opacity="0.7" />
+        <line x1="80" y1="60" x2="200" y2="30" stroke="currentColor" stroke-width="1" opacity="0.35" />
+        <line x1="200" y1="30" x2="340" y2="70" stroke="currentColor" stroke-width="1" opacity="0.35" />
+        <line x1="340" y1="70" x2="460" y2="40" stroke="currentColor" stroke-width="1" opacity="0.35" />
+        <line x1="80" y1="60" x2="140" y2="140" stroke="currentColor" stroke-width="1" opacity="0.35" />
+        <line x1="200" y1="30" x2="280" y2="160" stroke="currentColor" stroke-width="1" opacity="0.35" />
+        <line x1="340" y1="70" x2="400" y2="130" stroke="currentColor" stroke-width="1" opacity="0.35" />
+        <line x1="140" y1="140" x2="280" y2="160" stroke="currentColor" stroke-width="1" opacity="0.35" />
+        <line x1="280" y1="160" x2="400" y2="130" stroke="currentColor" stroke-width="1" opacity="0.35" />
+        <line x1="60" y1="200" x2="140" y2="140" stroke="currentColor" stroke-width="1" opacity="0.35" />
+        <line x1="400" y1="130" x2="480" y2="190" stroke="currentColor" stroke-width="1" opacity="0.35" />
+        <line x1="460" y1="40" x2="400" y2="130" stroke="currentColor" stroke-width="1" opacity="0.35" />
       </svg>
     </div>
 
     <!-- 加载状态 -->
     <div v-if="panelLoading && !datasetInfo" class="loading-overlay">
       <div class="loading-content">
-        <el-icon class="loading-spinner"><Loading /></el-icon>
+        <Loader2 :size="18" class="loading-spinner" />
         <span class="loading-text">加载中...</span>
       </div>
     </div>
@@ -876,7 +901,7 @@ onMounted(() => {
       <div class="panel-sidebar glass-panel">
         <div class="sidebar-header">
           <button class="new-detection-btn" @click="switchToConfig">
-            <el-icon><Plus /></el-icon>
+            <Plus :size="16" />
             <span>新建检测</span>
           </button>
         </div>
@@ -900,14 +925,14 @@ onMounted(() => {
                 @dragend="onDragEnd"
                 @click="viewResult(result)">
                 <div class="history-item-header">
-                  <el-icon class="drag-handle"><Rank /></el-icon>
+                  <GripVertical :size="14" class="drag-handle" />
                   <!-- 名称显示/编辑区域 -->
                   <div class="history-name-wrapper" v-if="editingResultId !== result.id">
                     <span class="history-name" :title="getResultDisplayName(result)">{{
                       getResultDisplayName(result)
                     }}</span>
                     <el-button size="small" text class="rename-btn" @click="startRenaming(result, $event)">
-                      <el-icon><Edit /></el-icon>
+                      <Pencil :size="14" />
                     </el-button>
                   </div>
                   <!-- 编辑模式 -->
@@ -920,10 +945,10 @@ onMounted(() => {
                       @keyup.escape="cancelRenaming($event)"
                       autofocus />
                     <el-button size="small" type="primary" text @click="saveRenaming($event)">
-                      <el-icon><Check /></el-icon>
+                      <Check :size="14" />
                     </el-button>
                     <el-button size="small" text @click="cancelRenaming($event)">
-                      <el-icon><Close /></el-icon>
+                      <X :size="14" />
                     </el-button>
                   </div>
                   <el-button
@@ -932,7 +957,7 @@ onMounted(() => {
                     type="danger"
                     class="delete-btn"
                     @click="deleteResult(result.id, $event)">
-                    <el-icon><Delete /></el-icon>
+                    <Trash2 :size="14" />
                   </el-button>
                 </div>
                 <div class="history-item-content">
@@ -970,17 +995,7 @@ onMounted(() => {
               </div>
               <div class="header-actions">
                 <el-button class="action-btn" plain @click="showVersionDrawer = true">
-                  <el-icon><Connection /></el-icon> 版本谱系
-                </el-button>
-                <el-button class="action-btn" plain @click="loadData" :loading="outlierStore.loading">
-                  <el-icon><Refresh /></el-icon> 刷新
-                </el-button>
-                <el-button
-                  class="action-btn primary-gradient-btn"
-                  type="primary"
-                  :loading="executing"
-                  @click="executeDetection">
-                  <el-icon><VideoPlay /></el-icon> 开始检测
+                  <Link :size="16" /> 版本谱系
                 </el-button>
               </div>
             </div>
@@ -1055,7 +1070,7 @@ onMounted(() => {
                             size="small" />
                         </div>
                       </div>
-                      <div class="params-hint">勾选下方列表中要检测的列，然后点击右上角「开始检测」</div>
+                      <div class="params-hint">勾选下方列表中要检测的列，然后点击底部「开始检测」</div>
                     </div>
                   </transition>
                 </div>
@@ -1064,35 +1079,36 @@ onMounted(() => {
                 <transition name="fade">
                   <div v-if="isThresholdMethod" class="template-toolbar">
                     <div class="template-toolbar-left">
-                      <el-icon class="template-toolbar-icon"><Setting /></el-icon>
+                      <Settings :size="14" class="template-toolbar-icon" />
                       <span class="template-toolbar-label">阈值模板</span>
                     </div>
                     <div class="template-toolbar-right">
                       <el-dropdown @command="handleTemplateCommand" :disabled="outlierStore.saving">
                         <el-button class="template-action-btn" size="small">
-                          <el-icon><Setting /></el-icon> 应用模板
-                          <el-icon class="el-icon--right"><ArrowLeft style="transform: rotate(-90deg)" /></el-icon>
+                          <Settings :size="14" /> 应用模板
+                          <ChevronLeft :size="14" style="transform: rotate(-90deg)" />
                         </el-button>
                         <template #dropdown>
                           <el-dropdown-menu>
-                            <el-dropdown-item disabled style="font-size: 12px; color: #909399; font-weight: 500"
+                            <el-dropdown-item
+                              disabled
+                              style="font-size: var(--text-sm); color: #909399; font-weight: 500"
                               >内置模板</el-dropdown-item
                             >
                             <el-dropdown-item v-for="opt in templateOptions" :key="opt.value" :command="opt.value">
                               <div class="template-dropdown-item">
                                 <span>{{ opt.label }}</span>
-                                <el-icon
+                                <Eye
+                                  :size="14"
                                   class="template-preview-icon"
-                                  @click="handlePreviewBuiltinTemplate(opt.value, $event)"
-                                  ><View
-                                /></el-icon>
+                                  @click="handlePreviewBuiltinTemplate(opt.value, $event)" />
                               </div>
                             </el-dropdown-item>
                             <template v-if="outlierStore.userTemplates.length > 0">
                               <el-dropdown-item
                                 divided
                                 disabled
-                                style="font-size: 12px; color: #909399; font-weight: 500"
+                                style="font-size: var(--text-sm); color: #909399; font-weight: 500"
                                 >我的模板</el-dropdown-item
                               >
                               <el-dropdown-item
@@ -1109,7 +1125,9 @@ onMounted(() => {
                                   ">
                                   <span
                                     >{{ tpl.name }}
-                                    <span style="color: #909399; font-size: 11px">({{ tpl.columnCount }}列)</span></span
+                                    <span style="color: #909399; font-size: var(--text-xs)"
+                                      >({{ tpl.columnCount }}列)</span
+                                    ></span
                                   >
                                   <span
                                     style="
@@ -1119,25 +1137,23 @@ onMounted(() => {
                                       flex-shrink: 0;
                                       margin-left: 12px;
                                     ">
-                                    <el-icon
+                                    <Eye
+                                      :size="14"
                                       class="template-preview-icon"
-                                      @click="handlePreviewUserTemplate(tpl.id, $event)"
-                                      ><View
-                                    /></el-icon>
-                                    <el-icon
-                                      style="color: #f56c6c; cursor: pointer; font-size: 14px"
-                                      @click="handleDeleteUserTemplate(tpl.id, $event)"
-                                      ><Close
-                                    /></el-icon>
+                                      @click="handlePreviewUserTemplate(tpl.id, $event)" />
+                                    <X
+                                      :size="14"
+                                      style="color: #f56c6c; cursor: pointer"
+                                      @click="handleDeleteUserTemplate(tpl.id, $event)" />
                                   </span>
                                 </div>
                               </el-dropdown-item>
                             </template>
                             <el-dropdown-item divided command="__save__">
-                              <el-icon style="margin-right: 4px"><Plus /></el-icon> 保存当前为模板
+                              <Plus :size="14" style="margin-right: 4px" /> 保存当前为模板
                             </el-dropdown-item>
                             <el-dropdown-item command="__manage__">
-                              <el-icon style="margin-right: 4px"><Setting /></el-icon> 管理模板
+                              <Settings :size="14" style="margin-right: 4px" /> 管理模板
                             </el-dropdown-item>
                           </el-dropdown-menu>
                         </template>
@@ -1146,140 +1162,177 @@ onMounted(() => {
                   </div>
                 </transition>
 
-                <!-- ③ 筛选区域 -->
-                <div class="filter-section">
-                  <div class="filter-left">
-                    <el-input v-model="searchText" placeholder="搜索列名..." class="search-input" clearable>
-                      <template #prefix>
-                        <el-icon><Search /></el-icon>
-                      </template>
-                    </el-input>
-                    <el-checkbox
-                      :model-value="selectedColumns.length === filteredColumns.length && filteredColumns.length > 0"
-                      :indeterminate="selectedColumns.length > 0 && selectedColumns.length < filteredColumns.length"
-                      @change="toggleSelectAll">
-                      全选
-                    </el-checkbox>
-                  </div>
-                  <div class="filter-right">
-                    <span v-if="!isThresholdMethod && selectedColumns.length > 0" class="selected-cols-tag">
-                      已选 {{ selectedColumns.length }} 列
-                    </span>
-                    <transition name="fade">
-                      <el-button
-                        v-if="selectedColumns.length > 0 && isThresholdMethod"
-                        size="small"
-                        type="danger"
-                        plain
-                        round
-                        @click="batchClearThresholds">
-                        清除选中 ({{ selectedColumns.length }})
-                      </el-button>
-                    </transition>
-                  </div>
-                </div>
+                <!-- ③ 列配置（可折叠，默认折叠） -->
+                <el-collapse v-model="columnConfigCollapse" class="column-config-collapse">
+                  <el-collapse-item name="column-config" class="column-config-collapse-item">
+                    <template #title>
+                      <div class="collapse-title-row">
+                        <span class="collapse-title-text">列配置</span>
+                        <span class="collapse-title-badge">
+                          {{ filteredColumns.length }} 列，已选 {{ selectedColumns.length }} 列
+                        </span>
+                      </div>
+                    </template>
 
-                <!-- ④ 列表格 -->
-                <div class="table-wrapper">
-                  <table class="threshold-table">
-                    <thead>
-                      <tr>
-                        <th class="col-checkbox"></th>
-                        <th class="col-name">列名</th>
-                        <th v-if="isThresholdMethod" class="col-threshold">最小阈值</th>
-                        <th v-if="isThresholdMethod" class="col-threshold">最大阈值</th>
-                        <th v-if="isThresholdMethod" class="col-unit">单位</th>
-                        <th v-if="isThresholdMethod" class="col-actions">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr
-                        v-for="column in filteredColumns"
-                        :key="column.id"
-                        :class="{ 'row-editing': editingColumn === column.id }">
-                        <td class="col-checkbox">
-                          <el-checkbox v-model="selectedColumns" :value="column.id" size="small" />
-                        </td>
-                        <td class="col-name">
-                          <div class="column-name-cell">
-                            <span class="column-name">{{ column.column_name }}</span>
-                            <span v-if="column.variable_type" class="variable-type">{{ column.variable_type }}</span>
-                          </div>
-                        </td>
-                        <!-- 阈值列: 仅静态阈值方法时显示 -->
-                        <template v-if="isThresholdMethod">
-                          <!-- 编辑模式 -->
-                          <template v-if="editingColumn === column.id">
-                            <td class="col-threshold">
-                              <el-input-number
-                                v-model="editForm.min_threshold"
-                                size="small"
-                                :controls="false"
-                                placeholder="最小值"
-                                class="edit-input" />
+                    <!-- 筛选区域 -->
+                    <div class="filter-section">
+                      <div class="filter-left">
+                        <el-input v-model="searchText" placeholder="搜索列名..." class="search-input" clearable>
+                          <template #prefix>
+                            <Search :size="14" />
+                          </template>
+                        </el-input>
+                        <el-checkbox
+                          :model-value="selectedColumns.length === filteredColumns.length && filteredColumns.length > 0"
+                          :indeterminate="selectedColumns.length > 0 && selectedColumns.length < filteredColumns.length"
+                          @change="toggleSelectAll">
+                          全选
+                        </el-checkbox>
+                      </div>
+                      <div class="filter-right">
+                        <span v-if="!isThresholdMethod && selectedColumns.length > 0" class="selected-cols-tag">
+                          已选 {{ selectedColumns.length }} 列
+                        </span>
+                        <transition name="fade">
+                          <el-button
+                            v-if="selectedColumns.length > 0 && isThresholdMethod"
+                            size="small"
+                            type="danger"
+                            plain
+                            round
+                            @click="batchClearThresholds">
+                            清除选中 ({{ selectedColumns.length }})
+                          </el-button>
+                        </transition>
+                      </div>
+                    </div>
+
+                    <!-- ④ 列表格 -->
+                    <div class="table-wrapper">
+                      <table class="threshold-table">
+                        <thead>
+                          <tr>
+                            <th class="col-checkbox"></th>
+                            <th class="col-name">列名</th>
+                            <th v-if="isThresholdMethod" class="col-threshold">最小阈值</th>
+                            <th v-if="isThresholdMethod" class="col-threshold">最大阈值</th>
+                            <th v-if="isThresholdMethod" class="col-unit">单位</th>
+                            <th v-if="isThresholdMethod" class="col-actions">操作</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr
+                            v-for="column in filteredColumns"
+                            :key="column.id"
+                            :class="{ 'row-editing': editingColumn === column.id }">
+                            <td class="col-checkbox">
+                              <el-checkbox v-model="selectedColumns" :value="column.id" size="small" />
                             </td>
-                            <td class="col-threshold">
-                              <el-input-number
-                                v-model="editForm.max_threshold"
-                                size="small"
-                                :controls="false"
-                                placeholder="最大值"
-                                class="edit-input" />
-                            </td>
-                            <td class="col-unit">
-                              <el-input v-model="editForm.unit" size="small" placeholder="单位" class="edit-input" />
-                            </td>
-                            <td class="col-actions">
-                              <div class="action-buttons">
-                                <el-button
-                                  size="small"
-                                  type="success"
-                                  circle
-                                  :loading="outlierStore.saving"
-                                  @click="saveColumnThreshold">
-                                  <el-icon><Check /></el-icon>
-                                </el-button>
-                                <el-button size="small" circle @click="cancelEditing">
-                                  <el-icon><Close /></el-icon>
-                                </el-button>
+                            <td class="col-name">
+                              <div class="column-name-cell">
+                                <span class="column-name">{{ column.column_name }}</span>
+                                <span v-if="column.variable_type" class="variable-type">{{
+                                  column.variable_type
+                                }}</span>
                               </div>
                             </td>
-                          </template>
-                          <!-- 显示模式 -->
-                          <template v-else>
-                            <td class="col-threshold">
-                              <span :class="{ 'value-set': column.min_threshold !== null }">
-                                {{ formatNumber(column.min_threshold) }}
-                              </span>
-                            </td>
-                            <td class="col-threshold">
-                              <span :class="{ 'value-set': column.max_threshold !== null }">
-                                {{ formatNumber(column.max_threshold) }}
-                              </span>
-                            </td>
-                            <td class="col-unit">
-                              <span class="unit-text">{{ column.unit || "-" }}</span>
-                            </td>
-                            <td class="col-actions">
-                              <el-button
-                                size="small"
-                                type="primary"
-                                link
-                                class="edit-btn"
-                                @click="startEditing(column)">
-                                编辑
-                              </el-button>
-                            </td>
-                          </template>
-                        </template>
-                      </tr>
-                    </tbody>
-                  </table>
+                            <!-- 阈值列: 仅静态阈值方法时显示 -->
+                            <template v-if="isThresholdMethod">
+                              <!-- 编辑模式 -->
+                              <template v-if="editingColumn === column.id">
+                                <td class="col-threshold">
+                                  <el-input-number
+                                    v-model="editForm.min_threshold"
+                                    size="small"
+                                    :controls="false"
+                                    placeholder="最小值"
+                                    class="edit-input" />
+                                </td>
+                                <td class="col-threshold">
+                                  <el-input-number
+                                    v-model="editForm.max_threshold"
+                                    size="small"
+                                    :controls="false"
+                                    placeholder="最大值"
+                                    class="edit-input" />
+                                </td>
+                                <td class="col-unit">
+                                  <el-input
+                                    v-model="editForm.unit"
+                                    size="small"
+                                    placeholder="单位"
+                                    class="edit-input" />
+                                </td>
+                                <td class="col-actions">
+                                  <div class="action-buttons">
+                                    <el-button
+                                      size="small"
+                                      type="success"
+                                      circle
+                                      :loading="outlierStore.saving"
+                                      @click="saveColumnThreshold">
+                                      <Check :size="14" />
+                                    </el-button>
+                                    <el-button size="small" circle @click="cancelEditing">
+                                      <X :size="14" />
+                                    </el-button>
+                                  </div>
+                                </td>
+                              </template>
+                              <!-- 显示模式 -->
+                              <template v-else>
+                                <td class="col-threshold">
+                                  <span :class="{ 'value-set': column.min_threshold !== null }">
+                                    {{ formatNumber(column.min_threshold) }}
+                                  </span>
+                                </td>
+                                <td class="col-threshold">
+                                  <span :class="{ 'value-set': column.max_threshold !== null }">
+                                    {{ formatNumber(column.max_threshold) }}
+                                  </span>
+                                </td>
+                                <td class="col-unit">
+                                  <span class="unit-text">{{ column.unit || "-" }}</span>
+                                </td>
+                                <td class="col-actions">
+                                  <el-button
+                                    size="small"
+                                    type="primary"
+                                    link
+                                    class="edit-btn"
+                                    @click="startEditing(column)">
+                                    编辑
+                                  </el-button>
+                                </td>
+                              </template>
+                            </template>
+                          </tr>
+                        </tbody>
+                      </table>
 
-                  <div v-if="filteredColumns.length === 0" class="empty-table">
-                    <div class="empty-icon">🔍</div>
-                    <div class="empty-text">未找到匹配的列</div>
-                  </div>
+                      <div v-if="filteredColumns.length === 0" class="empty-table">
+                        <div class="empty-icon">🔍</div>
+                        <div class="empty-text">未找到匹配的列</div>
+                      </div>
+                    </div>
+                  </el-collapse-item>
+                </el-collapse>
+
+                <!-- 底部操作按钮 -->
+                <div class="bottom-action-buttons">
+                  <button class="refresh-btn" :disabled="outlierStore.loading" @click="loadData">
+                    <RefreshCw :size="16" :class="{ 'spin-animation': outlierStore.loading }" />
+                    <span>刷新</span>
+                  </button>
+                  <button
+                    class="execute-btn"
+                    :class="{ 'execute-btn--loading': executing }"
+                    :disabled="executing"
+                    @click="executeDetection">
+                    <Play v-if="!executing" :size="16" />
+                    <div v-else class="btn-loading-spinner"></div>
+                    <span>{{ executing ? "检测中..." : "开始检测" }}</span>
+                  </button>
                 </div>
               </el-scrollbar>
             </div>
@@ -1292,7 +1345,7 @@ onMounted(() => {
             <div class="view-header">
               <div class="header-title">
                 <el-button link @click="switchToConfig" class="back-btn">
-                  <el-icon><ArrowLeft /></el-icon>
+                  <ChevronLeft :size="16" />
                 </el-button>
                 <h2>检测结果详情</h2>
                 <el-tag v-if="currentResult" :type="getStatusType(currentResult.status)" effect="plain" round>
@@ -1307,7 +1360,7 @@ onMounted(() => {
                   class="primary-gradient-btn"
                   :loading="applying"
                   @click="applyFiltering">
-                  <el-icon><MagicStick /></el-icon> 过滤异常值
+                  <Wand2 :size="16" /> 过滤异常值
                 </el-button>
 
                 <!-- 撤销按钮 (仅在APPLIED状态显示) -->
@@ -1317,7 +1370,7 @@ onMounted(() => {
                   plain
                   :loading="applying"
                   @click="revertFiltering">
-                  <el-icon><RefreshLeft /></el-icon> 撤销过滤
+                  <RotateCcw :size="16" /> 撤销过滤
                 </el-button>
 
                 <!-- 导出按钮 (仅在APPLIED状态且有生成版本ID时显示) -->
@@ -1326,11 +1379,11 @@ onMounted(() => {
                   type="success"
                   plain
                   @click="exportCleanedData">
-                  <el-icon><Download /></el-icon> 导出数据
+                  <Download :size="16" /> 导出数据
                 </el-button>
 
                 <el-button type="danger" plain text @click="deleteResult(currentResultId!)">
-                  <el-icon><Delete /></el-icon> 删除结果
+                  <Trash2 :size="16" /> 删除结果
                 </el-button>
               </div>
             </div>
@@ -1416,7 +1469,7 @@ onMounted(() => {
             </div>
 
             <div v-else class="loading-result">
-              <el-icon class="loading-spinner"><Loading /></el-icon>
+              <Loader2 :size="18" class="loading-spinner" />
               加载结果中...
             </div>
           </div>
@@ -1496,33 +1549,33 @@ onMounted(() => {
 <style scoped>
 /* 核心布局与背景 */
 .outlier-panel {
-  /* === 17 个标准 eco 色彩令牌 === */
-  --eco-forest:        #0d2b1a;
-  --eco-forest-mid:    #1b4332;
-  --eco-pine:          #2d6a4f;
-  --eco-moss:          #40916c;
-  --eco-fern:          #52b788;
-  --eco-spring:        #74c69d;
-  --eco-leaf:          #95d5b2;
-  --eco-mint:          #b7e4c7;
-  --eco-mist:          #d8f3dc;
-  --eco-ice:           #ebfbf0;
-  --eco-surface:       #f2fdf5;
-  --eco-white:         #f8fffe;
-  --eco-border:        #74c69d;
-  --eco-border-light:  #b7e4c7;
-  --eco-text-dark:     #0d2b1a;
-  --eco-text-mid:      #2d6a4f;
-  --eco-text-muted:    #52b788;
+  /* === eco 色彩令牌 → 设计系统变量映射 === */
+  --eco-forest: var(--c-text-primary);
+  --eco-forest-mid: var(--c-text-primary);
+  --eco-pine: var(--c-text-base);
+  --eco-moss: var(--c-brand);
+  --eco-fern: var(--c-brand-active);
+  --eco-spring: var(--c-brand);
+  --eco-leaf: var(--c-brand-border);
+  --eco-mint: var(--c-border);
+  --eco-mist: var(--c-brand-soft);
+  --eco-ice: var(--c-bg-muted);
+  --eco-surface: var(--c-bg-muted);
+  --eco-white: var(--c-bg-surface);
+  --eco-border: var(--c-brand-border);
+  --eco-border-light: var(--c-border);
+  --eco-text-dark: var(--c-text-primary);
+  --eco-text-mid: var(--c-text-base);
+  --eco-text-muted: var(--c-text-secondary);
 
   display: flex;
   height: 100%;
   width: 100%;
   background: var(--eco-surface);
   background-image:
-    radial-gradient(ellipse at 15% 45%, rgba(64, 145, 108, 0.10) 0%, transparent 50%),
+    radial-gradient(ellipse at 15% 45%, rgba(64, 145, 108, 0.1) 0%, transparent 50%),
     radial-gradient(ellipse at 88% 12%, rgba(116, 198, 157, 0.12) 0%, transparent 45%),
-    radial-gradient(ellipse at 55% 88%, rgba(27, 67, 50, 0.07)  0%, transparent 40%);
+    radial-gradient(ellipse at 55% 88%, rgba(27, 67, 50, 0.07) 0%, transparent 40%);
   overflow: hidden;
   padding: 8px;
   gap: 8px;
@@ -1534,15 +1587,17 @@ onMounted(() => {
 .glass-panel {
   background: var(--eco-white);
   border: 1px solid var(--eco-border-light);
-  border-radius: 12px;
+  border-radius: var(--radius-panel);
   overflow: hidden;
-  box-shadow: 0 2px 16px rgba(13, 43, 26, 0.08), 0 1px 4px rgba(64, 145, 108, 0.06);
+  box-shadow:
+    0 2px 16px rgba(13, 43, 26, 0.08),
+    0 1px 4px rgba(64, 145, 108, 0.06);
 }
 
 .glass-effect {
   background: var(--eco-white);
   border: 1px solid var(--eco-border-light);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   box-shadow: 0 1px 6px rgba(13, 43, 26, 0.06);
 }
 
@@ -1567,12 +1622,12 @@ onMounted(() => {
   gap: 6px;
   width: 100%;
   height: 36px;
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
-  color: #fff;
+  color: var(--c-text-inverse);
   background: linear-gradient(135deg, var(--eco-moss) 0%, var(--eco-forest-mid) 100%);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   box-shadow: 0 2px 10px rgba(45, 106, 79, 0.35);
   transition: all 0.25s ease;
@@ -1593,7 +1648,7 @@ onMounted(() => {
 
 .sidebar-subtitle {
   padding: 16px 20px 8px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 700;
   color: var(--eco-text-muted);
   text-transform: uppercase;
@@ -1606,7 +1661,7 @@ onMounted(() => {
 
 .history-item {
   padding: 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   cursor: pointer;
   margin-bottom: 8px;
   border: 1px solid transparent;
@@ -1636,7 +1691,7 @@ onMounted(() => {
 .drag-handle {
   cursor: grab;
   color: var(--eco-spring);
-  font-size: 14px;
+  font-size: var(--text-md);
   flex-shrink: 0;
 }
 
@@ -1657,7 +1712,7 @@ onMounted(() => {
 }
 
 .history-name {
-  font-size: 13px;
+  font-size: var(--text-base);
   color: var(--eco-text-dark);
   font-weight: 600;
   overflow: hidden;
@@ -1695,12 +1750,12 @@ onMounted(() => {
 }
 
 .history-name-edit .el-input :deep(.el-input__inner) {
-  font-size: 12px;
+  font-size: var(--text-sm);
   height: 26px;
 }
 
 .history-time {
-  font-size: 13px;
+  font-size: var(--text-base);
   color: var(--eco-text-dark);
   font-weight: 600;
 }
@@ -1724,7 +1779,7 @@ onMounted(() => {
 }
 
 .history-count {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--eco-text-muted);
   font-weight: 500;
 }
@@ -1733,7 +1788,7 @@ onMounted(() => {
   text-align: center;
   padding: 40px 16px;
   color: var(--eco-text-muted);
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 /* 主内容区域 */
@@ -1771,7 +1826,7 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
-  background: linear-gradient(90deg, rgba(116,198,157,0.06) 0%, rgba(248,255,254,0.95) 100%);
+  background: linear-gradient(90deg, rgba(116, 198, 157, 0.06) 0%, rgba(248, 255, 254, 0.95) 100%);
 }
 
 .header-title {
@@ -1800,16 +1855,16 @@ onMounted(() => {
 .back-btn:hover {
   color: var(--eco-moss);
   background: var(--eco-mist);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .back-btn :deep(.el-icon) {
-  font-size: 20px;
+  font-size: var(--text-3xl);
 }
 
 .header-title h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--text-3xl);
   font-weight: 700;
   color: var(--eco-forest-mid);
   display: flex;
@@ -1818,7 +1873,7 @@ onMounted(() => {
 }
 
 .header-desc {
-  font-size: 13px;
+  font-size: var(--text-base);
   color: var(--eco-text-mid);
   margin-top: 6px;
   display: block;
@@ -1830,7 +1885,7 @@ onMounted(() => {
 }
 
 .action-btn {
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   height: 36px;
   font-weight: 600;
 }
@@ -1875,17 +1930,17 @@ onMounted(() => {
 
 .template-toolbar-icon {
   color: var(--eco-moss);
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 .template-toolbar-label {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--eco-pine);
 }
 
 .template-action-btn {
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border: 1px solid rgba(64, 145, 108, 0.4);
   color: var(--eco-pine);
   background: rgba(64, 145, 108, 0.06);
@@ -1906,11 +1961,140 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   background: var(--eco-white);
+  border-bottom: 1px solid var(--eco-border-light);
+}
+
+/* 底部操作按钮 */
+.bottom-action-buttons {
+  display: flex;
+  gap: 10px;
+  padding: 16px 24px;
+  margin-top: auto;
+  flex-shrink: 0;
+}
+
+.refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 20px;
+  height: 36px;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--eco-pine);
+  background: var(--eco-white);
+  border: 1px solid var(--eco-border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  border-color: var(--eco-moss);
+  background: var(--eco-mist);
+  color: var(--eco-forest-mid);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.spin-animation {
+  animation: spin 1s linear infinite;
+}
+
+.execute-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 20px;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--c-text-inverse);
+  background: linear-gradient(135deg, var(--eco-moss), var(--eco-forest-mid));
+  border: none;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  height: 36px;
+  min-width: 110px;
+  box-shadow: 0 2px 10px rgba(45, 106, 79, 0.35);
+}
+
+.execute-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--eco-pine), var(--eco-forest));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(45, 106, 79, 0.45);
+}
+
+.execute-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: var(--radius-full);
+  animation: spin 1s linear infinite;
+}
+
+/* 列配置折叠面板 */
+.column-config-collapse {
+  border: none;
+}
+
+.column-config-collapse :deep(.el-collapse-item__header) {
+  padding: 10px 24px;
+  background: linear-gradient(90deg, rgba(64, 145, 108, 0.06) 0%, rgba(64, 145, 108, 0.02) 100%);
   border-top: 1px solid var(--eco-border-light);
   border-bottom: 1px solid var(--eco-border-light);
-  position: sticky;
-  top: 0;
-  z-index: 5;
+  font-size: var(--text-base);
+  height: auto;
+  line-height: 1.5;
+}
+
+.column-config-collapse :deep(.el-collapse-item__header.is-active) {
+  border-bottom: 1px solid var(--eco-border-light);
+}
+
+.column-config-collapse :deep(.el-collapse-item__wrap) {
+  border-bottom: none;
+}
+
+.column-config-collapse :deep(.el-collapse-item__content) {
+  padding: 0;
+}
+
+.collapse-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.collapse-title-text {
+  font-weight: 600;
+  color: var(--eco-pine);
+  font-size: var(--text-base);
+}
+
+.collapse-title-badge {
+  font-size: var(--text-sm);
+  color: var(--eco-text-muted);
+  padding: 2px 8px;
+  background: rgba(64, 145, 108, 0.08);
+  border-radius: var(--radius-control);
+  font-weight: 500;
 }
 
 .filter-left {
@@ -1924,7 +2108,7 @@ onMounted(() => {
 }
 
 :deep(.el-input__wrapper) {
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
@@ -1963,7 +2147,7 @@ onMounted(() => {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 13px;
+  font-size: var(--text-base);
   margin-top: 8px;
 }
 
@@ -2044,20 +2228,20 @@ onMounted(() => {
   color: var(--eco-text-dark);
 }
 .variable-type {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--eco-pine);
   background: var(--eco-ice);
   border: 1px solid var(--eco-border-light);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   align-self: flex-start;
 }
 
 .status-badge {
   display: inline-flex;
   padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 11px;
+  border-radius: var(--radius-3xl);
+  font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -2072,7 +2256,7 @@ onMounted(() => {
 
 .missing-count {
   color: var(--eco-text-mid);
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 .missing-count.has-missing {
   color: #e07a5f;
@@ -2080,9 +2264,9 @@ onMounted(() => {
 }
 
 .value-set {
-  color: #111827;
+  color: var(--c-text-primary);
   font-weight: 600;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .unit-text {
@@ -2107,17 +2291,17 @@ onMounted(() => {
 .empty-table {
   padding: 64px;
   text-align: center;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   margin-top: 16px;
 }
 .empty-icon {
-  font-size: 64px;
+  font-size: var(--text-display-2xl);
   margin-bottom: 16px;
   opacity: 0.5;
 }
 .empty-text {
   color: var(--eco-text-mid);
-  font-size: 16px;
+  font-size: var(--text-xl);
 }
 
 /* 方法区域容器 - 内部样式 */
@@ -2128,7 +2312,7 @@ onMounted(() => {
 }
 
 .section-title {
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 700;
   color: var(--eco-forest-mid);
   display: flex;
@@ -2140,7 +2324,7 @@ onMounted(() => {
   width: 4px;
   height: 16px;
   background: var(--eco-moss);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   margin-right: 8px;
 }
 
@@ -2153,7 +2337,7 @@ onMounted(() => {
 .method-card {
   background: var(--eco-white);
   border: 1px solid var(--eco-border-light);
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   padding: 12px;
   transition: all 0.2s ease;
   position: relative;
@@ -2188,13 +2372,13 @@ onMounted(() => {
 .method-name {
   font-weight: 600;
   color: var(--eco-forest-mid);
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .method-category {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   font-weight: 600;
   text-transform: uppercase;
 }
@@ -2203,7 +2387,7 @@ onMounted(() => {
   color: var(--eco-pine);
 }
 .method-category.statistical {
-  background: rgba(27, 67, 50, 0.10);
+  background: rgba(27, 67, 50, 0.1);
   color: var(--eco-forest-mid);
 }
 .method-category.ml {
@@ -2212,7 +2396,7 @@ onMounted(() => {
 }
 
 .method-description {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--eco-text-mid);
   line-height: 1.4;
   white-space: nowrap;
@@ -2229,9 +2413,9 @@ onMounted(() => {
 }
 
 .method-badge {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: inline-block;
   background: var(--eco-ice);
   color: var(--eco-text-mid);
@@ -2241,18 +2425,18 @@ onMounted(() => {
 .method-check-icon {
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: var(--eco-moss);
-  color: #ffffff;
+  color: var(--c-text-inverse);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   margin-left: auto;
 }
 
 .selected-method-hint {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--eco-text-mid);
 }
 
@@ -2273,11 +2457,11 @@ onMounted(() => {
   padding: 16px;
   background: var(--eco-ice);
   border: 1px solid var(--eco-border-light);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
 }
 
 .params-title {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--eco-forest-mid);
   margin-bottom: 12px;
@@ -2297,7 +2481,7 @@ onMounted(() => {
 }
 
 .param-label {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--eco-text-mid);
   font-weight: 500;
   display: flex;
@@ -2311,10 +2495,9 @@ onMounted(() => {
   justify-content: center;
   width: 14px;
   height: 14px;
-  border-radius: 50%;
   background: var(--eco-mist);
   color: var(--eco-pine);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   cursor: help;
 }
 
@@ -2324,23 +2507,23 @@ onMounted(() => {
 
 .params-hint {
   margin-top: 12px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--eco-pine);
   font-weight: 500;
   padding: 8px 12px;
   background: rgba(64, 145, 108, 0.06);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border-left: 3px solid var(--eco-moss);
 }
 
 .selected-cols-tag {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--eco-pine);
   font-weight: 600;
   padding: 4px 10px;
-  background: rgba(64, 145, 108, 0.10);
+  background: rgba(64, 145, 108, 0.1);
   border: 1px solid rgba(64, 145, 108, 0.25);
-  border-radius: 12px;
+  border-radius: var(--radius-control);
 }
 
 .fade-enter-active,
@@ -2383,9 +2566,14 @@ onMounted(() => {
 .summary-card.highlight {
   background: linear-gradient(135deg, var(--eco-moss) 0%, var(--eco-forest-mid) 100%);
   border: none;
-  color: #fff;
-  border-radius: 10px;
-  box-shadow: 0 4px 14px rgba(45, 106, 79, 0.40);
+  color: var(--c-text-inverse);
+  border-radius: var(--radius-control);
+  box-shadow: 0 4px 14px rgba(45, 106, 79, 0.4);
+}
+
+.summary-card.highlight .card-label,
+.summary-card.highlight .card-value {
+  color: var(--c-text-inverse);
 }
 
 .summary-card.highlight .card-label,
@@ -2394,14 +2582,14 @@ onMounted(() => {
 }
 
 .card-label {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--eco-text-mid);
   margin-bottom: 4px;
   font-weight: 500;
 }
 
 .card-value {
-  font-size: 22px;
+  font-size: var(--text-3xl);
   font-weight: 700;
   color: var(--eco-forest);
   letter-spacing: -0.02em;
@@ -2413,7 +2601,7 @@ onMounted(() => {
 }
 
 .breakdown-title {
-  font-size: 16px;
+  font-size: var(--text-xl);
   font-weight: 600;
   color: var(--eco-forest-mid);
   margin-bottom: 16px;
@@ -2427,7 +2615,7 @@ onMounted(() => {
   height: 18px;
   background: var(--eco-moss);
   margin-right: 8px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 
 .breakdown-tags {
@@ -2441,9 +2629,9 @@ onMounted(() => {
   align-items: center;
   background: var(--eco-white);
   border: 1px solid var(--eco-border-light);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--text-sm);
   box-shadow: 0 1px 2px rgba(13, 43, 26, 0.06);
 }
 
@@ -2463,7 +2651,7 @@ onMounted(() => {
 
 .tag-count.has-outliers {
   background: #fef2f2;
-  color: #ef4444;
+  color: var(--c-danger);
   background: rgba(239, 68, 68, 0.1);
 }
 
@@ -2501,14 +2689,14 @@ onMounted(() => {
 }
 
 .loading-spinner {
-  font-size: 32px;
+  font-size: var(--text-display-sm);
   color: var(--eco-moss);
   animation: spin 1s linear infinite;
 }
 
 .loading-text {
-  color: #4b5563;
-  font-size: 15px;
+  color: var(--c-text-base);
+  font-size: var(--text-lg);
   font-weight: 500;
 }
 
@@ -2525,18 +2713,18 @@ onMounted(() => {
   text-align: center;
   background: var(--eco-white);
   padding: 48px;
-  border-radius: 12px;
+  border-radius: var(--radius-panel);
   border: 1px solid var(--eco-border-light);
   box-shadow: 0 2px 16px rgba(13, 43, 26, 0.08);
 }
 
 .no-data-icon {
-  font-size: 64px;
+  font-size: var(--text-display-2xl);
   margin-bottom: 24px;
 }
 
 .no-data-text {
-  font-size: 20px;
+  font-size: var(--text-3xl);
   font-weight: 700;
   color: var(--eco-forest-mid);
   margin-bottom: 8px;
@@ -2544,7 +2732,7 @@ onMounted(() => {
 
 .no-data-subtitle {
   color: var(--eco-text-mid);
-  font-size: 15px;
+  font-size: var(--text-lg);
 }
 
 @keyframes spin {
@@ -2566,7 +2754,7 @@ onMounted(() => {
 }
 ::-webkit-scrollbar-thumb {
   background: rgba(64, 145, 108, 0.25);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(64, 145, 108, 0.45);
@@ -2589,13 +2777,13 @@ onMounted(() => {
 }
 
 .stats-title {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--eco-forest-mid);
 }
 
 .stats-subtitle {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--eco-text-muted);
 }
 
@@ -2609,7 +2797,7 @@ onMounted(() => {
   flex: 0 0 110px;
   background: var(--eco-white);
   border: 1px solid var(--eco-border-light);
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   padding: 8px 10px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -2628,7 +2816,7 @@ onMounted(() => {
 }
 
 .stat-item.has-outliers .count {
-  color: #ef4444;
+  color: var(--c-danger);
 }
 
 .stat-item-header {
@@ -2638,9 +2826,9 @@ onMounted(() => {
 }
 
 .col-name {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #4b5563;
+  color: var(--c-text-base);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2673,18 +2861,18 @@ onMounted(() => {
 }
 
 .count {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 700;
   color: var(--eco-forest-mid);
   line-height: 1;
 }
 
 .count.missing {
-  color: #f59e0b;
+  color: var(--c-warning);
 }
 
 .label {
-  font-size: 9px;
+  font-size: var(--text-3xs);
   color: var(--eco-text-muted);
   transform: scale(0.9);
 }
@@ -2692,7 +2880,7 @@ onMounted(() => {
 .stat-bar-bg {
   height: 3px;
   background: var(--eco-ice);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   overflow: hidden;
   width: 100%;
 }
@@ -2700,12 +2888,12 @@ onMounted(() => {
 .stat-bar-fill {
   height: 100%;
   background: linear-gradient(90deg, var(--eco-fern), var(--eco-moss));
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   transition: width 0.5s ease;
 }
 
 .stat-item.has-outliers .stat-bar-fill {
-  background: linear-gradient(90deg, #f87171, #ef4444);
+  background: linear-gradient(90deg, #f87171, var(--c-danger));
 }
 
 /* 模板下拉项 */
@@ -2720,7 +2908,7 @@ onMounted(() => {
 .template-preview-icon {
   color: var(--eco-spring);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-md);
   transition: color 0.2s ease;
 }
 
@@ -2741,37 +2929,45 @@ onMounted(() => {
   color: var(--eco-moss);
 }
 .eco-leaf--1 {
-  width: 200px; height: 200px;
-  top: -50px; right: 310px;
+  width: 200px;
+  height: 200px;
+  top: -50px;
+  right: 310px;
   transform: rotate(-18deg);
   opacity: 0.07;
 }
 .eco-leaf--2 {
-  width: 130px; height: 130px;
-  bottom: 30px; left: 10px;
+  width: 130px;
+  height: 130px;
+  bottom: 30px;
+  left: 10px;
   transform: rotate(35deg);
   opacity: 0.05;
 }
 .eco-leaf--3 {
-  width: 90px; height: 90px;
-  top: 140px; left: 310px;
+  width: 90px;
+  height: 90px;
+  top: 140px;
+  left: 310px;
   transform: rotate(-8deg);
   opacity: 0.04;
 }
 .eco-network-graph {
   position: absolute;
-  width: 520px; height: 260px;
-  top: -10px; right: -20px;
+  width: 520px;
+  height: 260px;
+  top: -10px;
+  right: -20px;
   color: var(--eco-moss);
   opacity: 0.45;
 }
 
 /* El-Plus 覆盖：表头 */
 :deep(.el-table th.el-table__cell) {
-  background-color: #c9edda !important;
+  background-color: var(--c-bg-muted) !important;
   color: var(--eco-forest-mid);
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 /* El-Plus 覆盖：Tag */
@@ -2787,14 +2983,22 @@ onMounted(() => {
 }
 
 /* El-Plus 覆盖：Link Button */
-:deep(.el-button.is-link.el-button--primary)        { color: var(--eco-forest-mid); }
-:deep(.el-button.is-link.el-button--primary:hover)  { color: var(--eco-forest); }
-:deep(.el-button.is-link.el-button--danger)         { color: #b44b38; }
-:deep(.el-button.is-link.el-button--danger:hover)   { color: #902f20; }
+:deep(.el-button.is-link.el-button--primary) {
+  color: var(--eco-forest-mid);
+}
+:deep(.el-button.is-link.el-button--primary:hover) {
+  color: var(--eco-forest);
+}
+:deep(.el-button.is-link.el-button--danger) {
+  color: #b44b38;
+}
+:deep(.el-button.is-link.el-button--danger:hover) {
+  color: #902f20;
+}
 
 /* El-Plus 覆盖：Input */
 :deep(.el-input__wrapper) {
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   box-shadow: 0 0 0 1px var(--eco-border-light);
 }
 :deep(.el-input__wrapper:hover) {
@@ -2822,28 +3026,28 @@ onMounted(() => {
 }
 
 .template-preview-dialog .template-preview-summary {
-  font-size: 13px;
-  color: #2d6a4f;
+  font-size: var(--text-sm);
+  color: var(--c-text-base);
   margin-bottom: 12px;
 }
 
 .template-preview-dialog .template-preview-summary strong {
-  color: #40916c;
+  color: var(--c-brand);
 }
 
 .template-preview-dialog .template-preview-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .template-preview-dialog .template-preview-table thead th {
   text-align: left;
   padding: 8px 12px;
   font-weight: 600;
-  color: #1b4332;
-  font-size: 12px;
-  border-bottom: 2px solid #74c69d;
+  color: var(--c-text-primary);
+  font-size: var(--text-sm);
+  border-bottom: 2px solid var(--c-brand-border);
   background: #c9edda;
   position: sticky;
   top: 0;
@@ -2855,40 +3059,40 @@ onMounted(() => {
 }
 
 .template-preview-dialog .template-preview-table tbody tr:hover {
-  background: #d8f3dc;
+  background: var(--c-brand-soft);
 }
 
 .template-preview-dialog .template-preview-table td {
   padding: 7px 12px;
-  border-bottom: 1px solid #b7e4c7;
+  border-bottom: 1px solid var(--c-border);
 }
 
 .template-preview-dialog .preview-col-name {
   font-weight: 600;
-  color: #0d2b1a;
-  font-family: "Courier New", monospace;
+  color: var(--c-text-primary);
+  font-family: var(--font-mono);
 }
 
 .template-preview-dialog .preview-value {
-  color: #1b4332;
-  font-family: "Courier New", monospace;
+  color: var(--c-text-primary);
+  font-family: var(--font-mono);
 }
 
 .template-preview-dialog .preview-unit {
-  color: #52b788;
-  font-size: 12px;
+  color: var(--c-text-secondary);
+  font-size: var(--text-sm);
 }
 
 /* 模板预览对话框头部绿色渐变 */
 .template-preview-dialog .el-dialog__header {
-  background: linear-gradient(135deg, #e8f8ee 0%, #d5eddc 100%);
-  border-bottom: 1px solid #9fd6b4;
+  background: linear-gradient(135deg, var(--c-brand-soft) 0%, var(--c-brand-border) 100%);
+  border-bottom: 1px solid var(--c-brand-border);
   padding: 16px 20px;
-  border-radius: 8px 8px 0 0;
+  border-radius: var(--radius-overlay) var(--radius-overlay) 0 0;
 }
 .template-preview-dialog .el-dialog__title {
-  color: #1b4332;
+  color: var(--c-text-primary);
   font-weight: 600;
-  font-size: 15px;
+  font-size: var(--text-lg);
 }
 </style>

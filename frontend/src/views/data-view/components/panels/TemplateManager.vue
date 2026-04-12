@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Search, View, Edit, Download, Delete, Close, Check } from "@element-plus/icons-vue";
+import { Search, Eye, Pencil, Download, Trash2, X, Check } from "lucide-vue-next";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import type { UserTemplateListItem, ThresholdTemplateEntry } from "@shared/types/database";
 
@@ -102,7 +102,11 @@ const saveEdit = async () => {
   const template = outlierStore.userTemplates.find(t => t.id === editingTemplateId.value);
   if (!template) return;
 
-  const updates: { name?: string; description?: string; templateData?: Record<string, { min: number; max: number; unit?: string }> } = {};
+  const updates: {
+    name?: string;
+    description?: string;
+    templateData?: Record<string, { min: number; max: number; unit?: string }>;
+  } = {};
 
   if (editForm.value.name.trim() !== template.name) {
     updates.name = editForm.value.name.trim();
@@ -132,11 +136,12 @@ const handleApply = async (templateId: number, templateName: string) => {
   }
 
   try {
-    await ElMessageBox.confirm(
-      `确定要应用"${templateName}"模板吗？这将覆盖匹配列的现有阈值配置。`,
-      "应用模板",
-      { confirmButtonText: "确定", cancelButtonText: "取消", type: "warning", customClass: "qc-message-box" }
-    );
+    await ElMessageBox.confirm(`确定要应用"${templateName}"模板吗？这将覆盖匹配列的现有阈值配置。`, "应用模板", {
+      confirmButtonText: "确定",
+      cancelButtonText: "取消",
+      type: "warning",
+      customClass: "qc-message-box",
+    });
     await outlierStore.applyUserTemplate(props.datasetId, templateId);
     emit("template-applied");
   } catch {
@@ -151,11 +156,12 @@ const handleApplyBuiltin = async (templateKey: string, templateLabel: string) =>
   }
 
   try {
-    await ElMessageBox.confirm(
-      `确定要应用"${templateLabel}"模板吗？这将覆盖匹配列的现有阈值配置。`,
-      "应用模板",
-      { confirmButtonText: "确定", cancelButtonText: "取消", type: "warning", customClass: "qc-message-box" }
-    );
+    await ElMessageBox.confirm(`确定要应用"${templateLabel}"模板吗？这将覆盖匹配列的现有阈值配置。`, "应用模板", {
+      confirmButtonText: "确定",
+      cancelButtonText: "取消",
+      type: "warning",
+      customClass: "qc-message-box",
+    });
     await outlierStore.applyThresholdTemplate(props.datasetId, templateKey);
     emit("template-applied");
   } catch {
@@ -221,7 +227,7 @@ watch(
       <div class="search-bar">
         <el-input v-model="searchText" placeholder="搜索模板..." clearable>
           <template #prefix>
-            <el-icon><Search /></el-icon>
+            <Search :size="14" />
           </template>
         </el-input>
       </div>
@@ -253,9 +259,7 @@ watch(
                     :disabled="!datasetId">
                     应用
                   </el-button>
-                  <el-icon class="expand-icon" :class="{ rotated: builtinExpanded === bt.key }">
-                    <View />
-                  </el-icon>
+                  <Eye :size="14" class="expand-icon" :class="{ rotated: builtinExpanded === bt.key }" />
                 </div>
               </div>
               <transition name="expand">
@@ -325,10 +329,15 @@ watch(
                     </div>
                   </div>
                   <div class="edit-actions">
-                    <el-button size="small" type="primary" :icon="Check" @click="saveEdit" :loading="outlierStore.saving">
+                    <el-button
+                      size="small"
+                      type="primary"
+                      :icon="Check"
+                      @click="saveEdit"
+                      :loading="outlierStore.saving">
                       保存
                     </el-button>
-                    <el-button size="small" :icon="Close" @click="cancelEdit">取消</el-button>
+                    <el-button size="small" :icon="X" @click="cancelEdit">取消</el-button>
                   </div>
                 </div>
               </template>
@@ -353,12 +362,16 @@ watch(
                       :disabled="!datasetId">
                       应用
                     </el-button>
-                    <el-button size="small" text :icon="Edit" title="编辑" @click="startEdit(tpl)"></el-button>
+                    <el-button size="small" text :icon="Pencil" title="编辑" @click="startEdit(tpl)"></el-button>
                     <el-button size="small" text :icon="Download" title="导出" @click="handleExport(tpl)"></el-button>
-                    <el-button size="small" type="danger" text :icon="Delete" title="删除" @click="handleDelete(tpl)"></el-button>
-                    <el-icon class="expand-icon" :class="{ rotated: expandedTemplateId === tpl.id }">
-                      <View />
-                    </el-icon>
+                    <el-button
+                      size="small"
+                      type="danger"
+                      text
+                      :icon="Trash2"
+                      title="删除"
+                      @click="handleDelete(tpl)"></el-button>
+                    <Eye :size="14" class="expand-icon" :class="{ rotated: expandedTemplateId === tpl.id }" />
                   </div>
                 </div>
                 <div v-if="tpl.description && expandedTemplateId === tpl.id" class="card-description">
@@ -427,7 +440,7 @@ watch(
   display: flex;
   flex-direction: column;
   height: 100%;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .search-bar {
@@ -435,7 +448,7 @@ watch(
 }
 
 .search-bar :deep(.el-input__wrapper) {
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
 }
 
 .template-scroll {
@@ -444,13 +457,13 @@ watch(
 }
 
 .section {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 
 .section-title {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 700;
-  color: #6b7280;
+  color: var(--c-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 10px;
@@ -461,29 +474,29 @@ watch(
 .template-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .template-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   overflow: hidden;
   transition: all 0.2s ease;
 }
 
 .template-card:hover {
-  border-color: #cbd5e1;
+  border-color: var(--c-border-strong);
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .template-card.expanded {
-  border-color: #86efac;
+  border-color: var(--c-brand-border);
 }
 
 .template-card.editing {
-  border-color: #10b981;
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
+  border-color: var(--c-brand);
+  box-shadow: 0 0 0 2px var(--c-brand-soft);
 }
 
 .card-header {
@@ -492,7 +505,7 @@ watch(
   align-items: center;
   padding: 14px 16px;
   cursor: pointer;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .card-info {
@@ -501,31 +514,31 @@ watch(
 }
 
 .card-name {
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
-  color: #1e293b;
+  color: var(--c-text-base);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1);
 }
 
 .builtin-badge {
   display: inline-block;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 700;
-  color: #059669;
-  background: rgba(16, 185, 129, 0.1);
+  color: var(--c-brand-hover);
+  background: var(--c-brand-soft);
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
 
 .card-meta {
-  font-size: 12px;
-  color: #9ca3af;
+  font-size: var(--text-sm);
+  color: var(--c-text-disabled);
   margin-top: 4px;
   display: flex;
   align-items: center;
@@ -533,7 +546,7 @@ watch(
 }
 
 .meta-sep {
-  color: #d1d5db;
+  color: var(--c-border);
 }
 
 .card-actions {
@@ -548,21 +561,21 @@ watch(
 }
 
 .expand-icon {
-  font-size: 14px;
-  color: #9ca3af;
+  font-size: var(--text-base);
+  color: var(--c-text-disabled);
   transition: transform 0.2s ease;
   margin-left: 4px;
 }
 
 .expand-icon.rotated {
   transform: rotate(90deg);
-  color: #10b981;
+  color: var(--c-brand);
 }
 
 /* 编辑态 */
 .edit-header {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 14px 16px 12px;
   align-items: flex-start;
 }
@@ -571,22 +584,22 @@ watch(
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
 .edit-field-row {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .edit-field-label {
   flex-shrink: 0;
   width: 30px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #6b7280;
+  color: var(--c-text-muted);
   padding-top: 6px;
 }
 
@@ -595,7 +608,7 @@ watch(
 }
 
 .edit-name-input :deep(.el-input__wrapper) {
-  border-radius: 6px;
+  border-radius: var(--radius-control);
 }
 
 .edit-desc-input {
@@ -603,15 +616,15 @@ watch(
 }
 
 .edit-desc-input :deep(.el-textarea__inner) {
-  border-radius: 6px;
-  font-size: 13px;
+  border-radius: var(--radius-control);
+  font-size: var(--text-sm);
 }
 
 .edit-actions {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1);
   padding-top: 2px;
 }
 
@@ -621,62 +634,62 @@ watch(
 }
 
 .detail-section-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  color: #9ca3af;
+  color: var(--c-text-disabled);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 
 .card-description {
   padding: 0 16px 8px;
-  font-size: 13px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
   line-height: 1.5;
 }
 
 /* ====== 详情表格 ====== */
 .card-detail {
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid var(--c-border-subtle);
   padding: 12px 16px 16px;
-  background: #fafbfc;
+  background: var(--c-bg-subtle);
 }
 
 .detail-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .detail-table thead th {
   text-align: left;
   font-weight: 600;
-  color: #6b7280;
-  font-size: 12px;
+  color: var(--c-text-muted);
+  font-size: var(--text-sm);
   padding: 6px 8px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--c-border);
 }
 
 .detail-table tbody td {
   padding: 6px 8px;
-  border-bottom: 1px solid #f1f5f9;
-  color: #374151;
+  border-bottom: 1px solid var(--c-border-subtle);
+  color: var(--c-text-base);
 }
 
 .col-name-cell {
   font-weight: 500;
-  color: #1e293b;
-  font-family: "Courier New", monospace;
+  color: var(--c-text-base);
+  font-family: var(--font-mono);
 }
 
 .value-cell {
-  font-family: "Courier New", monospace;
-  color: #059669;
+  font-family: var(--font-mono);
+  color: var(--c-brand-hover);
 }
 
 .unit-cell {
-  color: #9ca3af;
+  color: var(--c-text-disabled);
 }
 
 .threshold-input {
@@ -684,13 +697,13 @@ watch(
 }
 
 .threshold-input :deep(.el-input__wrapper) {
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 0 6px;
 }
 
 .threshold-input :deep(.el-input__inner) {
-  font-family: "Courier New", monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
   text-align: right;
 }
 
@@ -701,19 +714,19 @@ watch(
 }
 
 .empty-icon {
-  font-size: 36px;
-  margin-bottom: 8px;
+  font-size: var(--text-display-md);
+  margin-bottom: var(--space-2);
 }
 
 .empty-text {
-  font-size: 14px;
-  color: #6b7280;
+  font-size: var(--text-base);
+  color: var(--c-text-muted);
   margin-bottom: 4px;
 }
 
 .empty-hint {
-  font-size: 12px;
-  color: #9ca3af;
+  font-size: var(--text-sm);
+  color: var(--c-text-disabled);
 }
 
 /* ====== 展开动画 ====== */

@@ -3,24 +3,24 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick, toRaw, shallowR
 import { ElMessage, ElNotification, ElMessageBox } from "element-plus";
 import {
   Plus,
-  Delete,
-  Refresh,
-  Setting,
-  TrendCharts,
+  Trash2,
+  RefreshCw,
+  Settings,
+  LineChart,
   Check,
   List,
   Star,
-  VideoPlay,
-  Close,
-  InfoFilled,
+  Play,
+  X,
+  Info,
   Search,
-  ArrowRight,
-  Connection,
-  Edit,
-  Rank,
-  DataLine,
+  ChevronRight,
+  Link,
+  Pencil,
+  GripVertical,
+  TrendingUp,
   Grid,
-} from "@element-plus/icons-vue";
+} from "lucide-vue-next";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import type { OutlierResult } from "@shared/types/database";
 import type {
@@ -30,10 +30,16 @@ import type {
   ImputationCategory,
   ImputationResultStatus,
   ImputationMethod,
+  ImputationModel,
   ImputationResult,
   ImputationProgressEvent,
   ImputationColumnStat,
 } from "@shared/types/imputation";
+import type {
+  BEONResolvedSiteContext,
+  DatabaseConnectionProfile,
+  MySQLConnectionConfig,
+} from "@shared/types/mysqlInterface";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import { useGapFillingStore } from "@/stores/useGapFillingStore";
@@ -42,14 +48,10 @@ import { API_ROUTES } from "@shared/constants/apiRoutes";
 import * as echarts from "echarts";
 import MissingMarkersEditor from "../common/MissingMarkersEditor.vue";
 import CustomModelDialog from "./CustomModelDialog.vue";
+import TargetColumnSelector from "../gapfilling/TargetColumnSelector.vue";
+import type { ColumnInfo } from "../gapfilling/TargetColumnSelector.vue";
 
 // ==================== Props & Emits ====================
-interface ColumnInfo {
-  name: string;
-  missingCount: number;
-  missingRate: number;
-  type: string;
-}
 
 interface Props {
   datasetInfo?: DatasetInfo | null;
@@ -133,7 +135,7 @@ const onCustomModelRegistered = () => {
   // 刷新方法列表
   loadImputationMethods();
   // 切换到自定义分类
-  activeCategory.value = 'custom';
+  activeCategory.value = "custom";
 };
 
 const activeCategory = ref<ImputationCategory>("basic");
@@ -142,7 +144,7 @@ const selectedMethodId = ref<ImputationMethodId | null>(null);
 // 从数据库获取的插补方法
 const imputationMethods = ref<ImputationMethod[]>([]);
 // 硬编码的推荐方法ID
-const recommendedMethodIds = ref<ImputationMethodId[]>(["LINEAR", "RANDOM_FOREST"]);
+const recommendedMethodIds = ref<ImputationMethodId[]>(["LINEAR"]);
 
 // 方法参数缓存
 const methodParamsCache = ref<Record<string, ImputationMethodParam[]>>({});
@@ -200,10 +202,70 @@ const getParamOptions = (param: ImputationMethodParam): { label: string; value: 
   }
 };
 
+const isParamValueMissing = (param: ImputationMethodParam, value: any): boolean => {
+  if (value === null || value === undefined) return true;
+
+  switch (param.paramType) {
+    case "number":
+      return Number.isNaN(Number(value));
+    case "string":
+    case "select":
+      return String(value).trim().length === 0;
+    default:
+      return false;
+  }
+};
+
+const getNumberPrecision = (param: ImputationMethodParam): number | undefined => {
+  const candidates = [param.stepValue, param.defaultValue]
+    .map(v => (v === undefined || v === null ? "" : String(v)))
+    .filter(Boolean);
+
+  let precision = 0;
+  for (const candidate of candidates) {
+    const dotIndex = candidate.indexOf(".");
+    if (dotIndex >= 0) {
+      precision = Math.max(precision, candidate.length - dotIndex - 1);
+    }
+  }
+
+  return precision > 0 ? precision : undefined;
+};
+
 // ==================== 参数配置状态 ====================
 const columnSelectionMode = ref<"all" | "manual">("all");
 const selectedColumns = ref<string[]>([]);
 const paramValues = ref<Record<string, any>>({});
+
+// 模型相关状态（ML/DL 方法）
+const activeModels = ref<ImputationModel[]>([]);
+const selectedModelId = ref<number | null>(null);
+// 列名映射：key=模型期望列名, value=用户文件中选择的列名
+const columnMapping = ref<Record<string, string>>({});
+// 折叠面板状态：控制「列名映射」和「模型超参数」区域的展开/折叠
+const modelConfigCollapse = ref<string[]>([]);
+
+const beonConnectionProfiles = ref<DatabaseConnectionProfile[]>([]);
+const beonResolvedContext = ref<BEONResolvedSiteContext | null>(null);
+const beonContextLoading = ref(false);
+const beonContextError = ref("");
+const showBEONConnectionDialog = ref(false);
+const beonConnectionTestStatus = ref<"idle" | "testing" | "success" | "failed">("idle");
+const beonConnectionTestMessage = ref("");
+
+const createEmptyBEONConnectionForm = () => ({
+  id: null as number | null,
+  profileName: "",
+  host: "127.0.0.1",
+  port: 3306,
+  user: "",
+  password: "",
+  database: "",
+  isDefault: false,
+});
+
+const beonConnectionForm = ref(createEmptyBEONConnectionForm());
+let beonContextRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 // ==================== 执行状态 ====================
 const isExecuting = ref<boolean>(false);
@@ -257,6 +319,62 @@ const filteredMethods = computed<ImputationMethod[]>(() => {
 
 const selectedMethod = computed<ImputationMethod | null>(() => {
   return imputationMethods.value.find(m => m.methodId === selectedMethodId.value) || null;
+});
+
+const isBEONMethod = computed(() => selectedMethodId.value === "BEON_REDDYPROC");
+
+// 判断当前方法是否需要模型（ML/DL/自定义 类方法）
+const isModelBasedMethod = computed(() => {
+  const method = selectedMethod.value;
+  if (!method) return false;
+  return method.category === "ml" || method.category === "dl" || method.category === "custom";
+});
+
+// 当前选中的模型对象
+const selectedModel = computed<ImputationModel | null>(() => {
+  if (!selectedModelId.value) return null;
+  return activeModels.value.find(m => m.id === selectedModelId.value) || null;
+});
+
+// 模型要求的特征列（不含目标列，需要用户提供列映射的列）
+const modelRequiredFeatureColumns = computed<string[]>(() => {
+  const model = selectedModel.value;
+  if (!model?.featureColumns) return [];
+  return model.featureColumns;
+});
+
+// 选中模型的 modelParams 键列表（用于动态渲染模型超参数表单）
+const selectedModelParamKeys = computed<string[]>(() => {
+  const model = selectedModel.value;
+  if (!model?.modelParams) return [];
+  return Object.keys(model.modelParams);
+});
+
+// 将参数键名格式化为可读标签（下划线→空格，首字母大写）
+const formatParamKey = (key: string): string => {
+  return key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+};
+
+// 列名映射是否完整（所有必需的特征列都已映射）
+const isColumnMappingComplete = computed<boolean>(() => {
+  if (!isModelBasedMethod.value || !selectedModel.value) return true;
+  const required = modelRequiredFeatureColumns.value;
+  if (required.length === 0) return true;
+  return required.every(col => !!columnMapping.value[col]);
+});
+
+// 列名映射摘要（折叠标题用）
+const columnMappingSummary = computed(() => {
+  const required = modelRequiredFeatureColumns.value;
+  if (required.length === 0) return { mapped: 0, total: 0, complete: true };
+  const mapped = required.filter(col => !!columnMapping.value[col]).length;
+  return { mapped, total: required.length, complete: mapped === required.length };
+});
+
+// 超参数摘要（折叠标题用）
+const modelParamsSummary = computed(() => {
+  const keys = selectedModelParamKeys.value;
+  return { count: keys.length };
 });
 
 const availableColumns = computed<ColumnInfo[]>(() => {
@@ -337,6 +455,12 @@ watch(vizSelectedColumn, () => {
   }
 });
 
+// 切换模型时重新初始化列映射
+watch(selectedModelId, () => {
+  initColumnMapping();
+  applyModelParams();
+});
+
 const columnsWithMissing = computed(() => {
   return availableColumns.value.filter(col => col.missingCount > 0);
 });
@@ -346,6 +470,10 @@ const canExecute = computed(() => {
   if (!props.datasetInfo) return false;
   if (!currentVersion.value) return false; // 必须有选中的版本
   if (columnSelectionMode.value === "manual" && selectedColumns.value.length === 0) return false;
+  // 使用注册模型（有 modelParams）时跳过通用方法参数的必填校验
+  const usingModelParams = isModelBasedMethod.value && !!selectedModel.value && selectedModelParamKeys.value.length > 0;
+  if (!usingModelParams && missingRequiredParams.value.length > 0) return false;
+  if (isModelBasedMethod.value && !isColumnMappingComplete.value) return false;
   return true;
 });
 
@@ -360,14 +488,24 @@ const currentMethodParams = computed(() => {
   return methodParamsCache.value[selectedMethodId.value] || [];
 });
 
+const missingRequiredParams = computed(() => {
+  return currentMethodParams.value.filter(
+    param => param.isRequired && isParamValueMissing(param, paramValues.value[param.paramKey])
+  );
+});
+
 // 高级参数
+const isCustomRenderedParam = (param: ImputationMethodParam) => {
+  return isBEONMethod.value && param.paramKey === "connection_profile_id";
+};
+
 const advancedParams = computed(() => {
-  return currentMethodParams.value.filter(p => p.isAdvanced);
+  return currentMethodParams.value.filter(p => p.isAdvanced && !isCustomRenderedParam(p));
 });
 
 // 普通参数
 const basicParams = computed(() => {
-  return currentMethodParams.value.filter(p => !p.isAdvanced);
+  return currentMethodParams.value.filter(p => !p.isAdvanced && !isCustomRenderedParam(p));
 });
 
 // 是否有高级参数
@@ -408,13 +546,6 @@ const getMissingCount = (columnName: string): number => {
 const getColumnType = (columnName: string): string => {
   if (columnName.includes("TIMESTAMP") || columnName.includes("TIME")) return "datetime";
   return "numeric";
-};
-
-const getMissingRateClass = (rate: number): string => {
-  if (rate === 0) return "missing-rate--none";
-  if (rate <= 5) return "missing-rate--low";
-  if (rate <= 15) return "missing-rate--medium";
-  return "missing-rate--high";
 };
 
 const isRecommended = (methodId: ImputationMethodId): boolean => {
@@ -528,11 +659,13 @@ const getHistoryTitle = (result: ImputationResult) => {
   // 参数 (格式化，如果太多只显示一部分)
   let paramsStr = "";
   if (result.methodParams && Object.keys(result.methodParams).length > 0) {
-    const entries = Object.entries(result.methodParams)
-      .filter(([, v]) => v !== null && v !== undefined && v !== "");
+    const entries = Object.entries(result.methodParams).filter(([, v]) => v !== null && v !== undefined && v !== "");
     if (entries.length > 0) {
       const maxShow = 2;
-      const shown = entries.slice(0, maxShow).map(([, v]) => String(v)).join(", ");
+      const shown = entries
+        .slice(0, maxShow)
+        .map(([, v]) => String(v))
+        .join(", ");
       paramsStr = entries.length > maxShow ? `${shown}...` : shown;
     }
   }
@@ -662,6 +795,14 @@ const selectMethod = async (method: ImputationMethod) => {
   selectedMethodId.value = mId;
   // 初始化默认参数
   await initMethodParams(method);
+  // 如果是模型类方法，加载可用模型
+  if (method.category === "ml" || method.category === "dl" || method.category === "custom") {
+    await loadModelsForMethod();
+  } else {
+    activeModels.value = [];
+    selectedModelId.value = null;
+    columnMapping.value = {};
+  }
 };
 
 const initMethodParams = async (method: ImputationMethod) => {
@@ -695,6 +836,341 @@ const initMethodParams = async (method: ImputationMethod) => {
   }
 };
 
+const toOptionalConnectionProfileId = (value: unknown): number | undefined => {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "string" && value.trim().length === 0) return undefined;
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
+  return parsed;
+};
+
+// 根据模型 targetColumn 与当前数据集列名进行模糊匹配，选出最佳模型
+const findBestMatchingModel = (models: ImputationModel[]): ImputationModel | null => {
+  if (!models.length) return null;
+
+  const userCols = availableColumns.value.map(c => c.name);
+  const userColsLower = userCols.map(c => c.toLowerCase());
+
+  // 对每个模型计算匹配分数：0=不匹配，1=包含匹配，2=忽略大小写精确匹配，3=精确匹配
+  let bestModel: ImputationModel | null = null;
+  let bestScore = 0;
+
+  for (const model of models) {
+    if (!model.targetColumn) continue;
+
+    const targetLower = model.targetColumn.toLowerCase();
+
+    // 3 分：精确匹配（大小写完全一致）
+    if (userCols.includes(model.targetColumn)) {
+      if (3 > bestScore || (3 === bestScore && model.isActive)) {
+        bestModel = model;
+        bestScore = 3;
+      }
+      continue;
+    }
+
+    // 2 分：忽略大小写的精确匹配（如 nee → NEE）
+    if (userColsLower.includes(targetLower)) {
+      if (2 > bestScore || (2 === bestScore && model.isActive)) {
+        bestModel = model;
+        bestScore = 2;
+      }
+      continue;
+    }
+
+    // 1 分：包含匹配（数据集列名包含模型目标列名，如 NEE_VUT_REF 包含 nee）
+    const hasContainMatch = userColsLower.some(col => col.includes(targetLower));
+    if (hasContainMatch) {
+      if (1 > bestScore || (1 === bestScore && model.isActive)) {
+        bestModel = model;
+        bestScore = 1;
+      }
+    }
+  }
+
+  // 如果没找到匹配，回退到第一个激活的模型 → 第一个模型
+  if (!bestModel) {
+    bestModel = models.find(m => m.isActive) ?? models[0] ?? null;
+  }
+
+  return bestModel;
+};
+
+// 加载当前方法对应的可用模型
+const loadModelsForMethod = async () => {
+  if (!selectedMethodId.value) return;
+  try {
+    const datasetId = props.datasetInfo?.id ? Number(props.datasetInfo.id) : undefined;
+    const result = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.GET_MODELS_BY_DATASET, {
+      datasetId,
+      methodId: selectedMethodId.value,
+    });
+    if (result.success && result.data) {
+      activeModels.value = result.data as ImputationModel[];
+      // 智能选择模型：根据模型 targetColumn 与当前数据集列名的模糊匹配来自动选中
+      const bestModel = findBestMatchingModel(activeModels.value);
+      selectedModelId.value = bestModel?.id ?? activeModels.value[0]?.id ?? null;
+      // 初始化列映射
+      initColumnMapping();
+      // 用模型训练时保存的超参数覆盖参数表单默认值
+      applyModelParams();
+    } else {
+      activeModels.value = [];
+      selectedModelId.value = null;
+      columnMapping.value = {};
+    }
+  } catch (e) {
+    console.error("加载模型列表失败:", e);
+    activeModels.value = [];
+    selectedModelId.value = null;
+    columnMapping.value = {};
+  }
+};
+
+// 初始化/重置列映射（基于选中模型的 featureColumns）
+const initColumnMapping = () => {
+  const model = selectedModel.value ?? activeModels.value.find(m => m.id === selectedModelId.value);
+  if (!model?.featureColumns) {
+    columnMapping.value = {};
+    return;
+  }
+  const newMapping: Record<string, string> = {};
+  const userCols = availableColumns.value.map(c => c.name);
+  // 预计算小写列名用于模糊匹配
+  const userColsLower = userCols.map(c => c.toLowerCase());
+
+  for (const modelCol of model.featureColumns) {
+    // 1. 已保存的映射优先
+    if (model.columnMapping?.[modelCol]) {
+      newMapping[modelCol] = model.columnMapping[modelCol];
+      continue;
+    }
+
+    // 2. 精确同名匹配
+    if (userCols.includes(modelCol)) {
+      newMapping[modelCol] = modelCol;
+      continue;
+    }
+
+    // 3. 默认模糊匹配：统一转小写后匹配
+    const modelColLower = modelCol.toLowerCase();
+
+    // 3a. 大小写不敏感的精确匹配（如 rh → RH, vpd → VPD）
+    const exactIdx = userColsLower.indexOf(modelColLower);
+    if (exactIdx !== -1) {
+      newMapping[modelCol] = userCols[exactIdx];
+      continue;
+    }
+
+    // 3b. 包含匹配：用户列名包含模型列名（如 PPFD_IN 包含 ppfd）
+    //     取最短的匹配项（最具体的列名）
+    let bestMatch = "";
+    let bestLen = Infinity;
+    for (let i = 0; i < userCols.length; i++) {
+      if (userColsLower[i].includes(modelColLower) && userCols[i].length < bestLen) {
+        bestMatch = userCols[i];
+        bestLen = userCols[i].length;
+      }
+    }
+    newMapping[modelCol] = bestMatch; // "" 如果没匹配到
+  }
+  columnMapping.value = newMapping;
+
+  // 自动展开/折叠：映射不完整时展开列映射面板，完整时折叠
+  const hasIncomplete = Object.values(newMapping).some(v => !v);
+  if (hasIncomplete) {
+    if (!modelConfigCollapse.value.includes("column-mapping")) {
+      modelConfigCollapse.value = [...modelConfigCollapse.value, "column-mapping"];
+    }
+  } else {
+    modelConfigCollapse.value = modelConfigCollapse.value.filter(v => v !== "column-mapping");
+  }
+};
+
+// 将模型训练时保存的超参数覆盖到参数表单中（保留表单中模型未覆盖的参数）
+const applyModelParams = () => {
+  const model = selectedModel.value ?? activeModels.value.find(m => m.id === selectedModelId.value);
+  if (!model?.modelParams) return;
+  for (const [key, value] of Object.entries(model.modelParams)) {
+    if (value !== null && value !== undefined) {
+      paramValues.value[key] = value;
+    }
+  }
+};
+
+// 保存列映射到数据库
+const saveColumnMapping = async () => {
+  if (!selectedModelId.value) return;
+  try {
+    await window.electronAPI.invoke(API_ROUTES.IMPUTATION.UPDATE_MODEL, {
+      modelId: selectedModelId.value,
+      columnMapping: toRaw(columnMapping.value),
+    });
+  } catch (e) {
+    console.error("保存列映射失败:", e);
+  }
+};
+
+const resetBEONConnectionForm = (profile?: DatabaseConnectionProfile) => {
+  beonConnectionForm.value = profile
+    ? {
+        id: profile.id,
+        profileName: profile.profileName,
+        host: profile.host,
+        port: profile.port,
+        user: profile.user,
+        password: profile.password || "",
+        database: profile.database,
+        isDefault: profile.isDefault,
+      }
+    : createEmptyBEONConnectionForm();
+  beonConnectionTestStatus.value = "idle";
+  beonConnectionTestMessage.value = "";
+};
+
+const openBEONConnectionDialog = async () => {
+  showBEONConnectionDialog.value = true;
+  await loadBEONConnectionProfiles();
+
+  const currentProfileId = toOptionalConnectionProfileId(paramValues.value.connection_profile_id);
+  const currentProfile = currentProfileId
+    ? beonConnectionProfiles.value.find(profile => profile.id === currentProfileId)
+    : undefined;
+  resetBEONConnectionForm(currentProfile);
+};
+
+const buildBEONConnectionConfig = (): MySQLConnectionConfig => ({
+  host: beonConnectionForm.value.host.trim(),
+  port: Number(beonConnectionForm.value.port),
+  user: beonConnectionForm.value.user.trim(),
+  password: beonConnectionForm.value.password,
+  database: beonConnectionForm.value.database.trim(),
+});
+
+const testBEONConnection = async () => {
+  beonConnectionTestStatus.value = "testing";
+  beonConnectionTestMessage.value = "正在连接...";
+
+  try {
+    const result = await window.electronAPI.invoke(API_ROUTES.MYSQL.TEST_CONNECTION, {
+      connection: buildBEONConnectionConfig(),
+    });
+    if (!result.success) {
+      throw new Error(result.error || "连接失败");
+    }
+    beonConnectionTestStatus.value = "success";
+    beonConnectionTestMessage.value = `连接成功 (${result.data?.serverVersion || "MySQL"})`;
+  } catch (error: any) {
+    beonConnectionTestStatus.value = "failed";
+    beonConnectionTestMessage.value = error.message || "连接失败";
+  }
+};
+
+const saveBEONConnectionProfile = async () => {
+  try {
+    const result = await window.electronAPI.invoke(API_ROUTES.MYSQL.SAVE_CONNECTION_PROFILE, {
+      id: beonConnectionForm.value.id || undefined,
+      profileName: beonConnectionForm.value.profileName.trim(),
+      connection: buildBEONConnectionConfig(),
+      isDefault: beonConnectionForm.value.isDefault,
+    });
+    if (!result.success) {
+      throw new Error(result.error || "保存数据库连接失败");
+    }
+
+    const savedId = result.data?.id;
+    await loadBEONConnectionProfiles();
+    if (savedId) {
+      paramValues.value.connection_profile_id = savedId;
+      const savedProfile = beonConnectionProfiles.value.find(profile => profile.id === savedId);
+      resetBEONConnectionForm(savedProfile);
+    }
+    ElMessage.success("数据库连接已保存");
+    scheduleBEONContextRefresh();
+  } catch (error: any) {
+    ElMessage.error(error.message || "保存数据库连接失败");
+  }
+};
+
+const deleteBEONConnectionProfile = async (profile: DatabaseConnectionProfile) => {
+  try {
+    await ElMessageBox.confirm(`确定删除连接“${profile.profileName}”吗？`, "删除连接", {
+      type: "warning",
+      confirmButtonText: "删除",
+      cancelButtonText: "取消",
+    });
+
+    const result = await window.electronAPI.invoke(API_ROUTES.MYSQL.DELETE_CONNECTION_PROFILE, { id: profile.id });
+    if (!result.success) {
+      throw new Error(result.error || "删除数据库连接失败");
+    }
+
+    if (toOptionalConnectionProfileId(paramValues.value.connection_profile_id) === profile.id) {
+      paramValues.value.connection_profile_id = "";
+    }
+    await loadBEONConnectionProfiles();
+    resetBEONConnectionForm();
+    ElMessage.success("数据库连接已删除");
+    scheduleBEONContextRefresh();
+  } catch (error: any) {
+    if (error === "cancel") return;
+    ElMessage.error(error.message || "删除数据库连接失败");
+  }
+};
+
+const deleteCurrentBEONConnectionProfile = async () => {
+  const profile = beonConnectionProfiles.value.find(item => item.id === beonConnectionForm.value.id);
+  if (!profile) return;
+  await deleteBEONConnectionProfile(profile);
+};
+
+const refreshBEONResolvedContext = async () => {
+  if (!isBEONMethod.value) {
+    beonResolvedContext.value = null;
+    beonContextError.value = "";
+    return;
+  }
+
+  const siteCode = String(paramValues.value.site_code ?? "").trim();
+  if (!siteCode) {
+    beonResolvedContext.value = null;
+    beonContextError.value = "";
+    return;
+  }
+
+  beonContextLoading.value = true;
+  beonContextError.value = "";
+
+  try {
+    const result = await window.electronAPI.invoke(API_ROUTES.MYSQL.RESOLVE_BEON_SITE_CONTEXT, {
+      siteCode,
+      connectionProfileId: toOptionalConnectionProfileId(paramValues.value.connection_profile_id),
+    });
+    if (!result.success) {
+      throw new Error(result.error || "解析站点规则失败");
+    }
+    beonResolvedContext.value = result.data || null;
+  } catch (error: any) {
+    beonResolvedContext.value = null;
+    beonContextError.value = error.message || "解析站点规则失败";
+  } finally {
+    beonContextLoading.value = false;
+  }
+};
+
+const scheduleBEONContextRefresh = () => {
+  if (beonContextRefreshTimer) {
+    clearTimeout(beonContextRefreshTimer);
+    beonContextRefreshTimer = null;
+  }
+  if (!isBEONMethod.value) return;
+
+  beonContextRefreshTimer = setTimeout(() => {
+    refreshBEONResolvedContext();
+  }, 200);
+};
+
 // ==================== 执行插补 ====================
 const executeImputation = async () => {
   if (!canExecute.value || !selectedMethodId.value || !currentVersion.value) return;
@@ -713,6 +1189,11 @@ const executeImputation = async () => {
       columnSelectionMode.value === "all"
         ? availableColumns.value.map(c => c.name) // 明确传递所有列名
         : selectedColumns.value;
+
+    // 执行前保存列映射配置（持久化用户的映射选择）
+    if (isModelBasedMethod.value && selectedModelId.value) {
+      await saveColumnMapping();
+    }
 
     ElNotification({
       title: "开始插补",
@@ -733,6 +1214,7 @@ const executeImputation = async () => {
       methodId: selectedMethodId.value!,
       targetColumns: toRaw(targetCols),
       params: toRaw(paramValues.value),
+      columnMapping: isModelBasedMethod.value ? toRaw(columnMapping.value) : undefined,
     };
 
     console.log("[GapFillingPanel] Debug Execution Payload:", payload);
@@ -1038,7 +1520,7 @@ const updateComparisonChart = async () => {
 
     // 辅助：安全地将值转为数字或 null
     const toNumericValue = (val: any): number | null => {
-      if (val === null || val === undefined || val === '') return null;
+      if (val === null || val === undefined || val === "") return null;
       const num = Number(val);
       return isFinite(num) ? num : null;
     };
@@ -1056,10 +1538,7 @@ const updateComparisonChart = async () => {
     rawData.sort((a, b) => a[0] - b[0]);
 
     // 对含缺失值的数据做安全降采样（按非空段独立采样，保留段间 null 间隔）
-    const downsampleWithGaps = (
-      data: [number, number | null][],
-      maxPoints: number
-    ): [number, number | null][] => {
+    const downsampleWithGaps = (data: [number, number | null][], maxPoints: number): [number, number | null][] => {
       // 将数据分成连续非 null 段
       const segments: { start: number; end: number }[] = [];
       let segStart = -1;
@@ -1314,9 +1793,7 @@ const updateComparisonChart = async () => {
     // 缓存用于分布图和散点图的数据
     cachedOriginalValues.value = rawData.filter(d => d[1] !== null).map(d => d[1] as number);
     cachedImputedValues.value = colStat?.imputedValues ? [...colStat.imputedValues] : [];
-    cachedOriginalScatter.value = rawData
-      .filter(d => d[1] !== null)
-      .map(d => [d[0], d[1]] as [number, number]);
+    cachedOriginalScatter.value = rawData.filter(d => d[1] !== null).map(d => [d[0], d[1]] as [number, number]);
     cachedImputedScatter.value = imputedData as [number, number][];
 
     // 如果当前模式是分布图或散点图，同步更新
@@ -1609,6 +2086,27 @@ watch(
   { immediate: true } // 首次加载时也触发自动检测
 );
 
+watch(
+  () => selectedMethodId.value,
+  async methodId => {
+    if (methodId === "BEON_REDDYPROC") {
+      await loadBEONConnectionProfiles();
+      scheduleBEONContextRefresh();
+      return;
+    }
+
+    beonResolvedContext.value = null;
+    beonContextError.value = "";
+  }
+);
+
+watch(
+  () => [String(paramValues.value.site_code ?? ""), String(paramValues.value.connection_profile_id ?? "")],
+  () => {
+    scheduleBEONContextRefresh();
+  }
+);
+
 onMounted(async () => {
   window.addEventListener("resize", () => {
     timeSeriesInstance.value?.resize();
@@ -1620,6 +2118,10 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  if (beonContextRefreshTimer) {
+    clearTimeout(beonContextRefreshTimer);
+    beonContextRefreshTimer = null;
+  }
   disposeChart();
 });
 </script>
@@ -1673,7 +2175,7 @@ onUnmounted(() => {
         <!-- 新建按钮 -->
         <div class="sidebar-header">
           <button class="new-imputation-btn" @click="switchToConfig">
-            <el-icon><Plus /></el-icon>
+            <Plus :size="16" />
             <span>新建插补</span>
           </button>
         </div>
@@ -1702,7 +2204,7 @@ onUnmounted(() => {
               @dragend="onDragEnd"
               @click="viewResult(result)">
               <div class="history-item-header">
-                <el-icon class="drag-handle"><Rank /></el-icon>
+                <GripVertical :size="14" class="drag-handle" />
                 <div v-if="editingResultId === result.id" class="history-name-edit" @click.stop>
                   <input
                     v-model="editingName"
@@ -1710,16 +2212,20 @@ onUnmounted(() => {
                     @keyup.enter="saveRenaming"
                     @keyup.escape="cancelRenaming"
                     @blur="saveRenaming"
-                    autofocus
-                  />
+                    autofocus />
                 </div>
-                <span v-else class="history-method" :title="getHistoryTitle(result)">{{ getHistoryTitle(result) }}</span>
+                <span v-else class="history-method" :title="getHistoryTitle(result)">{{
+                  getHistoryTitle(result)
+                }}</span>
                 <div class="history-item-actions">
                   <button class="history-action-btn" @click.stop="startRenaming(result)" title="重命名">
-                    <el-icon><Edit /></el-icon>
+                    <Pencil :size="13" />
                   </button>
-                  <button class="history-action-btn history-delete-btn" @click.stop="deleteResult(result.id)" title="删除">
-                    <el-icon><Delete /></el-icon>
+                  <button
+                    class="history-action-btn history-delete-btn"
+                    @click.stop="deleteResult(result.id)"
+                    title="删除">
+                    <Trash2 :size="13" />
                   </button>
                 </div>
               </div>
@@ -1746,7 +2252,7 @@ onUnmounted(() => {
             <!-- 版本信息行 -->
             <div class="version-bar">
               <div class="version-bar-left">
-                <el-icon class="version-icon"><InfoFilled /></el-icon>
+                <Info :size="16" class="version-icon" />
                 <span class="version-bar-label">数据版本</span>
                 <el-select
                   :model-value="currentVersion.id"
@@ -1776,7 +2282,7 @@ onUnmounted(() => {
                 }}</span>
               </div>
               <el-button link type="primary" @click="showVersionDrawer = true" size="small">
-                <el-icon><Connection /></el-icon>
+                <Link :size="14" />
                 版本谱系
               </el-button>
             </div>
@@ -1790,7 +2296,7 @@ onUnmounted(() => {
                 @click="detectMissingValues"
                 size="small"
                 class="detect-btn">
-                <el-icon><Refresh /></el-icon>
+                <RefreshCw :size="14" />
                 重新检测
               </el-button>
             </div>
@@ -1799,7 +2305,7 @@ onUnmounted(() => {
             <div v-if="gapFillingStore.hasStats" class="stats-strip">
               <div class="stat-chip">
                 <div class="stat-chip-icon icon-blue">
-                  <el-icon><List /></el-icon>
+                  <List :size="16" />
                 </div>
                 <div class="stat-chip-info">
                   <span class="stat-chip-value">{{ gapFillingStore.missingStats?.totalRows.toLocaleString() }}</span>
@@ -1809,7 +2315,7 @@ onUnmounted(() => {
               <div class="stat-strip-divider"></div>
               <div class="stat-chip">
                 <div class="stat-chip-icon icon-purple">
-                  <el-icon><InfoFilled /></el-icon>
+                  <Info :size="16" />
                 </div>
                 <div class="stat-chip-info">
                   <span class="stat-chip-value">{{ gapFillingStore.missingStats?.totalColumns }}</span>
@@ -1819,7 +2325,7 @@ onUnmounted(() => {
               <div class="stat-strip-divider"></div>
               <div class="stat-chip stat-chip--alert">
                 <div class="stat-chip-icon icon-red">
-                  <el-icon><VideoPlay /></el-icon>
+                  <Play :size="16" />
                 </div>
                 <div class="stat-chip-info">
                   <span class="stat-chip-value">{{ gapFillingStore.totalMissingCount.toLocaleString() }}</span>
@@ -1832,7 +2338,7 @@ onUnmounted(() => {
           <!-- 等待检测 / 加载状态 -->
           <div v-if="!gapFillingStore.hasStats" class="detection-empty-state">
             <div class="empty-illustration">
-              <el-icon class="illustration-icon" :class="{ 'is-loading': gapFillingStore.loading }"><Search /></el-icon>
+              <Search :size="48" class="illustration-icon" :class="{ 'is-loading': gapFillingStore.loading }" />
               <div class="circles">
                 <span class="circle c1"></span>
                 <span class="circle c2"></span>
@@ -1861,7 +2367,7 @@ onUnmounted(() => {
               <div class="method-selection-section">
                 <div class="section-header">
                   <h3 class="section-title">
-                    <el-icon><Setting /></el-icon>
+                    <Settings :size="15" />
                     选择插补方法
                   </h3>
                 </div>
@@ -1894,7 +2400,7 @@ onUnmounted(() => {
                     @click="selectMethod(method)">
                     <!-- 推荐标签 -->
                     <div v-if="isRecommended(method.methodId)" class="recommended-badge">
-                      <el-icon><Star /></el-icon>
+                      <Star :size="11" />
                       <span>推荐</span>
                     </div>
 
@@ -1918,7 +2424,7 @@ onUnmounted(() => {
                         </span>
                       </span>
                       <div v-if="selectedMethodId === method.methodId" class="selected-indicator">
-                        <el-icon><Check /></el-icon>
+                        <Check :size="14" />
                       </div>
                     </div>
                   </div>
@@ -1929,7 +2435,7 @@ onUnmounted(() => {
                     class="method-card method-card--add"
                     @click="showCustomModelDialog = true">
                     <div class="add-model-content">
-                      <el-icon :size="28"><Plus /></el-icon>
+                      <Plus :size="28" />
                       <span class="add-model-text">新增模型</span>
                       <span class="add-model-hint">注册自训练模型或导入 YAML 配置</span>
                     </div>
@@ -1951,175 +2457,418 @@ onUnmounted(() => {
               <div class="params-config-section">
                 <div class="section-header">
                   <h3 class="section-title">
-                    <el-icon><Setting /></el-icon>
+                    <Settings :size="15" />
                     参数配置
                   </h3>
                 </div>
 
-                <!-- 列选择 -->
-                <div class="column-selection">
-                  <div class="selection-header">
-                    <h4 class="selection-title">目标列选择</h4>
-                    <div class="selection-mode">
-                      <label class="radio-item">
-                        <input type="radio" v-model="columnSelectionMode" value="all" />
-                        <span>全部列</span>
-                      </label>
-                      <label class="radio-item">
-                        <input type="radio" v-model="columnSelectionMode" value="manual" />
-                        <span>手动选择</span>
-                      </label>
-                    </div>
+                <!-- 模型信息卡（仅 ML/DL 方法显示） -->
+                <div v-if="isModelBasedMethod" class="model-info-section">
+                  <!-- 无可用模型提示 -->
+                  <div v-if="activeModels.length === 0" class="model-info-empty">
+                    <Info :size="14" />
+                    <span>该方法暂无可用模型，请先在自定义模型中注册模型。</span>
                   </div>
 
-                  <div v-if="columnSelectionMode === 'manual'" class="column-list">
-                    <div v-for="column in availableColumns" :key="column.name" class="column-item">
-                      <label class="checkbox-item">
-                        <input type="checkbox" :value="column.name" v-model="selectedColumns" />
-                        <div class="column-info">
-                          <span class="column-name">{{ column.name }}</span>
-                          <span class="column-missing">{{ column.missingCount }} 缺失</span>
-                          <span :class="['column-rate', getMissingRateClass(column.missingRate)]">
-                            {{ column.missingRate.toFixed(1) }}%
-                          </span>
-                        </div>
-                      </label>
+                  <template v-else>
+                    <!-- 模型选择器（多个模型时显示） -->
+                    <div v-if="activeModels.length > 1" class="model-selector">
+                      <label class="model-selector-label">选择模型</label>
+                      <el-select v-model="selectedModelId" size="small" class="model-selector-input">
+                        <el-option
+                          v-for="m in activeModels"
+                          :key="m.id"
+                          :label="m.modelName || `模型 #${m.id}`"
+                          :value="m.id" />
+                      </el-select>
                     </div>
-                    <div v-if="availableColumns.length === 0" class="no-columns">
-                      <span>没有可用的列</span>
+
+                    <!-- 模型详情卡 -->
+                    <div v-if="selectedModel" class="model-info-card">
+                      <div class="model-info-header">
+                        <span class="model-info-name">{{
+                          selectedModel.modelName || `模型 #${selectedModel.id}`
+                        }}</span>
+                        <span v-if="selectedModel.validationScore != null" class="model-info-score">
+                          验证分数: {{ (selectedModel.validationScore * 100).toFixed(1) }}%
+                        </span>
+                      </div>
+                      <div class="model-info-meta">
+                        <div class="model-meta-item">
+                          <span class="model-meta-label">目标列</span>
+                          <span class="model-meta-value model-meta-value--target">{{
+                            selectedModel.targetColumn || "—"
+                          }}</span>
+                        </div>
+                        <div v-if="selectedModel.timeColumn" class="model-meta-item">
+                          <span class="model-meta-label">时间列</span>
+                          <span class="model-meta-value">{{ selectedModel.timeColumn }}</span>
+                        </div>
+                        <div v-if="selectedModel.featureColumns?.length" class="model-meta-item model-meta-item--full">
+                          <span class="model-meta-label">需要特征列</span>
+                          <div class="model-feature-tags">
+                            <span v-for="col in selectedModel.featureColumns" :key="col" class="model-feature-tag">
+                              {{ col }}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 列名映射 + 模型超参数 折叠面板 -->
+                    <el-collapse
+                      v-if="
+                        selectedModel && (modelRequiredFeatureColumns.length > 0 || selectedModelParamKeys.length > 0)
+                      "
+                      v-model="modelConfigCollapse"
+                      class="model-config-collapse">
+                      <!-- 列名映射折叠项 -->
+                      <el-collapse-item
+                        v-if="modelRequiredFeatureColumns.length > 0"
+                        name="column-mapping"
+                        class="model-config-collapse-item">
+                        <template #title>
+                          <div class="collapse-title-row">
+                            <span class="collapse-title-text">列名映射配置</span>
+                            <span
+                              :class="[
+                                'collapse-title-badge',
+                                columnMappingSummary.complete
+                                  ? 'collapse-title-badge--ok'
+                                  : 'collapse-title-badge--warn',
+                              ]">
+                              {{ columnMappingSummary.mapped }}/{{ columnMappingSummary.total }} 已映射
+                            </span>
+                          </div>
+                        </template>
+                        <div class="column-mapping-section">
+                          <span class="column-mapping-hint">将您数据文件中的列映射到模型训练时使用的列名</span>
+                          <div class="column-mapping-table">
+                            <div class="column-mapping-row column-mapping-row--header">
+                              <span>模型期望列名</span>
+                              <span>对应您文件中的列</span>
+                              <span>状态</span>
+                            </div>
+                            <div
+                              v-for="modelCol in modelRequiredFeatureColumns"
+                              :key="modelCol"
+                              class="column-mapping-row">
+                              <span class="mapping-model-col">{{ modelCol }}</span>
+                              <el-select
+                                v-model="columnMapping[modelCol]"
+                                size="small"
+                                clearable
+                                placeholder="请选择列"
+                                class="mapping-user-col-select">
+                                <el-option
+                                  v-for="userCol in availableColumns"
+                                  :key="userCol.name"
+                                  :label="userCol.name"
+                                  :value="userCol.name" />
+                              </el-select>
+                              <span
+                                :class="[
+                                  'mapping-status',
+                                  columnMapping[modelCol] ? 'mapping-status--ok' : 'mapping-status--missing',
+                                ]">
+                                {{ columnMapping[modelCol] ? "已映射" : "未映射" }}
+                              </span>
+                            </div>
+                          </div>
+                          <div v-if="!isColumnMappingComplete" class="column-mapping-warning">
+                            <Info :size="13" />
+                            请完成所有列的映射后才能执行插补
+                          </div>
+                        </div>
+                      </el-collapse-item>
+
+                      <!-- 模型超参数折叠项 -->
+                      <el-collapse-item
+                        v-if="selectedModelParamKeys.length > 0"
+                        name="model-params"
+                        class="model-config-collapse-item">
+                        <template #title>
+                          <div class="collapse-title-row">
+                            <span class="collapse-title-text">模型超参数</span>
+                            <span class="collapse-title-badge collapse-title-badge--ok">
+                              {{ modelParamsSummary.count }} 项已配置
+                            </span>
+                          </div>
+                        </template>
+                        <div class="model-params-section">
+                          <span class="model-params-hint">预填自模型训练时保存的超参数，可在执行前调整</span>
+                          <div class="params-form">
+                            <div v-for="key in selectedModelParamKeys" :key="key" class="param-item">
+                              <label class="param-label">{{ formatParamKey(key) }}</label>
+                              <el-input-number
+                                v-if="typeof (selectedModel.modelParams ?? {})[key] === 'number'"
+                                v-model="paramValues[key]"
+                                size="small"
+                                class="param-input-number" />
+                              <el-switch
+                                v-else-if="typeof (selectedModel.modelParams ?? {})[key] === 'boolean'"
+                                v-model="paramValues[key]"
+                                size="small" />
+                              <el-input v-else v-model="paramValues[key]" size="small" class="param-input-text" />
+                            </div>
+                          </div>
+                        </div>
+                      </el-collapse-item>
+                    </el-collapse>
+                  </template>
+                </div>
+
+                <!-- 目标列选择（模型方法时：全宽） -->
+                <TargetColumnSelector
+                  v-if="isModelBasedMethod && selectedModel && selectedModelParamKeys.length > 0"
+                  v-model="selectedColumns"
+                  :columns="availableColumns"
+                  :mode="columnSelectionMode"
+                  @update:mode="columnSelectionMode = $event" />
+
+                <!-- 指标列 + 参数配置 并排布局（非模型方法时使用） -->
+                <div
+                  v-if="!(isModelBasedMethod && selectedModel && selectedModelParamKeys.length > 0)"
+                  class="columns-params-row">
+                  <!-- 列选择（左侧） -->
+                  <TargetColumnSelector
+                    v-model="selectedColumns"
+                    :columns="availableColumns"
+                    :mode="columnSelectionMode"
+                    @update:mode="columnSelectionMode = $event" />
+
+                  <!-- 方法参数（右侧） -->
+                  <div v-if="selectedMethod" class="method-params">
+                    <h4 class="params-title">{{ selectedMethod.methodName }} 参数</h4>
+
+                    <div class="params-form">
+                      <!-- 基础参数 -->
+                      <div v-for="param in basicParams" :key="param.paramKey" class="param-item">
+                        <label class="param-label">
+                          {{ param.paramName }}
+                          <el-tooltip v-if="param.tooltip" :content="param.tooltip" placement="top">
+                            <Info :size="13" class="param-tooltip-icon" />
+                          </el-tooltip>
+                        </label>
+
+                        <!-- 数字输入 -->
+                        <el-input-number
+                          v-if="param.paramType === 'number'"
+                          v-model="paramValues[param.paramKey]"
+                          :min="param.minValue"
+                          :max="param.maxValue"
+                          :step="param.stepValue || 1"
+                          :precision="getNumberPrecision(param)"
+                          size="small"
+                          class="param-input-number" />
+
+                        <!-- 选择框 -->
+                        <el-select
+                          v-else-if="param.paramType === 'select'"
+                          v-model="paramValues[param.paramKey]"
+                          size="small"
+                          class="param-select">
+                          <el-option
+                            v-for="option in getParamOptions(param)"
+                            :key="option.value"
+                            :label="option.label"
+                            :value="option.value" />
+                        </el-select>
+
+                        <!-- 开关 -->
+                        <el-switch
+                          v-else-if="param.paramType === 'boolean'"
+                          v-model="paramValues[param.paramKey]"
+                          size="small" />
+
+                        <!-- 范围滑块 -->
+                        <el-slider
+                          v-else-if="param.paramType === 'range'"
+                          v-model="paramValues[param.paramKey]"
+                          :min="param.minValue"
+                          :max="param.maxValue"
+                          :step="param.stepValue || 1"
+                          show-input
+                          size="small" />
+
+                        <!-- 文本输入 (用于列名等字符串参数) -->
+                        <el-input
+                          v-else-if="param.paramType === 'string'"
+                          v-model="paramValues[param.paramKey]"
+                          :placeholder="param.tooltip || '请输入'"
+                          size="small"
+                          class="param-input-text" />
+                      </div>
+
+                      <div v-if="missingRequiredParams.length > 0" class="params-warning">
+                        还需填写必填参数：{{ missingRequiredParams.map(param => param.paramName).join("、") }}
+                      </div>
+
+                      <!-- 无参数提示 -->
+                      <div v-if="currentMethodParams.length === 0" class="no-params">
+                        <p>此方法无需额外参数配置</p>
+                      </div>
+
+                      <!-- 高级参数折叠 -->
+                      <el-collapse v-if="hasAdvancedParams" class="advanced-params-collapse">
+                        <el-collapse-item title="高级参数" name="advanced">
+                          <div v-for="param in advancedParams" :key="param.paramKey" class="param-item">
+                            <label class="param-label">
+                              {{ param.paramName }}
+                              <el-tooltip v-if="param.tooltip" :content="param.tooltip" placement="top">
+                                <Info :size="13" class="param-tooltip-icon" />
+                              </el-tooltip>
+                            </label>
+
+                            <!-- 数字输入 -->
+                            <el-input-number
+                              v-if="param.paramType === 'number'"
+                              v-model="paramValues[param.paramKey]"
+                              :min="param.minValue"
+                              :max="param.maxValue"
+                              :step="param.stepValue || 1"
+                              :precision="getNumberPrecision(param)"
+                              size="small"
+                              class="param-input-number" />
+
+                            <!-- 选择框 -->
+                            <el-select
+                              v-else-if="param.paramType === 'select'"
+                              v-model="paramValues[param.paramKey]"
+                              size="small"
+                              class="param-select">
+                              <el-option
+                                v-for="option in getParamOptions(param)"
+                                :key="option.value"
+                                :label="option.label"
+                                :value="option.value" />
+                            </el-select>
+
+                            <!-- 开关 -->
+                            <el-switch
+                              v-else-if="param.paramType === 'boolean'"
+                              v-model="paramValues[param.paramKey]"
+                              size="small" />
+
+                            <!-- 范围滑块 -->
+                            <el-slider
+                              v-else-if="param.paramType === 'range'"
+                              v-model="paramValues[param.paramKey]"
+                              :min="param.minValue"
+                              :max="param.maxValue"
+                              :step="param.stepValue || 1"
+                              show-input
+                              size="small" />
+
+                            <!-- 文本输入 (用于列名等字符串参数) -->
+                            <el-input
+                              v-else-if="param.paramType === 'string'"
+                              v-model="paramValues[param.paramKey]"
+                              :placeholder="param.tooltip || '请输入'"
+                              size="small"
+                              class="param-input-text" />
+                          </div>
+                        </el-collapse-item>
+                      </el-collapse>
                     </div>
                   </div>
                 </div>
 
-                <!-- 方法参数 -->
-                <div v-if="selectedMethod" class="method-params">
-                  <h4 class="params-title">{{ selectedMethod.methodName }} 参数</h4>
+                <div v-if="isBEONMethod" class="beon-datasource-section">
+                  <div class="beon-datasource-header">
+                    <h4 class="params-title">
+                      <Link :size="15" />
+                      BEON 数据源
+                    </h4>
+                    <div class="beon-datasource-actions">
+                      <el-button size="small" text @click="loadBEONConnectionProfiles">
+                        <RefreshCw :size="14" />
+                        刷新
+                      </el-button>
+                      <el-button size="small" type="primary" plain @click="openBEONConnectionDialog">
+                        管理连接
+                      </el-button>
+                    </div>
+                  </div>
 
-                  <div class="params-form">
-                    <!-- 基础参数 -->
-                    <div v-for="param in basicParams" :key="param.paramKey" class="param-item">
-                      <label class="param-label">
-                        {{ param.paramName }}
-                        <el-tooltip v-if="param.tooltip" :content="param.tooltip" placement="top">
-                          <el-icon class="param-tooltip-icon"><InfoFilled /></el-icon>
-                        </el-tooltip>
-                      </label>
+                  <div class="param-item">
+                    <label class="param-label">数据库连接</label>
+                    <el-select
+                      v-model="paramValues.connection_profile_id"
+                      clearable
+                      placeholder="自动选择（规则绑定连接 / 默认连接）"
+                      size="small"
+                      class="param-select">
+                      <el-option label="自动选择（规则绑定连接 / 默认连接）" value="" />
+                      <el-option
+                        v-for="profile in beonConnectionProfiles"
+                        :key="profile.id"
+                        :label="profile.isDefault ? `${profile.profileName}（默认）` : profile.profileName"
+                        :value="profile.id" />
+                    </el-select>
+                  </div>
 
-                      <!-- 数字输入 -->
-                      <el-input-number
-                        v-if="param.paramType === 'number'"
-                        v-model="paramValues[param.paramKey]"
-                        :min="param.minValue"
-                        :max="param.maxValue"
-                        :step="param.stepValue || 1"
-                        :precision="0"
-                        size="small"
-                        class="param-input-number" />
+                  <div v-if="beonContextLoading" class="beon-context-card">
+                    <div class="beon-context-status">正在解析站点规则...</div>
+                  </div>
 
-                      <!-- 选择框 -->
-                      <el-select
-                        v-else-if="param.paramType === 'select'"
-                        v-model="paramValues[param.paramKey]"
-                        size="small"
-                        class="param-select">
-                        <el-option
-                          v-for="option in getParamOptions(param)"
-                          :key="option.value"
-                          :label="option.label"
-                          :value="option.value" />
-                      </el-select>
+                  <div v-else-if="beonContextError" class="beon-context-card beon-context-card--error">
+                    <div class="beon-context-status">{{ beonContextError }}</div>
+                  </div>
 
-                      <!-- 开关 -->
-                      <el-switch
-                        v-else-if="param.paramType === 'boolean'"
-                        v-model="paramValues[param.paramKey]"
-                        size="small" />
-
-                      <!-- 范围滑块 -->
-                      <el-slider
-                        v-else-if="param.paramType === 'range'"
-                        v-model="paramValues[param.paramKey]"
-                        :min="param.minValue"
-                        :max="param.maxValue"
-                        :step="param.stepValue || 1"
-                        show-input
-                        size="small" />
-
-                      <!-- 文本输入 (用于列名等字符串参数) -->
-                      <el-input
-                        v-else-if="param.paramType === 'string'"
-                        v-model="paramValues[param.paramKey]"
-                        :placeholder="param.tooltip || '请输入'"
-                        size="small"
-                        class="param-input-text" />
+                  <div v-else-if="String(paramValues.site_code || '').trim()" class="beon-context-card">
+                    <div class="beon-context-summary">
+                      <div class="beon-summary-item">
+                        <span class="beon-summary-label">命中连接</span>
+                        <span class="beon-summary-value">
+                          {{
+                            beonResolvedContext?.connectionProfile
+                              ? `${beonResolvedContext.connectionProfile.profileName} (${beonResolvedContext.connectionProfile.host}:${beonResolvedContext.connectionProfile.port})`
+                              : "未命中数据库连接"
+                          }}
+                        </span>
+                      </div>
+                      <div class="beon-summary-item">
+                        <span class="beon-summary-label">补站规则</span>
+                        <span class="beon-summary-value">{{ beonResolvedContext?.fallbackRules?.length || 0 }} 条</span>
+                      </div>
+                      <div class="beon-summary-item">
+                        <span class="beon-summary-label">本地覆盖规则</span>
+                        <span class="beon-summary-value"
+                          >{{ beonResolvedContext?.localOverrideRules?.length || 0 }} 条</span
+                        >
+                      </div>
                     </div>
 
-                    <!-- 无参数提示 -->
-                    <div v-if="currentMethodParams.length === 0" class="no-params">
-                      <p>此方法无需额外参数配置</p>
+                    <div v-if="(beonResolvedContext?.fallbackRules?.length || 0) > 0" class="beon-rule-group">
+                      <div class="beon-rule-group-title">补站规则</div>
+                      <div class="beon-rule-tags">
+                        <el-tag
+                          v-for="rule in beonResolvedContext?.fallbackRules || []"
+                          :key="rule.id"
+                          size="small"
+                          type="warning">
+                          {{ rule.ruleName }}<template v-if="rule.sourceTable"> · {{ rule.sourceTable }}</template>
+                        </el-tag>
+                      </div>
                     </div>
 
-                    <!-- 高级参数折叠 -->
-                    <el-collapse v-if="hasAdvancedParams" class="advanced-params-collapse">
-                      <el-collapse-item title="高级参数" name="advanced">
-                        <div v-for="param in advancedParams" :key="param.paramKey" class="param-item">
-                          <label class="param-label">
-                            {{ param.paramName }}
-                            <el-tooltip v-if="param.tooltip" :content="param.tooltip" placement="top">
-                              <el-icon class="param-tooltip-icon"><InfoFilled /></el-icon>
-                            </el-tooltip>
-                          </label>
+                    <div v-if="(beonResolvedContext?.localOverrideRules?.length || 0) > 0" class="beon-rule-group">
+                      <div class="beon-rule-group-title">本地覆盖规则</div>
+                      <div class="beon-rule-tags">
+                        <el-tag
+                          v-for="rule in beonResolvedContext?.localOverrideRules || []"
+                          :key="rule.id"
+                          size="small"
+                          type="success">
+                          {{ rule.ruleName }}
+                        </el-tag>
+                      </div>
+                    </div>
+                  </div>
 
-                          <!-- 数字输入 -->
-                          <el-input-number
-                            v-if="param.paramType === 'number'"
-                            v-model="paramValues[param.paramKey]"
-                            :min="param.minValue"
-                            :max="param.maxValue"
-                            :step="param.stepValue || 1"
-                            :precision="0"
-                            size="small"
-                            class="param-input-number" />
-
-                          <!-- 选择框 -->
-                          <el-select
-                            v-else-if="param.paramType === 'select'"
-                            v-model="paramValues[param.paramKey]"
-                            size="small"
-                            class="param-select">
-                            <el-option
-                              v-for="option in getParamOptions(param)"
-                              :key="option.value"
-                              :label="option.label"
-                              :value="option.value" />
-                          </el-select>
-
-                          <!-- 开关 -->
-                          <el-switch
-                            v-else-if="param.paramType === 'boolean'"
-                            v-model="paramValues[param.paramKey]"
-                            size="small" />
-
-                          <!-- 范围滑块 -->
-                          <el-slider
-                            v-else-if="param.paramType === 'range'"
-                            v-model="paramValues[param.paramKey]"
-                            :min="param.minValue"
-                            :max="param.maxValue"
-                            :step="param.stepValue || 1"
-                            show-input
-                            size="small" />
-
-                          <!-- 文本输入 (用于列名等字符串参数) -->
-                          <el-input
-                            v-else-if="param.paramType === 'string'"
-                            v-model="paramValues[param.paramKey]"
-                            :placeholder="param.tooltip || '请输入'"
-                            size="small"
-                            class="param-input-text" />
-                        </div>
-                      </el-collapse-item>
-                    </el-collapse>
+                  <div v-else class="beon-context-card">
+                    <div class="beon-context-status">填写站点代码后可预览命中的数据库补站规则和本地覆盖规则。</div>
                   </div>
                 </div>
 
@@ -2130,7 +2879,7 @@ onUnmounted(() => {
                     :class="{ 'execute-btn--loading': isExecuting }"
                     :disabled="!canExecute || isExecuting"
                     @click="executeImputation">
-                    <el-icon v-if="!isExecuting"><VideoPlay /></el-icon>
+                    <Play v-if="!isExecuting" :size="16" />
                     <div v-else class="loading-spinner"></div>
                     <span>{{ isExecuting ? "执行中..." : "开始插补" }}</span>
                   </button>
@@ -2146,7 +2895,7 @@ onUnmounted(() => {
                     执行进度
                   </h4>
                   <button v-if="isExecuting" class="cancel-btn" @click="cancelExecution">
-                    <el-icon><Close /></el-icon>
+                    <X :size="14" />
                     <span>取消</span>
                   </button>
                 </div>
@@ -2173,7 +2922,7 @@ onUnmounted(() => {
                     <div v-if="progressInfo?.stage === 'completed'" class="completion-actions">
                       <el-button type="success" @click="viewCurrentResult">
                         查看插补结果
-                        <el-icon class="el-icon--right"><ArrowRight /></el-icon>
+                        <ChevronRight :size="14" class="el-icon--right" />
                       </el-button>
                     </div>
                   </div>
@@ -2206,17 +2955,17 @@ onUnmounted(() => {
                   :class="{ 'compact-save-btn--done': isSavedAsVersion }"
                   :disabled="isSavedAsVersion"
                   @click="saveAsNewVersion">
-                  <el-icon v-if="!isSavedAsVersion"><Plus /></el-icon>
-                  <el-icon v-else><Check /></el-icon>
+                  <Plus v-if="!isSavedAsVersion" :size="14" />
+                  <Check v-else :size="14" />
                   <span>{{ isSavedAsVersion ? "已保存为版本" : "保存为新版本" }}</span>
                 </button>
                 <button class="compact-save-btn" @click="saveAsFile">
-                  <el-icon><List /></el-icon>
+                  <List :size="14" />
                   <span>保存为文件</span>
                 </button>
               </template>
               <button class="back-btn" @click="switchToConfig">
-                <el-icon><Refresh /></el-icon>
+                <RefreshCw :size="14" />
                 <span>返回配置</span>
               </button>
             </div>
@@ -2225,7 +2974,7 @@ onUnmounted(() => {
           <!-- 逐列统计报告 -->
           <div v-if="allColumnStats.length > 0" class="stats-report">
             <div class="stats-report-header">
-              <el-icon><DataLine /></el-icon>
+              <TrendingUp :size="15" />
               <span>逐列插补统计报告</span>
             </div>
             <div class="stats-report-table-wrapper">
@@ -2242,23 +2991,26 @@ onUnmounted(() => {
                 </thead>
                 <tbody>
                   <template v-for="stat in allColumnStats" :key="stat.columnName">
-                  <tr v-if="stat.missingCount > 0">
-                    <td class="stat-col-name">{{ stat.columnName }}</td>
-                    <td class="stat-num">{{ stat.meanBefore != null ? stat.meanBefore.toFixed(4) : "—" }}</td>
-                    <td class="stat-num">{{ stat.meanAfter != null ? stat.meanAfter.toFixed(4) : "—" }}</td>
-                    <td>
-                      <span
-                        v-if="stat.meanBefore != null && stat.meanAfter != null"
-                        class="stat-delta"
-                        :class="{ 'stat-delta--pos': stat.meanAfter > stat.meanBefore, 'stat-delta--neg': stat.meanAfter < stat.meanBefore }">
-                        {{ stat.meanAfter > stat.meanBefore ? "▲" : stat.meanAfter < stat.meanBefore ? "▼" : "—" }}
-                        {{ Math.abs(stat.meanAfter - stat.meanBefore).toFixed(4) }}
-                      </span>
-                      <span v-else>—</span>
-                    </td>
-                    <td class="stat-num">{{ stat.stdBefore != null ? stat.stdBefore.toFixed(4) : "—" }}</td>
-                    <td class="stat-num">{{ stat.stdAfter != null ? stat.stdAfter.toFixed(4) : "—" }}</td>
-                  </tr>
+                    <tr v-if="stat.missingCount > 0">
+                      <td class="stat-col-name">{{ stat.columnName }}</td>
+                      <td class="stat-num">{{ stat.meanBefore != null ? stat.meanBefore.toFixed(4) : "—" }}</td>
+                      <td class="stat-num">{{ stat.meanAfter != null ? stat.meanAfter.toFixed(4) : "—" }}</td>
+                      <td>
+                        <span
+                          v-if="stat.meanBefore != null && stat.meanAfter != null"
+                          class="stat-delta"
+                          :class="{
+                            'stat-delta--pos': stat.meanAfter > stat.meanBefore,
+                            'stat-delta--neg': stat.meanAfter < stat.meanBefore,
+                          }">
+                          {{ stat.meanAfter > stat.meanBefore ? "▲" : stat.meanAfter < stat.meanBefore ? "▼" : "—" }}
+                          {{ Math.abs(stat.meanAfter - stat.meanBefore).toFixed(4) }}
+                        </span>
+                        <span v-else>—</span>
+                      </td>
+                      <td class="stat-num">{{ stat.stdBefore != null ? stat.stdBefore.toFixed(4) : "—" }}</td>
+                      <td class="stat-num">{{ stat.stdAfter != null ? stat.stdAfter.toFixed(4) : "—" }}</td>
+                    </tr>
                   </template>
                 </tbody>
               </table>
@@ -2281,28 +3033,28 @@ onUnmounted(() => {
                 type="button"
                 :class="['viz-mode-btn', { 'viz-mode-btn--active': vizMode === 'timeseries' }]"
                 @click.stop="vizMode = 'timeseries'">
-                <el-icon><TrendCharts /></el-icon>
+                <LineChart :size="14" />
                 <span>时序图</span>
               </button>
               <button
                 type="button"
                 :class="['viz-mode-btn', { 'viz-mode-btn--active': vizMode === 'distribution' }]"
                 @click.stop="vizMode = 'distribution'">
-                <el-icon><DataLine /></el-icon>
+                <TrendingUp :size="14" />
                 <span>分布图</span>
               </button>
               <button
                 type="button"
                 :class="['viz-mode-btn', { 'viz-mode-btn--active': vizMode === 'scatter' }]"
                 @click.stop="vizMode = 'scatter'">
-                <el-icon><Grid /></el-icon>
+                <Grid :size="14" />
                 <span>散点图</span>
               </button>
               <button
                 type="button"
                 :class="['viz-mode-btn', { 'viz-mode-btn--active': vizMode === 'table' }]"
                 @click.stop="vizMode = 'table'">
-                <el-icon><List /></el-icon>
+                <List :size="14" />
                 <span>表格</span>
               </button>
             </div>
@@ -2391,10 +3143,79 @@ onUnmounted(() => {
         @close="showVersionDrawer = false" />
     </el-drawer>
 
+    <el-dialog v-model="showBEONConnectionDialog" title="管理 BEON MySQL 连接" width="720px" destroy-on-close>
+      <div class="beon-connection-dialog">
+        <div class="beon-connection-list">
+          <div class="beon-connection-list-title">已保存连接</div>
+          <div
+            v-for="profile in beonConnectionProfiles"
+            :key="profile.id"
+            class="beon-connection-card"
+            :class="{ 'beon-connection-card--active': beonConnectionForm.id === profile.id }"
+            @click="resetBEONConnectionForm(profile)">
+            <div class="beon-connection-card-name">
+              {{ profile.profileName }}
+              <el-tag v-if="profile.isDefault" size="small" type="success">默认</el-tag>
+            </div>
+            <div class="beon-connection-card-meta">{{ profile.host }}:{{ profile.port }} / {{ profile.database }}</div>
+          </div>
+          <el-empty v-if="beonConnectionProfiles.length === 0" description="暂无保存的连接" :image-size="80" />
+        </div>
+
+        <div class="beon-connection-form">
+          <div class="beon-connection-form-title">
+            {{ beonConnectionForm.id ? "编辑连接" : "新增连接" }}
+          </div>
+
+          <el-form label-position="top">
+            <el-form-item label="连接名称">
+              <el-input v-model="beonConnectionForm.profileName" placeholder="例如：BEON 生产库" />
+            </el-form-item>
+            <div class="beon-connection-grid">
+              <el-form-item label="主机">
+                <el-input v-model="beonConnectionForm.host" placeholder="127.0.0.1" />
+              </el-form-item>
+              <el-form-item label="端口">
+                <el-input-number v-model="beonConnectionForm.port" :min="1" :max="65535" class="beon-port-input" />
+              </el-form-item>
+            </div>
+            <div class="beon-connection-grid">
+              <el-form-item label="用户名">
+                <el-input v-model="beonConnectionForm.user" />
+              </el-form-item>
+              <el-form-item label="密码">
+                <el-input v-model="beonConnectionForm.password" type="password" show-password />
+              </el-form-item>
+            </div>
+            <el-form-item label="数据库名">
+              <el-input v-model="beonConnectionForm.database" />
+            </el-form-item>
+            <el-form-item>
+              <el-checkbox v-model="beonConnectionForm.isDefault">设为默认连接</el-checkbox>
+            </el-form-item>
+          </el-form>
+
+          <div
+            v-if="beonConnectionTestMessage"
+            class="beon-connection-test"
+            :class="`beon-connection-test--${beonConnectionTestStatus}`">
+            {{ beonConnectionTestMessage }}
+          </div>
+
+          <div class="beon-connection-actions">
+            <el-button @click="resetBEONConnectionForm()">新建</el-button>
+            <el-button @click="testBEONConnection">测试连接</el-button>
+            <el-button type="primary" @click="saveBEONConnectionProfile">保存连接</el-button>
+            <el-button v-if="beonConnectionForm.id" type="danger" plain @click="deleteCurrentBEONConnectionProfile">
+              删除
+            </el-button>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
+
     <!-- 自定义模型注册对话框 -->
-    <CustomModelDialog
-      v-model:visible="showCustomModelDialog"
-      @registered="onCustomModelRegistered" />
+    <CustomModelDialog v-model:visible="showCustomModelDialog" @registered="onCustomModelRegistered" />
   </div>
 </template>
 
@@ -2405,7 +3226,7 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 12px;
   background: var(--eco-white);
-  border-radius: 12px;
+  border-radius: var(--radius-panel);
   border: 1px solid var(--eco-border-light);
   padding: 16px 20px;
 }
@@ -2427,24 +3248,24 @@ onUnmounted(() => {
 }
 
 .version-bar-label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--eco-text-dark);
   white-space: nowrap;
 }
 
 .version-meta-text {
-  font-size: 12px;
-  color: #9ca3af;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
   white-space: nowrap;
 }
 
 .version-meta-remark {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--eco-text-mid);
   background: rgba(64, 145, 108, 0.08);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2470,9 +3291,9 @@ onUnmounted(() => {
 }
 
 .bar-label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #374151;
+  color: var(--c-text-base);
   white-space: nowrap;
 }
 
@@ -2500,29 +3321,26 @@ onUnmounted(() => {
 }
 
 .stat-chip-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: var(--text-xl);
   flex-shrink: 0;
 }
 
 .stat-chip-icon.icon-blue {
   background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
+  color: var(--c-info);
 }
 
 .stat-chip-icon.icon-purple {
   background: rgba(139, 92, 246, 0.1);
-  color: #8b5cf6;
+  color: var(--color-purple-600);
 }
 
 .stat-chip-icon.icon-red {
   background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  color: var(--c-danger);
 }
 
 .stat-chip-info {
@@ -2531,27 +3349,27 @@ onUnmounted(() => {
 }
 
 .stat-chip-value {
-  font-size: 18px;
+  font-size: var(--text-2xl);
   font-weight: 700;
-  color: #111827;
+  color: var(--c-text-primary);
   line-height: 1.2;
-  font-family: "Courier New", monospace;
+  font-family: var(--font-mono);
 }
 
 .stat-chip-label {
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
   font-weight: 500;
 }
 
 .stat-chip--alert .stat-chip-value {
-  color: #dc2626;
+  color: var(--c-danger);
 }
 
 .stat-strip-divider {
   width: 1px;
   height: 32px;
-  background: #e2e8f0;
+  background: var(--c-border);
   flex-shrink: 0;
 }
 
@@ -2560,7 +3378,7 @@ onUnmounted(() => {
   display: flex;
   background: var(--eco-surface);
   padding: 4px;
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   border: 1px solid var(--eco-border-light);
 }
 
@@ -2569,11 +3387,11 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
-  color: #6b7280;
+  color: var(--c-text-secondary);
   transition: all 0.3s ease;
 }
 
@@ -2608,24 +3426,24 @@ onUnmounted(() => {
 
 /* ==================== 主容器 ==================== */
 .gap-filling-panel {
-  /* eco design tokens */
-  --eco-forest: #0d2b1a;
-  --eco-forest-mid: #1b4332;
-  --eco-pine: #2d6a4f;
-  --eco-moss: #40916c;
-  --eco-fern: #52b788;
-  --eco-spring: #74c69d;
-  --eco-leaf: #95d5b2;
-  --eco-mint: #b7e4c7;
-  --eco-mist: #d8f3dc;
-  --eco-ice: #ebfbf0;
-  --eco-surface: #f2fdf5;
-  --eco-white: #f8fffe;
-  --eco-border: #74c69d;
-  --eco-border-light: #b7e4c7;
-  --eco-text-dark: #0d2b1a;
-  --eco-text-mid: #2d6a4f;
-  --eco-text-muted: #52b788;
+  /* eco design tokens → 设计系统变量映射 */
+  --eco-forest: var(--c-text-primary);
+  --eco-forest-mid: var(--c-text-primary);
+  --eco-pine: var(--c-text-base);
+  --eco-moss: var(--c-brand);
+  --eco-fern: var(--c-brand-active);
+  --eco-spring: var(--c-brand);
+  --eco-leaf: var(--c-brand-border);
+  --eco-mint: var(--c-border);
+  --eco-mist: var(--c-brand-soft);
+  --eco-ice: var(--c-bg-muted);
+  --eco-surface: var(--c-bg-muted);
+  --eco-white: var(--c-bg-surface);
+  --eco-border: var(--c-brand-border);
+  --eco-border-light: var(--c-border);
+  --eco-text-dark: var(--c-text-primary);
+  --eco-text-mid: var(--c-text-base);
+  --eco-text-muted: var(--c-text-secondary);
 
   display: flex;
   height: 100%;
@@ -2655,9 +3473,27 @@ onUnmounted(() => {
   position: absolute;
 }
 
-.eco-leaf-1 { top: -20px; right: -10px; width: 180px; height: 180px; transform: rotate(15deg); }
-.eco-leaf-2 { bottom: 60px; left: -20px; width: 120px; height: 120px; transform: rotate(-30deg); }
-.eco-leaf-3 { top: 40%; right: 5%; width: 80px; height: 80px; transform: rotate(60deg); }
+.eco-leaf-1 {
+  top: -20px;
+  right: -10px;
+  width: 180px;
+  height: 180px;
+  transform: rotate(15deg);
+}
+.eco-leaf-2 {
+  bottom: 60px;
+  left: -20px;
+  width: 120px;
+  height: 120px;
+  transform: rotate(-30deg);
+}
+.eco-leaf-3 {
+  top: 40%;
+  right: 5%;
+  width: 80px;
+  height: 80px;
+  transform: rotate(60deg);
+}
 
 .eco-net {
   position: absolute;
@@ -2680,13 +3516,13 @@ onUnmounted(() => {
 }
 
 .empty-icon {
-  font-size: 64px;
+  font-size: var(--text-display-2xl);
   margin-bottom: 16px;
   opacity: 0.6;
 }
 
 .empty-title {
-  font-size: 20px;
+  font-size: var(--text-3xl);
   font-weight: 700;
   color: var(--eco-text-dark);
   margin: 0 0 8px 0;
@@ -2694,7 +3530,7 @@ onUnmounted(() => {
 
 .empty-description {
   color: var(--eco-text-muted);
-  font-size: 15px;
+  font-size: var(--text-lg);
   margin: 0;
 }
 
@@ -2714,7 +3550,7 @@ onUnmounted(() => {
   width: 280px;
   background: var(--eco-white);
   border: 1px solid var(--eco-border-light);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -2733,12 +3569,12 @@ onUnmounted(() => {
   gap: 6px;
   width: 100%;
   height: 36px;
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
-  color: white;
+  color: var(--c-text-inverse);
   background: linear-gradient(135deg, var(--eco-moss), var(--eco-forest-mid));
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.2s ease;
   box-shadow: 0 2px 8px rgba(45, 106, 79, 0.3);
@@ -2754,12 +3590,12 @@ onUnmounted(() => {
 .glass-effect {
   background: var(--eco-white);
   border: 1px solid var(--eco-border-light);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
 }
 
 .detailed-table-card {
   background: var(--eco-white);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   border: 1px solid var(--eco-border-light);
   padding: 20px;
 }
@@ -2778,7 +3614,7 @@ onUnmounted(() => {
   justify-content: center;
   padding: 80px 0;
   background: var(--eco-white);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   border: 1px solid var(--eco-border-light);
   margin-top: 20px;
 }
@@ -2794,12 +3630,12 @@ onUnmounted(() => {
 }
 
 .illustration-icon {
-  font-size: 48px;
+  font-size: var(--text-display-lg);
   color: var(--eco-moss);
   z-index: 2;
   background: var(--eco-white);
   padding: 16px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   border: 1px solid var(--eco-border-light);
   transition: transform 0.2s ease;
 }
@@ -2819,7 +3655,7 @@ onUnmounted(() => {
 
 .circles .circle {
   position: absolute;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   border: 1px solid var(--eco-moss);
   opacity: 0;
   animation: ripple 2s infinite;
@@ -2853,7 +3689,7 @@ onUnmounted(() => {
 }
 
 .empty-hint-title {
-  font-size: 20px;
+  font-size: var(--text-3xl);
   font-weight: 700;
   color: var(--eco-text-dark);
   margin-bottom: 8px;
@@ -2862,15 +3698,15 @@ onUnmounted(() => {
 .empty-hint-desc {
   text-align: center;
   color: var(--eco-text-muted);
-  font-size: 15px;
+  font-size: var(--text-lg);
   line-height: 1.6;
 }
 
 .sidebar-subtitle {
   padding: 16px 20px 8px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 700;
-  color: #6b7280;
+  color: var(--c-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -2891,13 +3727,13 @@ onUnmounted(() => {
 .history-empty {
   text-align: center;
   padding: 40px 16px;
-  color: #9ca3af;
-  font-size: 14px;
+  color: var(--c-text-muted);
+  font-size: var(--text-md);
 }
 
 .history-item {
   padding: 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   cursor: pointer;
   margin-bottom: 8px;
   border: 1px solid transparent;
@@ -2926,8 +3762,8 @@ onUnmounted(() => {
 
 .drag-handle {
   cursor: grab;
-  color: #9ca3af;
-  font-size: 14px;
+  color: var(--c-text-muted);
+  font-size: var(--text-md);
   flex-shrink: 0;
 }
 
@@ -2936,7 +3772,7 @@ onUnmounted(() => {
 }
 
 .history-item--drag-over {
-  border-top: 2px solid #3b82f6 !important;
+  border-top: 2px solid var(--c-info) !important;
 }
 
 .history-name-edit {
@@ -2948,8 +3784,8 @@ onUnmounted(() => {
   width: 100%;
   padding: 2px 6px;
   border: 1px solid var(--eco-border);
-  border-radius: 4px;
-  font-size: 13px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   outline: none;
   background: var(--eco-white);
 }
@@ -2965,20 +3801,20 @@ onUnmounted(() => {
   padding: 4px;
   background: transparent;
   border: none;
-  color: #9ca3af;
+  color: var(--c-text-muted);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: all 0.2s ease;
 }
 
 .history-action-btn:hover {
   background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
+  color: var(--c-info);
 }
 
 .history-delete-btn:hover {
   background: rgba(239, 68, 68, 0.1) !important;
-  color: #ef4444 !important;
+  color: var(--c-danger) !important;
 }
 
 .history-item-content {
@@ -2989,7 +3825,7 @@ onUnmounted(() => {
 }
 
 .history-method {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--eco-text-dark);
   flex: 1;
@@ -3002,8 +3838,8 @@ onUnmounted(() => {
 .history-item-stats {
   display: flex;
   gap: 12px;
-  font-size: 11px;
-  color: #6b7280;
+  font-size: var(--text-xs);
+  color: var(--c-text-secondary);
 }
 
 /* ==================== 主内容区 ==================== */
@@ -3016,7 +3852,7 @@ onUnmounted(() => {
   min-width: 0;
   background: var(--eco-white);
   border: 1px solid var(--eco-border-light);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
 }
 
 /* ==================== 配置视图 ==================== */
@@ -3031,7 +3867,7 @@ onUnmounted(() => {
 
 .version-icon {
   color: var(--eco-moss);
-  font-size: 16px;
+  font-size: var(--text-xl);
 }
 
 .version-selector :deep(.el-input__wrapper) {
@@ -3054,27 +3890,27 @@ onUnmounted(() => {
 }
 
 .version-option-id {
-  font-size: 11px;
-  color: #9ca3af;
-  font-family: monospace;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
+  font-family: var(--font-mono);
 }
 
 .version-option-time {
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
 }
 
 .version-id {
-  font-family: monospace;
-  color: #9ca3af;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--c-text-muted);
+  font-size: var(--text-sm);
 }
 
 /* missing-detection-section removed — detection controls now in .detection-bar inside .top-info-area */
 
 .marker-tag {
-  font-family: monospace;
-  font-size: 11px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
   padding: 2px 6px;
 }
 
@@ -3082,9 +3918,9 @@ onUnmounted(() => {
   height: 30px;
   min-width: 100px;
   padding: 0 14px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   transition: all 0.2s ease;
 }
 
@@ -3100,7 +3936,7 @@ onUnmounted(() => {
 }
 
 .section-title {
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 700;
   color: var(--eco-text-dark);
   display: flex;
@@ -3115,7 +3951,7 @@ onUnmounted(() => {
 }
 
 .table-title {
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 700;
   color: var(--eco-text-dark);
   margin: 0;
@@ -3129,25 +3965,25 @@ onUnmounted(() => {
   width: 4px;
   height: 16px;
   background: var(--eco-moss);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   margin-right: 8px;
 }
 
 .table-info {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
 }
 
 .table-container {
   overflow-x: auto;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   border: 1px solid var(--eco-border-light);
 }
 
 .column-stats-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .column-stats-table thead th {
@@ -3217,18 +4053,18 @@ onUnmounted(() => {
 }
 
 .missing-count {
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-weight: 600;
-  color: #6b7280;
+  color: var(--c-text-secondary);
 }
 
 .missing-count.has-missing {
-  color: #ef4444;
+  color: var(--c-danger);
 }
 
 .total-count {
-  font-family: monospace;
-  color: #6b7280;
+  font-family: var(--font-mono);
+  color: var(--c-text-secondary);
 }
 
 /* 缺失率进度条 */
@@ -3240,9 +4076,9 @@ onUnmounted(() => {
 }
 
 .rate-text {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #374151;
+  color: var(--c-text-base);
   min-width: 45px;
   text-align: right;
 }
@@ -3250,25 +4086,25 @@ onUnmounted(() => {
 .rate-bar-bg {
   flex: 1;
   height: 6px;
-  background: #e2e8f0;
-  border-radius: 3px;
+  background: var(--c-border);
+  border-radius: var(--radius-xs);
   overflow: hidden;
 }
 
 .rate-bar-fill {
   height: 100%;
   background: linear-gradient(90deg, var(--eco-fern) 0%, var(--eco-moss) 100%);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   transition: width 0.5s ease;
 }
 
 .column-stats-table tbody tr.has-missing .rate-bar-fill {
-  background: linear-gradient(90deg, #f87171 0%, #ef4444 100%);
+  background: linear-gradient(90deg, #f87171 0%, var(--c-danger) 100%);
 }
 
 /* 数据预览 */
 .sample-preview {
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.4;
 }
 
@@ -3279,32 +4115,32 @@ onUnmounted(() => {
 }
 
 .sample-row {
-  color: #9ca3af;
+  color: var(--c-text-muted);
   font-weight: 500;
   min-width: 35px;
 }
 
 .sample-value {
-  font-family: monospace;
-  color: #6b7280;
+  font-family: var(--font-mono);
+  color: var(--c-text-secondary);
   word-break: break-all;
 }
 
 .sample-value.missing-value {
-  color: #ef4444;
+  color: var(--c-danger);
   font-style: italic;
 }
 
 .more-samples {
-  color: #9ca3af;
+  color: var(--c-text-muted);
   font-style: italic;
   margin-top: 2px;
 }
 
 .no-samples {
-  color: #9ca3af;
+  color: var(--c-text-muted);
   font-style: italic;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 /* config-layout removed — imputation module now uses module-container */
@@ -3312,7 +4148,7 @@ onUnmounted(() => {
 /* ==================== 方法选择区 ==================== */
 .method-selection-section {
   background: var(--eco-white);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   border: 1px solid var(--eco-border-light);
   padding: 20px;
 }
@@ -3322,7 +4158,7 @@ onUnmounted(() => {
 }
 
 .section-title {
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 700;
   color: var(--eco-text-dark);
   display: flex;
@@ -3336,7 +4172,7 @@ onUnmounted(() => {
   width: 4px;
   height: 16px;
   background: var(--eco-moss);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   margin-right: 8px;
 }
 
@@ -3352,12 +4188,12 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--eco-text-muted);
   background: var(--eco-white);
   border: 1px solid var(--eco-border-light);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -3369,12 +4205,12 @@ onUnmounted(() => {
 
 .category-tab--active {
   background: linear-gradient(135deg, var(--eco-moss), var(--eco-forest-mid));
-  color: white;
+  color: var(--c-text-inverse);
   border-color: transparent;
 }
 
 .category-icon {
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 .methods-grid {
@@ -3388,7 +4224,7 @@ onUnmounted(() => {
   padding: 14px;
   background: var(--eco-white);
   border: 1px solid var(--eco-border-light);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -3423,11 +4259,11 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
-  color: #f59e0b;
+  color: var(--c-warning);
   background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   box-shadow: 0 2px 6px rgba(245, 158, 11, 0.2);
 }
 
@@ -3439,7 +4275,7 @@ onUnmounted(() => {
 }
 
 .method-card-name {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 700;
   color: var(--eco-text-dark);
 }
@@ -3451,14 +4287,14 @@ onUnmounted(() => {
 
 .tag {
   padding: 2px 6px;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 500;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .tag--python {
   background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
+  color: var(--c-info);
 }
 
 .tag--time-fast {
@@ -3468,16 +4304,16 @@ onUnmounted(() => {
 
 .tag--time-medium {
   background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
+  color: var(--c-warning);
 }
 
 .tag--time-slow {
   background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  color: var(--c-danger);
 }
 
 .method-card-description {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--eco-text-muted);
   line-height: 1.5;
   margin: 0 0 10px 0;
@@ -3490,8 +4326,8 @@ onUnmounted(() => {
 }
 
 .accuracy-indicator {
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
 }
 
 .accuracy--high {
@@ -3500,12 +4336,12 @@ onUnmounted(() => {
 }
 
 .accuracy--medium {
-  color: #f59e0b;
+  color: var(--c-warning);
   font-weight: 600;
 }
 
 .accuracy--low {
-  color: #ef4444;
+  color: var(--c-danger);
   font-weight: 600;
 }
 
@@ -3516,7 +4352,7 @@ onUnmounted(() => {
 /* ==================== 参数配置区 ==================== */
 .params-config-section {
   background: var(--eco-white);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   border: 1px solid var(--eco-border-light);
   padding: 20px;
   display: flex;
@@ -3524,112 +4360,316 @@ onUnmounted(() => {
   gap: 16px;
 }
 
-.column-selection {
-  background: rgba(249, 250, 251, 0.8);
+/* 指标列 + 参数配置 并排布局 */
+.columns-params-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.columns-params-row > .target-col-collapse {
+  flex: 1;
+  min-width: 0;
+}
+
+.columns-params-row > .method-params {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ==================== 模型信息卡样式 ==================== */
+.model-info-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.model-info-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: var(--c-bg-muted);
+  border-radius: 6px;
+  color: var(--eco-text-secondary);
+  font-size: 13px;
+}
+
+.model-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.model-selector-label {
+  font-size: 13px;
+  color: var(--eco-text-secondary);
+  white-space: nowrap;
+}
+
+.model-selector-input {
+  flex: 1;
+}
+
+.model-info-card {
+  background: var(--c-bg-muted);
+  border: 1px solid var(--eco-border-light);
   border-radius: 8px;
   padding: 14px;
 }
 
-.selection-header {
+.model-info-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 10px;
+}
+
+.model-info-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--eco-text-primary);
+}
+
+.model-info-score {
+  font-size: 12px;
+  color: var(--eco-primary);
+  font-weight: 500;
+}
+
+.model-info-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.model-meta-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.model-meta-item--full {
+  flex: 0 0 100%;
+  align-items: flex-start;
+}
+
+.model-meta-label {
+  color: var(--eco-text-secondary);
+  white-space: nowrap;
+  padding-top: 2px;
+}
+
+.model-meta-value {
+  color: var(--eco-text-primary);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  background: var(--eco-border-light);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.model-meta-value--target {
+  background: rgba(var(--eco-primary-rgb, 34, 139, 34), 0.1);
+  color: var(--eco-primary);
+}
+
+.model-feature-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.model-feature-tag {
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  background: var(--eco-border-light);
+  color: var(--eco-text-primary);
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--eco-border);
+}
+
+/* ==================== 模型配置折叠面板样式 ==================== */
+.model-config-collapse {
+  border: none;
+}
+
+.model-config-collapse .model-config-collapse-item {
+  border: 1px solid var(--eco-border-light);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.model-config-collapse :deep(.el-collapse-item__header) {
+  height: 42px;
+  line-height: 42px;
+  padding: 0 14px;
+  background: var(--c-bg-muted);
+  border-bottom: none;
+  font-size: 13px;
+}
+
+.model-config-collapse :deep(.el-collapse-item__header.is-active) {
+  border-bottom: 1px solid var(--eco-border-light);
+}
+
+.model-config-collapse :deep(.el-collapse-item__wrap) {
+  border-bottom: none;
+}
+
+.model-config-collapse :deep(.el-collapse-item__content) {
+  padding: 0;
+}
+
+.collapse-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.collapse-title-text {
+  font-weight: 600;
+  color: var(--eco-text-primary);
+  white-space: nowrap;
+}
+
+.collapse-title-badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.collapse-title-badge--ok {
+  background: var(--eco-ice, #e8f5e9);
+  color: var(--eco-primary, #4caf50);
+}
+
+.collapse-title-badge--warn {
+  background: #fff8e1;
+  color: var(--eco-warning, #e6a23c);
+}
+
+.collapse-title-badge--neutral {
+  background: var(--eco-border-light, #eee);
+  color: var(--eco-text-secondary, #666);
+}
+
+/* ==================== 列名映射配置样式 ==================== */
+.column-mapping-section {
+  padding: 14px;
+}
+
+.column-mapping-hint {
+  display: block;
+  font-size: 12px;
+  color: var(--eco-text-secondary);
   margin-bottom: 12px;
 }
 
-.selection-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #374151;
-  margin: 0;
-}
-
-.selection-mode {
-  display: flex;
-  gap: 12px;
-}
-
-.radio-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: #6b7280;
-  cursor: pointer;
-}
-
-.radio-item input {
-  accent-color: var(--eco-moss);
-}
-
-.column-list {
-  max-height: 200px;
-  overflow-y: auto;
+.column-mapping-table {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.column-item {
-  padding: 8px 10px;
-  background: var(--eco-white);
-  border: 1px solid var(--eco-border-light);
-  border-radius: 6px;
-}
-
-.checkbox-item {
-  display: flex;
+.column-mapping-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 80px;
   align-items: center;
   gap: 10px;
-  cursor: pointer;
 }
 
-.checkbox-item input {
-  accent-color: var(--eco-moss);
-}
-
-.column-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-}
-
-.column-name {
-  font-size: 12px;
-  font-weight: 500;
-  color: #374151;
-}
-
-.column-missing {
+.column-mapping-row--header {
   font-size: 11px;
-  color: #9ca3af;
-}
-
-.column-rate {
-  font-size: 10px;
   font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
+  color: var(--eco-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--eco-border-light);
 }
 
-.no-columns {
-  padding: 20px;
-  text-align: center;
-  color: #9ca3af;
+.mapping-model-col {
   font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  color: var(--eco-text-primary);
+  background: var(--c-bg-muted);
+  padding: 4px 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.method-params {
-  background: rgba(249, 250, 251, 0.8);
-  border-radius: 8px;
+.mapping-user-col-select {
+  width: 100%;
+}
+
+.mapping-status {
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.mapping-status--ok {
+  color: var(--eco-primary);
+}
+
+.mapping-status--missing {
+  color: var(--eco-warning, #e6a23c);
+}
+
+.column-mapping-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--eco-warning, #e6a23c);
+}
+
+.model-params-section {
   padding: 14px;
 }
 
+.model-params-hint {
+  display: block;
+  font-size: 12px;
+  color: var(--eco-text-secondary);
+  margin-bottom: 12px;
+}
+
+.method-params {
+  background: var(--c-bg-muted);
+  border-radius: var(--radius-panel);
+  padding: 14px;
+}
+
+/* 未选择方法 / 无参数时的占位提示 */
+.method-params--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  color: var(--c-text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+  line-height: 1.6;
+}
+
 .params-title {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #374151;
+  color: var(--c-text-base);
   margin: 0 0 12px 0;
 }
 
@@ -3652,17 +4692,17 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
   margin-bottom: 6px;
 }
 
 .param-input {
   width: 100%;
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   border: 1px solid rgba(209, 213, 219, 1);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   transition: all 0.2s ease;
 }
 
@@ -3677,16 +4717,25 @@ onUnmounted(() => {
 }
 
 .param-input-text :deep(.el-input__wrapper) {
-  border-radius: 6px;
+  border-radius: var(--radius-control);
 }
 
 .param-input-text :deep(.el-input__inner) {
-  font-size: 12px;
+  font-size: var(--text-sm);
+}
+
+.params-warning {
+  padding: 8px 10px;
+  font-size: var(--text-sm);
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-panel);
 }
 
 .no-params {
-  font-size: 12px;
-  color: #9ca3af;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
   margin: 0;
 }
 
@@ -3701,12 +4750,12 @@ onUnmounted(() => {
   gap: 8px;
   width: 100%;
   padding: 14px 20px;
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 600;
-  color: white;
+  color: var(--c-text-inverse);
   background: linear-gradient(135deg, var(--eco-moss), var(--eco-forest-mid));
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.2s ease;
   height: 36px;
@@ -3731,7 +4780,7 @@ onUnmounted(() => {
   height: 16px;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-top-color: white;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   animation: spin 1s linear infinite;
 }
 
@@ -3744,7 +4793,7 @@ onUnmounted(() => {
 /* ==================== 进度区 ==================== */
 .progress-section {
   background: var(--eco-white);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   border: 1px solid var(--eco-border-light);
   padding: 20px;
 }
@@ -3757,7 +4806,7 @@ onUnmounted(() => {
 }
 
 .progress-title {
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 700;
   color: var(--eco-text-dark);
   margin: 0;
@@ -3768,18 +4817,18 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   padding: 6px 12px;
-  font-size: 12px;
-  color: #ef4444;
+  font-size: var(--text-sm);
+  color: var(--c-danger);
   background: rgba(254, 242, 242, 0.8);
   border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .cancel-btn:hover {
   background: rgba(254, 226, 226, 1);
-  border-color: #ef4444;
+  border-color: var(--c-danger);
 }
 
 .progress-content {
@@ -3801,8 +4850,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   padding: 10px;
-  background: rgba(249, 250, 251, 0.8);
-  border-radius: 8px;
+  background: var(--c-bg-muted);
+  border-radius: var(--radius-panel);
   opacity: 0.5;
   transition: all 0.3s ease;
 }
@@ -3819,13 +4868,13 @@ onUnmounted(() => {
 }
 
 .stage-icon {
-  font-size: 20px;
+  font-size: var(--text-3xl);
 }
 
 .stage-name {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 500;
-  color: #6b7280;
+  color: var(--c-text-secondary);
 }
 
 .progress-bar-container {
@@ -3837,15 +4886,15 @@ onUnmounted(() => {
 .progress-bar {
   flex: 1;
   height: 10px;
-  background: #e2e8f0;
-  border-radius: 5px;
+  background: var(--c-border);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
 .progress-bar-fill {
   height: 100%;
   background: linear-gradient(90deg, var(--eco-fern) 0%, var(--eco-moss) 100%);
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   transition: width 0.3s ease;
   position: relative;
   overflow: hidden;
@@ -3872,12 +4921,12 @@ onUnmounted(() => {
   display: inline-block;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   margin-right: 8px;
 }
 
 .status-dot--running {
-  background-color: #3b82f6;
+  background-color: var(--c-info);
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
   animation: pulse 2s infinite;
 }
@@ -3899,8 +4948,8 @@ onUnmounted(() => {
 }
 
 .progress-detail {
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
   margin-top: 4px;
 }
 
@@ -3927,7 +4976,7 @@ onUnmounted(() => {
 }
 
 .progress-text {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--eco-moss);
   min-width: 45px;
@@ -3948,24 +4997,24 @@ onUnmounted(() => {
 }
 
 .progress-message {
-  font-size: 13px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
   margin: 0;
 }
 
 .execution-logs {
-  background: rgba(249, 250, 251, 0.8);
-  border-radius: 8px;
+  background: var(--c-bg-muted);
+  border-radius: var(--radius-panel);
   overflow: hidden;
 }
 
 .logs-header {
   padding: 10px 14px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #374151;
-  background: #f3f4f6;
-  border-bottom: 1px solid #e2e8f0;
+  color: var(--c-text-base);
+  background: var(--c-bg-muted);
+  border-bottom: 1px solid var(--c-border);
 }
 
 .logs-content {
@@ -3978,12 +5027,12 @@ onUnmounted(() => {
   display: flex;
   gap: 10px;
   padding: 4px 6px;
-  font-size: 11px;
-  font-family: monospace;
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
 }
 
 .log-time {
-  color: #9ca3af;
+  color: var(--c-text-muted);
 }
 
 .log-level {
@@ -3992,19 +5041,19 @@ onUnmounted(() => {
 }
 
 .log-level--info {
-  color: #3b82f6;
+  color: var(--c-info);
 }
 
 .log-level--warning {
-  color: #f59e0b;
+  color: var(--c-warning);
 }
 
 .log-level--error {
-  color: #ef4444;
+  color: var(--c-danger);
 }
 
 .log-message {
-  color: #374151;
+  color: var(--c-text-base);
 }
 
 /* ==================== 结果视图 ==================== */
@@ -4020,7 +5069,7 @@ onUnmounted(() => {
 /* ==================== 逐列统计报告 ==================== */
 .stats-report {
   background: var(--eco-white);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   border: 1px solid var(--eco-border-light);
   overflow: hidden;
 }
@@ -4032,7 +5081,7 @@ onUnmounted(() => {
   padding: 12px 16px;
   background: var(--eco-surface);
   border-bottom: 1px solid var(--eco-border-light);
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--eco-text-mid);
 }
@@ -4044,7 +5093,7 @@ onUnmounted(() => {
 .stats-report-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 
@@ -4053,7 +5102,7 @@ onUnmounted(() => {
   background: var(--eco-surface);
   font-weight: 600;
   color: var(--eco-text-mid);
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.3px;
   border-bottom: 1px solid var(--eco-border-light);
@@ -4062,7 +5111,7 @@ onUnmounted(() => {
 
 .stats-report-table td {
   padding: 9px 14px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--c-bg-muted);
   vertical-align: middle;
 }
 
@@ -4083,27 +5132,27 @@ onUnmounted(() => {
 }
 
 .stat-missing {
-  color: #ef4444;
+  color: var(--c-danger);
   font-weight: 500;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .stat-imputed {
-  color: #3b82f6;
+  color: var(--c-info);
   font-weight: 500;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .stat-num {
-  font-family: monospace;
-  color: #374151;
+  font-family: var(--font-mono);
+  color: var(--c-text-base);
 }
 
 .stat-rate-badge {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 11px;
+  border-radius: var(--radius-control);
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 .stat-rate-badge--low {
@@ -4116,19 +5165,19 @@ onUnmounted(() => {
 }
 .stat-rate-badge--high {
   background: rgba(239, 68, 68, 0.12);
-  color: #dc2626;
+  color: var(--c-danger);
 }
 
 .stat-delta {
-  font-family: monospace;
-  font-size: 11px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 .stat-delta--pos {
   color: var(--eco-pine);
 }
 .stat-delta--neg {
-  color: #dc2626;
+  color: var(--c-danger);
 }
 
 .result-header {
@@ -4138,7 +5187,7 @@ onUnmounted(() => {
 }
 
 .result-title {
-  font-size: 20px;
+  font-size: var(--text-3xl);
   font-weight: 600;
   color: var(--eco-text-dark);
   margin: 0;
@@ -4149,12 +5198,12 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--eco-text-muted);
   background: var(--eco-white);
   border: 1px solid var(--eco-border-light);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.2s ease;
   height: 36px;
@@ -4172,7 +5221,7 @@ onUnmounted(() => {
   align-items: center;
   padding: 14px;
   background: var(--eco-white);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   border: 1px solid var(--eco-border-light);
 }
 
@@ -4183,16 +5232,16 @@ onUnmounted(() => {
 }
 
 .viz-column-select label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 500;
-  color: #374151;
+  color: var(--c-text-base);
 }
 
 .viz-select {
   padding: 8px 12px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   border: 1px solid var(--eco-border-light);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--eco-white);
   min-width: 200px;
 }
@@ -4212,12 +5261,12 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--eco-text-muted);
   background: var(--eco-white);
   border: 1px solid var(--eco-border-light);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -4229,13 +5278,13 @@ onUnmounted(() => {
 
 .viz-mode-btn--active {
   background: linear-gradient(135deg, var(--eco-moss), var(--eco-forest-mid));
-  color: white;
+  color: var(--c-text-inverse);
   border-color: transparent;
 }
 
 .chart-container {
   background: var(--eco-white);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   border: 1px solid var(--eco-border-light);
   padding: 16px;
   min-height: 350px;
@@ -4248,7 +5297,7 @@ onUnmounted(() => {
 
 .table-container {
   background: var(--eco-white);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   border: 1px solid var(--eco-border-light);
   overflow: hidden;
 }
@@ -4256,7 +5305,7 @@ onUnmounted(() => {
 .comparison-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .comparison-table th,
@@ -4270,65 +5319,65 @@ onUnmounted(() => {
   background: var(--eco-surface);
   font-weight: 600;
   color: var(--eco-text-mid);
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
 
 .cell-index {
-  color: #9ca3af;
+  color: var(--c-text-muted);
   font-weight: 500;
   text-align: center;
   width: 60px;
 }
 
 .cell-time {
-  font-family: monospace;
-  color: #6b7280;
+  font-family: var(--font-mono);
+  color: var(--c-text-secondary);
 }
 
 .value-missing {
-  color: #ef4444;
+  color: var(--c-danger);
   font-style: italic;
 }
 
 .value-normal {
   color: #22c55e;
   font-weight: 500;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .value-imputed {
-  color: #f59e0b;
+  color: var(--c-warning);
   font-weight: 600;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .confidence-bar {
   width: 60px;
   height: 6px;
-  background: #e2e8f0;
-  border-radius: 3px;
+  background: var(--c-border);
+  border-radius: var(--radius-xs);
   overflow: hidden;
 }
 
 .confidence-fill {
   height: 100%;
   background: linear-gradient(90deg, var(--eco-fern) 0%, var(--eco-moss) 100%);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 
 .status-tag {
   display: inline-block;
   padding: 3px 8px;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 
 .status-tag--imputed {
   background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
+  color: var(--c-info);
 }
 
 .status-tag--original {
@@ -4341,8 +5390,8 @@ onUnmounted(() => {
   justify-content: center;
   gap: 24px;
   padding: 12px;
-  background: #f8fafc;
-  border-radius: 8px;
+  background: var(--c-bg-muted);
+  border-radius: var(--radius-panel);
 }
 
 .legend-item {
@@ -4354,7 +5403,7 @@ onUnmounted(() => {
 .legend-color {
   width: 12px;
   height: 12px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 
 .legend-color--original {
@@ -4362,11 +5411,11 @@ onUnmounted(() => {
 }
 
 .legend-color--imputed {
-  background: #f59e0b;
+  background: var(--c-warning);
 }
 
 .legend-color--missing {
-  background: #ef4444;
+  background: var(--c-danger);
 }
 
 .result-header-actions {
@@ -4380,12 +5429,12 @@ onUnmounted(() => {
   align-items: center;
   gap: 5px;
   padding: 7px 13px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--eco-pine);
   background: var(--eco-ice);
   border: 1px solid var(--eco-border);
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
@@ -4403,29 +5452,180 @@ onUnmounted(() => {
 }
 
 .legend-text {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
 }
 
-/* ==================== 缺失率样式 ==================== */
-.missing-rate--none {
-  background: rgba(209, 250, 229, 1);
-  color: #047857;
+/* ==================== BEON 数据源 ==================== */
+.beon-datasource-section {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--c-bg-muted);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
 }
 
-.missing-rate--low {
-  background: rgba(254, 243, 199, 1);
-  color: #92400e;
+.beon-datasource-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
-.missing-rate--medium {
-  background: rgba(254, 215, 170, 1);
-  color: #9a3412;
+.beon-datasource-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.missing-rate--high {
-  background: rgba(254, 202, 202, 1);
-  color: #991b1b;
+.beon-context-card {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: var(--radius-panel);
+  background: var(--c-bg-surface);
+  border: 1px solid #dbeafe;
+}
+
+.beon-context-card--error {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.beon-context-status {
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--c-text-secondary);
+}
+
+.beon-context-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.beon-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.beon-summary-label {
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
+}
+
+.beon-summary-value {
+  font-size: var(--text-sm);
+  color: var(--c-text-base);
+  word-break: break-word;
+}
+
+.beon-rule-group {
+  margin-top: 14px;
+}
+
+.beon-rule-group-title {
+  margin-bottom: 8px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--c-text-base);
+}
+
+.beon-rule-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.beon-connection-dialog {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 16px;
+}
+
+.beon-connection-list {
+  padding-right: 8px;
+  border-right: 1px solid var(--c-border);
+}
+
+.beon-connection-list-title,
+.beon-connection-form-title {
+  margin-bottom: 12px;
+  font-size: var(--text-md);
+  font-weight: 700;
+  color: var(--c-text-base);
+}
+
+.beon-connection-card {
+  margin-bottom: 10px;
+  padding: 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.beon-connection-card:hover,
+.beon-connection-card--active {
+  border-color: var(--eco-moss);
+  background: #f0fdf4;
+}
+
+.beon-connection-card-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--c-text-base);
+}
+
+.beon-connection-card-meta {
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
+  word-break: break-word;
+}
+
+.beon-connection-grid {
+  display: grid;
+  grid-template-columns: 1fr 180px;
+  gap: 12px;
+}
+
+.beon-port-input {
+  width: 100%;
+}
+
+.beon-connection-test {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-panel);
+  font-size: var(--text-sm);
+}
+
+.beon-connection-test--success {
+  background: #ecfdf5;
+  color: var(--c-brand-active);
+}
+
+.beon-connection-test--failed {
+  background: #fff7f7;
+  color: #b91c1c;
+}
+
+.beon-connection-test--testing {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.beon-connection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 /* ==================== 滚动条样式 ==================== */
@@ -4438,7 +5638,7 @@ onUnmounted(() => {
 }
 ::-webkit-scrollbar-thumb {
   background: rgba(64, 145, 108, 0.25);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(64, 145, 108, 0.45);
@@ -4486,6 +5686,24 @@ onUnmounted(() => {
   .viz-mode-switch {
     justify-content: center;
   }
+
+  .beon-datasource-header,
+  .beon-connection-dialog,
+  .beon-connection-grid {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .beon-connection-list {
+    padding-right: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--c-border);
+    padding-bottom: 12px;
+  }
+
+  .columns-params-row {
+    flex-direction: column;
+  }
 }
 
 /* ==================== 自定义模型相关样式 ==================== */
@@ -4494,8 +5712,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   min-height: 120px;
-  border: 2px dashed #cbd5e1;
-  background: #fafbfc;
+  border: 2px dashed var(--c-border);
+  background: var(--c-bg-muted);
   cursor: pointer;
 }
 
@@ -4517,13 +5735,13 @@ onUnmounted(() => {
 }
 
 .add-model-text {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 
 .add-model-hint {
-  font-size: 11px;
-  color: #94a3b8;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
   text-align: center;
 }
 
@@ -4533,20 +5751,20 @@ onUnmounted(() => {
 }
 
 .custom-empty-icon {
-  font-size: 36px;
+  font-size: var(--text-display-md);
   margin-bottom: 8px;
 }
 
 .custom-empty-title {
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 600;
-  color: #475569;
+  color: var(--c-text-base);
   margin: 0 0 8px;
 }
 
 .custom-empty-desc {
-  font-size: 13px;
-  color: #94a3b8;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
   line-height: 1.6;
   margin: 0;
 }

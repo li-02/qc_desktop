@@ -2,7 +2,7 @@
 
 本文档以 **TodoList** 形式列出生态监测桌面端应用中所有 Vue 组件。
 
-**项目共有 35 个组件**
+**项目共有 45 个组件**
 
 ---
 
@@ -10,65 +10,75 @@
 
 ### 一、核心应用组件（2个）
 
-- [ ] `App.vue` - 应用根组件，包含全局对话框管理和路由视图
-- [ ] `MainLayout.vue` - 主布局组件，包含侧边栏、分类管理、数据集管理和主内容区域
+- [✅ ] `App.vue` - 应用根组件，包含全局对话框管理和路由视图
+- [✅ ] `MainLayout.vue` - 主布局组件，包含侧边栏、分类管理、数据集管理和主内容区域
 
-### 二、对话框组件（4个）
+### 二、对话框组件（5个）
 
-- [ ] `components/dialogs/index.vue` - 全局对话框管理器
+- [✅ ] `components/dialogs/index.vue` - 全局对话框管理器
 - [✅ ] `components/dialogs/CreateCategoryDialog.vue` - 新建分类对话框
 - [✅ ] `components/dialogs/ImportDataDialog.vue` - 导入数据对话框
 - [✅ ] `components/dialogs/SettingsDialog.vue` - 系统设置对话框
+- [✅ ] `components/dialogs/EditCategoryDialog.vue` - 编辑分类对话框
 
 ### 三、侧边栏组件（1个）
 
 - [✅ ] `components/sidebar/DatasetVersionTree.vue` - 数据集版本树组件
 
-### 四、页面视图组件（3个）
+### 四、页面视图组件（4个）
 
 - [✅ ] `views/home-page/index.vue` - 首页主视图
-- [ ] `views/data-view/index.vue` - 数据视图主页面
-- [ ] `views/data-processing-page/index.vue` - 数据预处理页面
+- [✅ ] `views/data-view/index.vue` - 数据视图主页面
+- [✅ ] `views/data-processing-page/index.vue` - 数据预处理页面
+- [✅ ] `views/data-source/index.vue` - 数据源管理页面
 
-### 五、首页子组件（2个）
+### 五、首页子组件（3个）
 
-- [ ] `views/home-page/components/ProjectInfoCard.vue` - 分类信息卡片（待评估是否废弃）
-- [ ] `views/home-page/components/DatasetInfoCard.vue` - 数据集信息卡片
+- [✅ ] `views/home-page/components/ProjectInfoCard.vue` - 分类信息卡片（待评估是否废弃）
+- [✅ ] `views/home-page/components/DatasetInfoCard.vue` - 数据集信息卡片
+- [✅ ] `views/home-page/components/UserGuideModal.vue` - 用户使用引导弹窗
 
-### 六、数据视图核心组件（9个）
+### 六、数据视图核心组件（10个）
 
-- [ ] `views/data-view/components/DataAnalysisTabs.vue` - 数据分析选项卡容器
-- [ ] `views/data-view/components/VersionManager.vue` - 版本管理器
-- [ ] `views/data-view/components/VersionNodeItem.vue` - 版本节点项
-- [ ] `views/data-view/components/ActionButton.vue` - 操作按钮组件
-- [ ] `views/data-view/components/DatasetCard.vue` - 数据集卡片
-- [ ] `views/data-view/components/FunctionCard.vue` - 功能卡片
-- [ ] `views/data-view/components/QuickOperation.vue` - 快速操作组件
-- [ ] `views/data-view/components/charts/CorrelationAnalysisChart.vue` - 相关性分析图表
-- [ ] `views/data-view/components/charts/DataVisualizationChart.vue` - 数据可视化图表
-- [ ] `views/data-view/components/charts/OutlierChart.vue` - 异常值检测图表
+- [✅ ] `views/data-view/components/DataAnalysisTabs.vue` - 数据分析选项卡容器
+- [✅ ] `views/data-view/components/VersionManager.vue` - 版本管理器
+- [✅ ] `views/data-view/components/VersionNodeItem.vue` - 版本节点项
+- [✅ ] `views/data-view/components/ActionButton.vue` - 操作按钮组件
+- [✅ ] `views/data-view/components/DatasetCard.vue` - 数据集卡片
+- [✅ ] `views/data-view/components/FunctionCard.vue` - 功能卡片
+- [✅ ] `views/data-view/components/QuickOperation.vue` - 快速操作组件
+- [✅ ] `views/data-view/components/charts/CorrelationAnalysisChart.vue` - 相关性分析图表
+- [✅ ] `views/data-view/components/charts/DataVisualizationChart.vue` - 数据可视化图表
+- [✅ ] `views/data-view/components/charts/OutlierChart.vue` - 异常值检测图表
+- [✅ ] `views/data-view/components/charts/FluxPartitioningCharts.vue` - 通量分割图表组件
+- [✅ ] `views/data-view/components/common/MissingMarkersEditor.vue` - 缺失标记编辑器
 
-### 七、数据分析面板组件（5个）
+### 七、数据分析面板组件（8个）
 
-- [ ] `views/data-view/components/panels/DataOverviewPanel.vue` - 数据概览面板
-- [ ] `views/data-view/components/panels/CorrelationAnalysisPanel.vue` - 相关性分析面板
-- [ ] `views/data-view/components/panels/OutlierDetectionPanel.vue` - 异常值检测面板
-- [ ] `views/data-view/components/panels/GapFillingPanel.vue` - 缺失值插补面板（Gap Filling）
-- [ ] `views/data-view/components/panels/FluxPartitioningPanel.vue` - 通量分割面板（基于 REddyProc，支持碳通量/蒸散分割）
+- [✅ ] `views/data-view/components/panels/DataOverviewPanel.vue` - 数据概览面板
+- [✅ ] `views/data-view/components/panels/CorrelationAnalysisPanel.vue` - 相关性分析面板
+- [✅ ] `views/data-view/components/panels/OutlierDetectionPanel.vue` - 异常值检测面板
+- [✅ ] `views/data-view/components/panels/GapFillingPanel.vue` - 缺失值插补面板（Gap Filling）
+- [✅ ] `views/data-view/components/panels/FluxPartitioningPanel.vue` - 通量分割面板（基于 REddyProc，支持碳通量/蒸散分割）
+- [✅ ] `views/data-view/components/panels/CustomModelDialog.vue` - 自定义模型配置弹窗
+- [✅ ] `views/data-view/components/panels/SaveTemplateDialog.vue` - 保存模板弹窗
+- [✅ ] `views/data-view/components/panels/TemplateManager.vue` - 模板管理器
+- [✅ ] `views/data-view/components/panels/ExportDataPanel.vue` - 数据导出面板
 
 ### 八、缺失值分析子组件（1个）
 
-- [ ] `views/data-view/components/gapfilling/MissingAnalysisView.vue` - 缺失值可视化分析视图
+- [✅ ] `views/data-view/components/gapfilling/MissingAnalysisView.vue` - 缺失值可视化分析视图
 
-### 九、自动化工作流组件（7个）
+### 九、自动化工作流组件（8个）
 
-- [ ] `views/workflow/index.vue` - 工作流主页面（入口视图，三栏布局）
-- [ ] `views/workflow/components/WorkflowList.vue` - 工作流列表（卡片式展示已有工作流）
-- [ ] `views/workflow/components/WorkflowEditor.vue` - 线性流水线编辑器（垂直时间线布局）
-- [ ] `views/workflow/components/WorkflowNodeCard.vue` - 单个节点卡片（类型图标、名称、配置摘要、启用开关）
-- [ ] `views/workflow/components/NodeConfigPanel.vue` - 节点配置面板（根据节点类型动态渲染表单）
-- [ ] `views/workflow/components/WorkflowExecutionView.vue` - 执行进度与结果展示视图
-- [ ] `views/workflow/components/NodeTypeSelector.vue` - 节点类型选择器（添加节点时使用）
+- [✅ ] `views/workflow/index.vue` - 工作流主页面（入口视图，三栏布局）
+- [✅ ] `views/workflow/components/WorkflowList.vue` - 工作流列表（卡片式展示已有工作流）
+- [✅ ] `views/workflow/components/WorkflowEditor.vue` - 线性流水线编辑器（垂直时间线布局）
+- [✅ ] `views/workflow/components/WorkflowNodeCard.vue` - 单个节点卡片（类型图标、名称、配置摘要、启用开关）
+- [✅ ] `views/workflow/components/NodeConfigPanel.vue` - 节点配置面板（根据节点类型动态渲染表单）
+- [✅ ] `views/workflow/components/WorkflowExecutionView.vue` - 执行进度与结果展示视图
+- [✅ ] `views/workflow/components/NodeTypeSelector.vue` - 节点类型选择器（添加节点时使用）
+- [✅ ] `views/workflow/components/WorkflowHistoryPanel.vue` - 工作流历史记录面板
 
 ---
 
@@ -77,15 +87,15 @@
 | 分类         | 数量   | 说明             |
 | ------------ | ------ | ---------------- |
 | 核心应用     | 2      | 根组件和主布局   |
-| 对话框       | 4      | 全局弹窗功能     |
+| 对话框       | 5      | 全局弹窗功能     |
 | 侧边栏       | 1      | 版本树导航       |
-| 页面视图     | 3      | 主要页面路由     |
-| 首页组件     | 2      | 首页信息展示     |
-| 数据视图组件 | 9      | 数据分析核心UI   |
-| 分析面板     | 5      | 数据处理功能面板 |
+| 页面视图     | 4      | 主要页面路由     |
+| 首页组件     | 3      | 首页信息展示     |
+| 数据视图组件 | 12     | 数据分析核心UI   |
+| 分析面板     | 9      | 数据处理功能面板 |
 | 专项分析     | 1      | 缺失值深度分析   |
-| 自动化工作流 | 7      | 工作流编辑与执行 |
-| **总计**     | **35** | -                |
+| 自动化工作流 | 8      | 工作流编辑与执行 |
+| **总计**     | **45** | -                |
 
 ---
 

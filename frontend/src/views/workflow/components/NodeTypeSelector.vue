@@ -10,8 +10,7 @@
           v-for="(meta, type) in NODE_TYPE_META"
           :key="type"
           class="type-card"
-          @click="handleSelect(type as WorkflowNodeType)"
-        >
+          @click="handleSelect(type as WorkflowNodeType)">
           <span class="type-icon">{{ meta.icon }}</span>
           <div class="type-info">
             <span class="type-name">{{ meta.label }}</span>
@@ -25,17 +24,17 @@
 </template>
 
 <script setup lang="ts">
-import type { WorkflowNodeType } from '@shared/types/workflow';
-import { NODE_TYPE_META } from '@shared/types/workflow';
+import type { WorkflowNodeType } from "@shared/types/workflow";
+import { NODE_TYPE_META } from "@shared/types/workflow";
 
 const emit = defineEmits<{
-  (e: 'select', nodeType: WorkflowNodeType, nodeName: string): void;
-  (e: 'close'): void;
+  (e: "select", nodeType: WorkflowNodeType, nodeName: string): void;
+  (e: "close"): void;
 }>();
 
 const handleSelect = (type: WorkflowNodeType) => {
   const meta = NODE_TYPE_META[type];
-  emit('select', type, meta.label);
+  emit("select", type, meta.label);
 };
 </script>
 
@@ -55,8 +54,8 @@ const handleSelect = (type: WorkflowNodeType) => {
 }
 
 .selector-dialog {
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 16px;
+  background: var(--c-bg-surface);
+  border-radius: var(--radius-2xl);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
   width: 480px;
   max-height: 80vh;
@@ -68,13 +67,13 @@ const handleSelect = (type: WorkflowNodeType) => {
   align-items: center;
   justify-content: space-between;
   padding: 18px 20px;
-  border-bottom: 1px solid rgba(229, 231, 235, 0.4);
+  border-bottom: 1px solid var(--c-border);
 }
 
 .dialog-title {
-  font-size: 16px;
+  font-size: var(--text-xl);
   font-weight: 600;
-  color: #1f2937;
+  color: var(--c-text-primary);
   margin: 0;
 }
 
@@ -82,15 +81,15 @@ const handleSelect = (type: WorkflowNodeType) => {
   border: none;
   background: none;
   cursor: pointer;
-  font-size: 16px;
-  color: #9ca3af;
+  font-size: var(--text-xl);
+  color: var(--c-text-muted);
   padding: 4px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   transition: all 0.15s;
 }
 
 .btn-close:hover {
-  color: #1f2937;
+  color: var(--c-text-primary);
   background: rgba(0, 0, 0, 0.05);
 }
 
@@ -106,7 +105,7 @@ const handleSelect = (type: WorkflowNodeType) => {
   align-items: center;
   gap: 14px;
   padding: 14px 16px;
-  border-radius: 12px;
+  border-radius: var(--radius-panel);
   cursor: pointer;
   transition: all 0.2s ease;
   border: 1px solid transparent;
@@ -114,12 +113,12 @@ const handleSelect = (type: WorkflowNodeType) => {
 
 .type-card:hover {
   background: rgba(16, 185, 129, 0.06);
-  border-color: rgba(16, 185, 129, 0.2);
+  border-color: var(--c-brand-border);
   transform: translateX(4px);
 }
 
 .type-icon {
-  font-size: 28px;
+  font-size: var(--text-5xl);
   flex-shrink: 0;
 }
 
@@ -131,22 +130,22 @@ const handleSelect = (type: WorkflowNodeType) => {
 }
 
 .type-name {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
-  color: #1f2937;
+  color: var(--c-text-primary);
 }
 
 .type-desc {
-  font-size: 12px;
-  color: #9ca3af;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
 }
 
 .type-badge {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   padding: 2px 8px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: rgba(16, 185, 129, 0.08);
-  color: #10b981;
+  color: var(--c-brand);
   font-weight: 500;
   flex-shrink: 0;
 }

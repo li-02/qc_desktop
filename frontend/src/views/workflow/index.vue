@@ -16,9 +16,7 @@
     </div>
 
     <!-- 历史面板（紧挨工作流列表右边） -->
-    <div
-      class="workflow-history-col"
-      v-if="workflowStore.executions.length > 0 && !historyCollapsed">
+    <div class="workflow-history-col" v-if="workflowStore.executions.length > 0 && !historyCollapsed">
       <WorkflowHistoryPanel
         :executions="workflowStore.executions"
         :loading-detail="workflowStore.loading"
@@ -151,7 +149,12 @@ import NodeConfigPanel from "./components/NodeConfigPanel.vue";
 import NodeTypeSelector from "./components/NodeTypeSelector.vue";
 import WorkflowExecutionView from "./components/WorkflowExecutionView.vue";
 import WorkflowHistoryPanel from "./components/WorkflowHistoryPanel.vue";
-import type { WorkflowNode, WorkflowNodeType, WorkflowExecutionDetail, WorkflowNodeExecution } from "@shared/types/workflow";
+import type {
+  WorkflowNode,
+  WorkflowNodeType,
+  WorkflowExecutionDetail,
+  WorkflowNodeExecution,
+} from "@shared/types/workflow";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
 import { useRouter } from "vue-router";
 
@@ -317,7 +320,7 @@ const isRestoringState = ref(workflowStore.workflowReturnState.active);
 // 选中工作流后自动加载最新执行记录详情
 watch(
   () => workflowStore.executions,
-  (list) => {
+  list => {
     if (isRestoringState.value) return;
     if (list.length > 0) {
       handleSelectHistoryExecution(list[0].id);
@@ -330,10 +333,7 @@ watch(
 
 const handleSelectHistoryExecution = async (executionId: number) => {
   historyDetail.value = null;
-  const result = await window.electronAPI.invoke(
-    API_ROUTES.WORKFLOW.GET_EXECUTION_DETAIL,
-    { executionId }
-  );
+  const result = await window.electronAPI.invoke(API_ROUTES.WORKFLOW.GET_EXECUTION_DETAIL, { executionId });
   if (result.success && result.data) {
     historyDetail.value = result.data;
   }
@@ -350,14 +350,16 @@ const handleRenameHistoryExecution = async (executionId: number, label: string) 
   await workflowStore.renameExecution(executionId, label);
 };
 
-const handleHistoryViewResult = async (ne: WorkflowNodeExecution & { nodeName: string; nodeType: WorkflowNodeType; nodeOrder: number }) => {
+const handleHistoryViewResult = async (
+  ne: WorkflowNodeExecution & { nodeName: string; nodeType: WorkflowNodeType; nodeOrder: number }
+) => {
   if (!historyDetail.value) return;
   const exec = historyDetail.value.execution;
   const targetTab = getTabForNodeType(ne.nodeType);
   if (!targetTab) return;
 
-  let businessResultId = '';
-  let outputVersionId = '';
+  let businessResultId = "";
+  let outputVersionId = "";
   if (ne.resultJson) {
     try {
       const parsed = JSON.parse(ne.resultJson);
@@ -376,21 +378,21 @@ const handleHistoryViewResult = async (ne: WorkflowNodeExecution & { nodeName: s
     selectedNodeId: selectedNode.value?.id,
     selectedExecutionId: historyDetail.value?.execution.id,
   };
-  await router.push({ name: 'DataView', query });
+  await router.push({ name: "DataView", query });
 };
 
 // ==================== 结果查看跳转 ====================
 const handleViewResult = async (node: WorkflowNode) => {
   const execDetail = workflowStore.getNodeExecution(node.id);
-  if (!execDetail || execDetail.status !== 'COMPLETED') return;
+  if (!execDetail || execDetail.status !== "COMPLETED") return;
   if (!workflowStore.currentExecution) return;
 
   // Extract the target dataset, and any results
   const datasetId = workflowStore.currentExecution.datasetId;
   const targetTab = getTabForNodeType(node.nodeType);
-  
+
   if (!datasetId || !targetTab) {
-    ElMessageBox.alert('无法定位结果所在的数据集或功能模块', '提示');
+    ElMessageBox.alert("无法定位结果所在的数据集或功能模块", "提示");
     return;
   }
 
@@ -410,9 +412,9 @@ const handleViewResult = async (node: WorkflowNode) => {
   const query: any = {
     datasetId,
     tab: targetTab,
-    workflowId: workflowStore.currentWorkflow?.workflow.id
+    workflowId: workflowStore.currentWorkflow?.workflow.id,
   };
-  
+
   if (businessResultId) query.businessResultId = businessResultId;
   if (outputVersionId) query.versionId = outputVersionId;
 
@@ -424,16 +426,15 @@ const handleViewResult = async (node: WorkflowNode) => {
     selectedExecutionId: historyDetail.value?.execution.id,
   };
 
-  await router.push({ name: 'DataView', query });
+  await router.push({ name: "DataView", query });
 };
 
 const getTabForNodeType = (nodeType: WorkflowNodeType): string | null => {
   const map: Record<string, string> = {
-    'OUTLIER_DETECTION': 'outlier',
-    'IMPUTATION': 'missing',
-    'FLUX_PARTITIONING': 'flux-partitioning',
-    'CORRELATION_ANALYSIS': 'correlation',
-    'EXPORT': 'export'
+    OUTLIER_DETECTION: "outlier",
+    IMPUTATION: "missing",
+    FLUX_PARTITIONING: "flux-partitioning",
+    EXPORT: "export",
   };
   return map[nodeType] || null;
 };
@@ -512,57 +513,56 @@ onUnmounted(() => {
   display: flex;
   height: 100%;
   gap: 0;
-  background: linear-gradient(135deg, rgba(250, 250, 249, 0.8) 0%, rgba(236, 253, 245, 0.3) 100%);
+  background: var(--c-bg-page);
 }
 
 /* 左侧列表 */
 .workflow-sidebar {
   width: 280px;
   min-width: 280px;
-  border-right: 1px solid rgba(229, 231, 235, 0.5);
+  border-right: 1px solid var(--c-border);
   display: flex;
   flex-direction: column;
-  background: rgba(255, 255, 255, 0.6);
-  backdrop-filter: blur(12px);
+  background: var(--c-bg-surface);
 }
 
 .sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px;
-  border-bottom: 1px solid rgba(229, 231, 235, 0.4);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--c-border);
 }
 
 .sidebar-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1f2937;
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--c-text-base);
   margin: 0;
 }
 
 .btn-create {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 14px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
   border: none;
-  border-radius: 8px;
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-  font-size: 13px;
-  font-weight: 500;
+  border-radius: var(--radius-btn);
+  background: var(--c-brand-soft);
+  color: var(--c-brand);
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--transition-fast);
 }
 
 .btn-create:hover {
-  background: rgba(16, 185, 129, 0.2);
+  background: var(--c-brand-muted);
 }
 
 .btn-icon {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: var(--text-xl);
+  font-weight: var(--font-bold);
 }
 
 /* 中间编辑器 */
@@ -578,79 +578,78 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid rgba(229, 231, 235, 0.4);
-  background: rgba(255, 255, 255, 0.5);
-  backdrop-filter: blur(8px);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-bg-surface);
 }
 
 .workflow-info {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .workflow-name {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1f2937;
+  font-size: var(--text-2xl);
+  font-weight: var(--font-semibold);
+  color: var(--c-text-base);
   margin: 0;
   cursor: pointer;
 }
 
 .rename-input {
-  font-size: 18px;
-  font-weight: 600;
-  border: 1px solid #10b981;
-  border-radius: 6px;
-  padding: 2px 8px;
+  font-size: var(--text-2xl);
+  font-weight: var(--font-semibold);
+  border: 1px solid var(--c-brand);
+  border-radius: var(--radius-input);
+  padding: 2px var(--space-2);
   outline: none;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--c-bg-surface);
 }
 
 .workflow-status {
-  padding: 3px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 500;
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
 }
 
 .status-draft {
-  background: rgba(156, 163, 175, 0.15);
-  color: #6b7280;
+  background: var(--color-neutral-100);
+  color: var(--c-text-muted);
 }
 .status-ready {
-  background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
+  background: var(--c-info-bg);
+  color: var(--c-info);
 }
 .status-running {
-  background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
+  background: var(--c-warning-bg);
+  color: var(--c-warning);
 }
 .status-completed {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
+  background: var(--c-brand-soft);
+  color: var(--c-brand);
 }
 .status-failed {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background: var(--c-danger-bg);
+  color: var(--c-danger);
 }
 
 .btn-execute {
-  padding: 8px 20px;
+  padding: var(--space-2) var(--space-5);
   border: none;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: white;
-  font-size: 14px;
-  font-weight: 500;
+  border-radius: var(--radius-btn);
+  background: linear-gradient(135deg, var(--c-brand), var(--c-brand-hover));
+  color: var(--c-text-inverse);
+  font-size: var(--text-md);
+  font-weight: var(--font-medium);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--transition-fast);
 }
 
 .btn-execute:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  box-shadow: var(--shadow-brand);
 }
 
 .btn-execute:disabled {
@@ -662,9 +661,8 @@ onUnmounted(() => {
 .workflow-history-col {
   width: 480px;
   min-width: 480px;
-  border-right: 1px solid rgba(229, 231, 235, 0.5);
-  background: rgba(255, 255, 255, 0.6);
-  backdrop-filter: blur(12px);
+  border-right: 1px solid var(--c-border);
+  background: var(--c-bg-surface);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -674,9 +672,8 @@ onUnmounted(() => {
 .workflow-config {
   width: 340px;
   min-width: 340px;
-  border-left: 1px solid rgba(229, 231, 235, 0.5);
-  background: rgba(255, 255, 255, 0.6);
-  backdrop-filter: blur(12px);
+  border-left: 1px solid var(--c-border);
+  background: var(--c-bg-surface);
   overflow-y: auto;
 }
 
@@ -687,32 +684,32 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .empty-icon {
-  font-size: 48px;
+  font-size: var(--text-display-lg);
 }
 
 .empty-text {
-  color: #9ca3af;
-  font-size: 15px;
+  color: var(--c-text-disabled);
+  font-size: var(--text-lg);
 }
 
 .btn-create-large {
-  padding: 10px 28px;
-  border: 2px dashed rgba(16, 185, 129, 0.4);
-  border-radius: 10px;
-  background: rgba(16, 185, 129, 0.05);
-  color: #10b981;
-  font-size: 14px;
-  font-weight: 500;
+  padding: var(--space-2) var(--space-7);
+  border: 2px dashed var(--c-brand-border);
+  border-radius: var(--radius-control);
+  background: var(--c-brand-soft);
+  color: var(--c-brand);
+  font-size: var(--text-md);
+  font-weight: var(--font-medium);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--transition-fast);
 }
 
 .btn-create-large:hover {
-  background: rgba(16, 185, 129, 0.1);
-  border-color: #10b981;
+  background: var(--c-brand-muted);
+  border-color: var(--c-brand);
 }
 </style>

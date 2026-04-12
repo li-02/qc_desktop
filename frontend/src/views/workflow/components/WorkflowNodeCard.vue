@@ -29,7 +29,7 @@
           class="btn-view-result"
           title="查看结果"
           @click.stop="$emit('view-result')">
-          <el-icon><View /></el-icon>
+          <Eye :size="14" />
         </el-button>
 
         <!-- 启用开关 -->
@@ -56,7 +56,7 @@
 import { computed } from "vue";
 import type { WorkflowNode, WorkflowNodeType, WorkflowNodeExecution } from "@shared/types/workflow";
 import { NODE_TYPE_META } from "@shared/types/workflow";
-import { View } from "@element-plus/icons-vue";
+import { Eye } from "lucide-vue-next";
 
 const props = defineProps<{
   node: WorkflowNode;
@@ -113,8 +113,6 @@ const configSummary = computed(() => {
         return cfg.methodId ? `方法: ${cfg.methodId}` : "";
       case "FLUX_PARTITIONING":
         return cfg.methodId ? `方法: ${cfg.methodId}` : "";
-      case "CORRELATION_ANALYSIS":
-        return cfg.method ? `方法: ${cfg.method}` : "";
       case "EXPORT":
         return cfg.format ? `格式: ${cfg.format}` : "";
       default:
@@ -129,9 +127,9 @@ const configSummary = computed(() => {
 <style scoped>
 .node-card {
   width: 100%;
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--c-bg-surface);
   border: 1px solid rgba(229, 231, 235, 0.5);
-  border-radius: 12px;
+  border-radius: var(--radius-panel);
   padding: 14px 16px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -141,7 +139,7 @@ const configSummary = computed(() => {
 .node-card:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  border-color: rgba(16, 185, 129, 0.3);
+  border-color: var(--c-brand-border);
 }
 
 .node-card.disabled {
@@ -149,17 +147,17 @@ const configSummary = computed(() => {
 }
 
 .node-card.running {
-  border-color: #f59e0b;
+  border-color: var(--c-warning);
   box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.15);
 }
 
 .node-card.completed {
-  border-color: #10b981;
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.1);
+  border-color: var(--c-brand);
+  box-shadow: 0 0 0 2px var(--c-brand-soft);
 }
 
 .node-card.failed {
-  border-color: #ef4444;
+  border-color: var(--c-danger);
   box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
 }
 
@@ -170,7 +168,7 @@ const configSummary = computed(() => {
 }
 
 .node-icon {
-  font-size: 22px;
+  font-size: var(--text-3xl);
   flex-shrink: 0;
 }
 
@@ -183,17 +181,17 @@ const configSummary = computed(() => {
 }
 
 .node-name {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
-  color: #1f2937;
+  color: var(--c-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .node-type-label {
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
 }
 
 .node-right {
@@ -204,16 +202,16 @@ const configSummary = computed(() => {
 }
 
 .status-indicator {
-  font-size: 16px;
+  font-size: var(--text-xl);
 }
 
 .btn-delete {
   border: none;
   background: none;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-md);
   padding: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   opacity: 0;
   transition: opacity 0.15s;
 }
@@ -230,7 +228,7 @@ const configSummary = computed(() => {
 .btn-view-result {
   opacity: 0.8;
   transition: opacity 0.15s;
-  font-size: 16px;
+  font-size: var(--text-xl);
   padding: 4px;
 }
 
@@ -245,9 +243,9 @@ const configSummary = computed(() => {
 }
 
 .config-summary {
-  font-size: 12px;
-  color: #6b7280;
-  font-family: "Courier New", monospace;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
+  font-family: var(--font-mono);
 }
 
 .node-footer {
@@ -255,11 +253,11 @@ const configSummary = computed(() => {
 }
 
 .version-badge {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   padding: 2px 8px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: rgba(16, 185, 129, 0.08);
-  color: #10b981;
+  color: var(--c-brand);
   font-weight: 500;
 }
 </style>

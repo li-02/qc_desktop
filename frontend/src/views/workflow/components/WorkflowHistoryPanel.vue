@@ -57,12 +57,11 @@
             </div>
           </div>
           <!-- 悬浮操作按钮 -->
-          <div
-            v-if="hoveredExecId === exec.id && renamingExecId !== exec.id"
-            class="exec-actions"
-            @click.stop>
+          <div v-if="hoveredExecId === exec.id && renamingExecId !== exec.id" class="exec-actions" @click.stop>
             <button class="exec-action-btn" title="重命名" @click.stop="startRename(exec)">✏️</button>
-            <button class="exec-action-btn exec-action-delete" title="删除" @click.stop="confirmDelete(exec)">🗑️</button>
+            <button class="exec-action-btn exec-action-delete" title="删除" @click.stop="confirmDelete(exec)">
+              🗑️
+            </button>
           </div>
         </div>
       </div>
@@ -119,9 +118,7 @@
             </div>
             <!-- 结果数据 -->
             <div class="node-result" v-if="canViewResult(ne)">
-              <button class="btn-view-result" @click="$emit('view-result', ne)">
-                查看结果 →
-              </button>
+              <button class="btn-view-result" @click="$emit('view-result', ne)">查看结果 →</button>
             </div>
           </div>
         </div>
@@ -252,10 +249,7 @@ const calcDuration = (start: string, end: string) => {
 };
 
 const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType }) => {
-  return (
-    ne.status === "COMPLETED" &&
-    ["OUTLIER_DETECTION", "IMPUTATION", "FLUX_PARTITIONING", "CORRELATION_ANALYSIS"].includes(ne.nodeType)
-  );
+  return ne.status === "COMPLETED" && ["OUTLIER_DETECTION", "IMPUTATION", "FLUX_PARTITIONING"].includes(ne.nodeType);
 };
 </script>
 
@@ -264,7 +258,7 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--c-bg-surface);
   backdrop-filter: blur(20px);
 }
 
@@ -274,33 +268,33 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
-  border-bottom: 1px solid rgba(229, 231, 235, 0.5);
+  border-bottom: 1px solid var(--c-border);
   flex-shrink: 0;
 }
 
 .panel-title-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .panel-icon {
-  font-size: 16px;
+  font-size: var(--text-xl);
 }
 
 .panel-title {
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
-  color: #1f2937;
+  color: var(--c-text-base);
   margin: 0;
 }
 
 .history-count {
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 2px 7px;
-  border-radius: 10px;
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
+  border-radius: var(--radius-control);
+  background: var(--c-brand-soft);
+  color: var(--c-brand);
   font-weight: 500;
 }
 
@@ -308,10 +302,10 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
   width: 26px;
   height: 26px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: transparent;
-  color: #9ca3af;
-  font-size: 13px;
+  color: var(--c-text-disabled);
+  font-size: var(--text-sm);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -320,8 +314,8 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
 }
 
 .btn-close:hover {
-  background: rgba(239, 68, 68, 0.08);
-  color: #ef4444;
+  background: var(--c-danger-bg);
+  color: var(--c-danger);
 }
 
 /* ===== Empty ===== */
@@ -331,24 +325,24 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 40px 20px;
 }
 
 .empty-icon {
-  font-size: 36px;
+  font-size: var(--text-display-md);
   opacity: 0.4;
 }
 
 .empty-text {
-  font-size: 14px;
-  color: #6b7280;
+  font-size: var(--text-base);
+  color: var(--c-text-muted);
   margin: 0;
 }
 
 .empty-hint {
-  font-size: 12px;
-  color: #9ca3af;
+  font-size: var(--text-sm);
+  color: var(--c-text-disabled);
   margin: 0;
   text-align: center;
 }
@@ -364,9 +358,9 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
 .exec-list {
   width: 220px;
   min-width: 220px;
-  border-right: 1px solid rgba(229, 231, 235, 0.4);
+  border-right: 1px solid var(--c-border);
   overflow-y: auto;
-  padding: 8px;
+  padding: var(--space-2);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -375,9 +369,9 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
 .exec-item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 10px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   cursor: pointer;
   border: 1px solid transparent;
   transition: all 0.2s ease;
@@ -385,38 +379,38 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
 }
 
 .exec-item:hover {
-  background: rgba(255, 255, 255, 0.9);
-  border-color: rgba(229, 231, 235, 0.6);
+  background: var(--c-bg-surface);
+  border-color: var(--c-border);
 }
 
 .exec-item.active {
-  background: rgba(16, 185, 129, 0.06);
-  border-color: rgba(16, 185, 129, 0.25);
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
 }
 
 .exec-status-dot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   flex-shrink: 0;
   margin-top: 4px;
 }
 
 .dot-completed {
-  background: #10b981;
+  background: var(--c-brand);
 }
 .dot-running {
-  background: #f59e0b;
+  background: var(--c-warning);
   animation: pulse 1.2s infinite;
 }
 .dot-failed {
-  background: #ef4444;
+  background: var(--c-danger);
 }
 .dot-cancelled {
-  background: #9ca3af;
+  background: var(--c-text-disabled);
 }
 .dot-pending {
-  background: #6b7280;
+  background: var(--c-text-muted);
 }
 
 @keyframes pulse {
@@ -445,56 +439,56 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
 }
 
 .exec-status-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 
 .label-completed {
-  color: #10b981;
+  color: var(--c-brand);
 }
 .label-running {
-  color: #f59e0b;
+  color: var(--c-warning);
 }
 .label-failed {
-  color: #ef4444;
+  color: var(--c-danger);
 }
 .label-cancelled {
-  color: #9ca3af;
+  color: var(--c-text-disabled);
 }
 .label-pending {
-  color: #6b7280;
+  color: var(--c-text-muted);
 }
 
 .exec-time {
-  font-size: 10px;
-  color: #9ca3af;
+  font-size: var(--text-2xs);
+  color: var(--c-text-disabled);
   flex-shrink: 0;
 }
 
 .exec-detail-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .exec-dataset {
-  font-size: 11px;
-  color: #6b7280;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
 }
 
 .exec-progress {
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: var(--text-xs);
+  color: var(--c-text-disabled);
 }
 
 .exec-duration {
-  font-size: 10px;
-  color: #9ca3af;
+  font-size: var(--text-2xs);
+  color: var(--c-text-disabled);
 }
 
 .exec-error {
-  font-size: 10px;
-  color: #ef4444;
+  font-size: var(--text-2xs);
+  color: var(--c-danger);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -513,9 +507,9 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
   width: 22px;
   height: 22px;
   border: none;
-  border-radius: 5px;
+  border-radius: var(--radius-control);
   background: transparent;
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -526,11 +520,11 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
 }
 
 .exec-action-btn:hover {
-  background: rgba(107, 114, 128, 0.12);
+  background: var(--c-bg-subtle);
 }
 
 .exec-action-delete:hover {
-  background: rgba(239, 68, 68, 0.1);
+  background: var(--c-danger-bg);
 }
 
 /* ===== Inline Rename ===== */
@@ -540,29 +534,29 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
 
 .exec-rename-input {
   width: 100%;
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 3px 6px;
-  border: 1px solid rgba(16, 185, 129, 0.4);
-  border-radius: 4px;
+  border: 1px solid var(--c-brand-border);
+  border-radius: var(--radius-sm);
   outline: none;
-  background: rgba(255, 255, 255, 0.95);
-  color: #374151;
+  background: var(--c-bg-surface);
+  color: var(--c-text-base);
   box-sizing: border-box;
 }
 
 .exec-rename-input:focus {
-  border-color: #10b981;
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
+  border-color: var(--c-brand);
+  box-shadow: 0 0 0 2px var(--c-brand-soft);
 }
 
 /* ===== Exec Detail (右) ===== */
 .exec-detail {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .exec-detail-empty {
@@ -573,45 +567,45 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
 .detail-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .detail-title {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #374151;
+  color: var(--c-text-base);
 }
 
 .detail-exec-id {
-  font-size: 11px;
-  color: #9ca3af;
-  font-family: "Courier New", monospace;
+  font-size: var(--text-xs);
+  color: var(--c-text-disabled);
+  font-family: var(--font-mono);
 }
 
 /* ===== Summary Cards ===== */
 .exec-summary-cards {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .summary-card {
   flex: 1;
   padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(229, 231, 235, 0.5);
-  border-radius: 8px;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   text-align: center;
 }
 
 .summary-value {
-  font-size: 16px;
+  font-size: var(--text-xl);
   font-weight: 700;
-  color: #10b981;
+  color: var(--c-brand);
 }
 
 .summary-label {
-  font-size: 10px;
-  color: #9ca3af;
+  font-size: var(--text-2xs);
+  color: var(--c-text-disabled);
   margin-top: 2px;
 }
 
@@ -619,42 +613,42 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
 .node-exec-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1);
 }
 
 .node-exec-item {
   padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(229, 231, 235, 0.5);
-  background: rgba(255, 255, 255, 0.7);
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-surface);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .node-completed {
-  border-left: 3px solid #10b981;
+  border-left: 3px solid var(--c-brand);
 }
 .node-failed {
-  border-left: 3px solid #ef4444;
-  background: rgba(239, 68, 68, 0.03);
+  border-left: 3px solid var(--c-danger);
+  background: var(--c-danger-bg);
 }
 .node-skipped {
-  border-left: 3px solid #d1d5db;
+  border-left: 3px solid var(--c-border-strong);
   opacity: 0.65;
 }
 .node-running {
-  border-left: 3px solid #f59e0b;
+  border-left: 3px solid var(--c-warning);
 }
 .node-pending {
-  border-left: 3px solid #e5e7eb;
+  border-left: 3px solid var(--c-border);
 }
 
 .node-exec-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex: 1;
   min-width: 0;
 }
@@ -662,10 +656,10 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
 .node-order {
   width: 20px;
   height: 20px;
-  border-radius: 50%;
-  background: rgba(107, 114, 128, 0.12);
-  color: #6b7280;
-  font-size: 11px;
+  border-radius: var(--radius-full);
+  background: var(--c-bg-subtle);
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -681,67 +675,67 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
 }
 
 .node-name {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
-  color: #374151;
+  color: var(--c-text-base);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .node-type-tag {
-  font-size: 10px;
-  color: #9ca3af;
+  font-size: var(--text-2xs);
+  color: var(--c-text-disabled);
 }
 
 .node-exec-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
 .node-status-badge {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   padding: 2px 7px;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 
 .badge-completed {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
+  background: var(--c-brand-soft);
+  color: var(--c-brand);
 }
 .badge-failed {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background: var(--c-danger-bg);
+  color: var(--c-danger);
 }
 .badge-skipped {
-  background: rgba(209, 213, 219, 0.3);
-  color: #9ca3af;
+  background: var(--c-bg-subtle);
+  color: var(--c-text-disabled);
 }
 .badge-running {
-  background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
+  background: var(--c-warning-bg);
+  color: var(--c-warning);
 }
 .badge-pending {
-  background: rgba(107, 114, 128, 0.1);
-  color: #6b7280;
+  background: var(--c-bg-subtle);
+  color: var(--c-text-muted);
 }
 
 .node-duration {
-  font-size: 10px;
-  color: #9ca3af;
-  font-family: "Courier New", monospace;
+  font-size: var(--text-2xs);
+  color: var(--c-text-disabled);
+  font-family: var(--font-mono);
 }
 
 .node-error {
   width: 100%;
-  font-size: 11px;
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.06);
+  font-size: var(--text-xs);
+  color: var(--c-danger);
+  background: var(--c-danger-bg);
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: flex-start;
   gap: 4px;
@@ -755,12 +749,12 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: #6b7280;
-  background: rgba(16, 185, 129, 0.04);
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
+  background: var(--c-brand-soft);
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .result-icon {
@@ -774,8 +768,8 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
 .btn-view-result {
   border: none;
   background: transparent;
-  color: #10b981;
-  font-size: 11px;
+  color: var(--c-brand);
+  font-size: var(--text-xs);
   font-weight: 500;
   cursor: pointer;
   padding: 0;
@@ -784,7 +778,7 @@ const canViewResult = (ne: WorkflowNodeExecution & { nodeType: WorkflowNodeType 
 }
 
 .btn-view-result:hover {
-  color: #059669;
+  color: var(--c-brand-hover);
   text-decoration: underline;
 }
 </style>

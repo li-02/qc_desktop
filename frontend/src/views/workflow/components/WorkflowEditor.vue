@@ -3,11 +3,7 @@
     <div class="pipeline-container">
       <!-- 节点列表 -->
       <div class="node-list">
-        <div
-          v-for="(node, index) in nodes"
-          :key="node.id"
-          class="node-wrapper"
-        >
+        <div v-for="(node, index) in nodes" :key="node.id" class="node-wrapper">
           <!-- 连接线 -->
           <div v-if="index > 0" class="connector-line"></div>
 
@@ -20,9 +16,8 @@
             :is-failed="isNodeFailed(index)"
             @click="$emit('select-node', node)"
             @delete="$emit('delete-node', node.id)"
-            @toggle="(enabled) => $emit('toggle-node', node.id, enabled)"
-            @view-result="$emit('view-result', node)"
-          />
+            @toggle="enabled => $emit('toggle-node', node.id, enabled)"
+            @view-result="$emit('view-result', node)" />
         </div>
       </div>
 
@@ -39,9 +34,9 @@
 </template>
 
 <script setup lang="ts">
-import type { WorkflowNode, WorkflowProgressEvent } from '@shared/types/workflow';
-import { useWorkflowStore } from '@/stores/useWorkflowStore';
-import WorkflowNodeCard from './WorkflowNodeCard.vue';
+import type { WorkflowNode, WorkflowProgressEvent } from "@shared/types/workflow";
+import { useWorkflowStore } from "@/stores/useWorkflowStore";
+import WorkflowNodeCard from "./WorkflowNodeCard.vue";
 
 const workflowStore = useWorkflowStore();
 
@@ -52,43 +47,42 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  (e: 'add-node'): void;
-  (e: 'select-node', node: WorkflowNode): void;
-  (e: 'delete-node', nodeId: number): void;
-  (e: 'toggle-node', nodeId: number, enabled: boolean): void;
-  (e: 'reorder', nodeIds: number[]): void;
-  (e: 'view-result', node: WorkflowNode): void;
+  (e: "add-node"): void;
+  (e: "select-node", node: WorkflowNode): void;
+  (e: "delete-node", nodeId: number): void;
+  (e: "toggle-node", nodeId: number, enabled: boolean): void;
+  (e: "reorder", nodeIds: number[]): void;
+  (e: "view-result", node: WorkflowNode): void;
 }>();
 
 const isNodeRunning = (index: number) => {
   if (!props.executing || !props.executionProgress) return false;
-  return props.executionProgress.currentNodeIndex === index &&
-    props.executionProgress.nodeStatus === 'RUNNING';
+  return props.executionProgress.currentNodeIndex === index && props.executionProgress.nodeStatus === "RUNNING";
 };
 
 const isNodeCompleted = (index: number) => {
   if (props.executionProgress) {
-    return props.executionProgress.currentNodeIndex > index ||
-      (props.executionProgress.currentNodeIndex === index &&
-        props.executionProgress.nodeStatus === 'COMPLETED');
+    return (
+      props.executionProgress.currentNodeIndex > index ||
+      (props.executionProgress.currentNodeIndex === index && props.executionProgress.nodeStatus === "COMPLETED")
+    );
   }
   // 无实时进度时，降级读取历史执行记录
   const node = props.nodes[index];
   if (!node) return false;
   const exec = workflowStore.getNodeExecution(node.id);
-  return exec?.status === 'COMPLETED';
+  return exec?.status === "COMPLETED";
 };
 
 const isNodeFailed = (index: number) => {
   if (props.executionProgress) {
-    return props.executionProgress.currentNodeIndex === index &&
-      props.executionProgress.nodeStatus === 'FAILED';
+    return props.executionProgress.currentNodeIndex === index && props.executionProgress.nodeStatus === "FAILED";
   }
   // 无实时进度时，降级读取历史执行记录
   const node = props.nodes[index];
   if (!node) return false;
   const exec = workflowStore.getNodeExecution(node.id);
-  return exec?.status === 'FAILED';
+  return exec?.status === "FAILED";
 };
 </script>
 
@@ -124,8 +118,8 @@ const isNodeFailed = (index: number) => {
 .connector-line {
   width: 2px;
   height: 24px;
-  background: linear-gradient(180deg, rgba(16, 185, 129, 0.3), rgba(16, 185, 129, 0.15));
-  border-radius: 1px;
+  background: linear-gradient(180deg, var(--c-brand-border), var(--c-brand-soft));
+  border-radius: var(--radius-xs);
 }
 
 .add-node-area {
@@ -140,11 +134,11 @@ const isNodeFailed = (index: number) => {
   align-items: center;
   gap: 8px;
   padding: 12px 28px;
-  border: 2px dashed rgba(16, 185, 129, 0.35);
-  border-radius: 12px;
+  border: 2px dashed var(--c-brand-border);
+  border-radius: var(--radius-control);
   background: rgba(16, 185, 129, 0.04);
-  color: #10b981;
-  font-size: 14px;
+  color: var(--c-brand);
+  font-size: var(--text-md);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -153,13 +147,13 @@ const isNodeFailed = (index: number) => {
 }
 
 .btn-add-node:hover {
-  background: rgba(16, 185, 129, 0.1);
-  border-color: #10b981;
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand);
   transform: translateY(-1px);
 }
 
 .add-icon {
-  font-size: 18px;
+  font-size: var(--text-2xl);
   font-weight: 700;
 }
 </style>

@@ -149,7 +149,9 @@
               </div>
             </el-option>
           </el-select>
-          <div v-if="selectedImputationMethodInfo" class="method-desc">{{ selectedImputationMethodInfo.description }}</div>
+          <div v-if="selectedImputationMethodInfo" class="method-desc">
+            {{ selectedImputationMethodInfo.description }}
+          </div>
         </div>
 
         <!-- 方法参数（动态加载） -->
@@ -215,11 +217,17 @@
               :step="0.05"
               style="flex: 1"
               @change="onImputationConfigChange" />
-            <span style="font-size: 12px; color: #374151; min-width: 36px; text-align: right">
-              {{ imputationValidateSplit === 0 ? '关闭' : (imputationValidateSplit * 100).toFixed(0) + '%' }}
+            <span style="font-size: var(--text-sm); color: var(--c-text-base); min-width: 36px; text-align: right">
+              {{ imputationValidateSplit === 0 ? "关闭" : (imputationValidateSplit * 100).toFixed(0) + "%" }}
             </span>
           </div>
-          <div class="param-tooltip">{{ imputationValidateSplit === 0 ? '不启用验证集评估' : `使用 ${(imputationValidateSplit * 100).toFixed(0)}% 的数据评估插补效果` }}</div>
+          <div class="param-tooltip">
+            {{
+              imputationValidateSplit === 0
+                ? "不启用验证集评估"
+                : `使用 ${(imputationValidateSplit * 100).toFixed(0)}% 的数据评估插补效果`
+            }}
+          </div>
         </div>
       </template>
 
@@ -303,11 +311,6 @@
               <p><b>columnMapping</b>: {neeCol, rgCol, tairCol, vpdCol, rhCol?, ustarCol?}</p>
               <p><b>siteInfo</b>: {latDeg, longDeg, timezoneHour}</p>
               <p><b>options</b>: {ustarFiltering?: boolean}(可选)</p>
-            </template>
-            <template v-else-if="node.nodeType === 'CORRELATION_ANALYSIS'">
-              <p><b>columns</b>: 要分析的列名数组</p>
-              <p><b>method</b>: pearson / spearman / kendall</p>
-              <p><b>significanceLevel</b>: 显著性水平(可选，默认0.05)</p>
             </template>
           </div>
         </div>
@@ -459,8 +462,12 @@ const parseImputationConfig = async (configStr: string) => {
       // 填充缺省参数值
       for (const p of imputationMethodParams.value) {
         if (imputationParams.value[p.paramKey] === undefined && p.defaultValue !== null) {
-          const val = p.paramType === "number" ? Number(p.defaultValue) :
-                      p.paramType === "boolean" ? p.defaultValue === "true" : p.defaultValue;
+          const val =
+            p.paramType === "number"
+              ? Number(p.defaultValue)
+              : p.paramType === "boolean"
+                ? p.defaultValue === "true"
+                : p.defaultValue;
           imputationParams.value[p.paramKey] = val;
         }
       }
@@ -481,8 +488,12 @@ const onImputationMethodChange = async () => {
   // 填充默认值
   for (const p of imputationMethodParams.value) {
     if (p.defaultValue !== null) {
-      const val = p.paramType === "number" ? Number(p.defaultValue) :
-                  p.paramType === "boolean" ? p.defaultValue === "true" : p.defaultValue;
+      const val =
+        p.paramType === "number"
+          ? Number(p.defaultValue)
+          : p.paramType === "boolean"
+            ? p.defaultValue === "true"
+            : p.defaultValue;
       imputationParams.value[p.paramKey] = val;
     }
   }
@@ -728,13 +739,13 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
-  border-bottom: 1px solid rgba(229, 231, 235, 0.4);
+  border-bottom: 1px solid var(--c-border);
 }
 
 .panel-title {
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 600;
-  color: #1f2937;
+  color: var(--c-text-primary);
   margin: 0;
 }
 
@@ -742,15 +753,15 @@ onMounted(async () => {
   border: none;
   background: none;
   cursor: pointer;
-  font-size: 16px;
-  color: #9ca3af;
+  font-size: var(--text-xl);
+  color: var(--c-text-muted);
   padding: 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: all 0.15s;
 }
 
 .btn-close:hover {
-  color: #1f2937;
+  color: var(--c-text-primary);
   background: rgba(0, 0, 0, 0.05);
 }
 
@@ -766,9 +777,9 @@ onMounted(async () => {
 
 .config-label {
   display: block;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #6b7280;
+  color: var(--c-text-secondary);
   margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -779,44 +790,44 @@ onMounted(async () => {
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: rgba(16, 185, 129, 0.08);
-  color: #059669;
-  font-size: 13px;
+  color: var(--c-brand-active);
+  font-size: var(--text-sm);
   font-weight: 500;
 }
 
 .type-icon {
-  font-size: 16px;
+  font-size: var(--text-xl);
 }
 
 .config-divider {
   height: 1px;
-  background: rgba(229, 231, 235, 0.4);
+  background: var(--c-border);
   margin: 16px 0;
 }
 
 .config-textarea :deep(.el-textarea__inner) {
-  font-family: "Courier New", monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
   line-height: 1.6;
-  background: rgba(249, 250, 251, 0.8);
-  border-radius: 8px;
+  background: var(--c-bg-muted);
+  border-radius: var(--radius-control);
 }
 
 .config-error {
   margin-top: 6px;
-  font-size: 12px;
-  color: #ef4444;
+  font-size: var(--text-sm);
+  color: var(--c-danger);
 }
 
 .config-help {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
   line-height: 1.8;
-  background: rgba(249, 250, 251, 0.6);
+  background: var(--c-bg-muted);
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
 }
 
 .config-help p {
@@ -824,8 +835,8 @@ onMounted(async () => {
 }
 
 .config-help b {
-  font-family: "Courier New", monospace;
-  color: #374151;
+  font-family: var(--font-mono);
+  color: var(--c-text-base);
 }
 
 .method-option {
@@ -836,17 +847,17 @@ onMounted(async () => {
 }
 
 .method-category {
-  font-size: 11px;
-  color: #9ca3af;
-  background: rgba(249, 250, 251, 0.8);
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
+  background: var(--c-bg-muted);
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .method-desc {
   margin-top: 6px;
-  font-size: 12px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
   line-height: 1.5;
 }
 
@@ -858,14 +869,14 @@ onMounted(async () => {
 }
 
 .template-col-count {
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
 }
 
 .param-tooltip {
   margin-top: 4px;
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
   line-height: 1.4;
 }
 </style>

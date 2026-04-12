@@ -11,8 +11,7 @@
       :key="wf.id"
       class="workflow-item"
       :class="{ active: wf.id === activeId }"
-      @click="$emit('select', wf.id)"
-    >
+      @click="$emit('select', wf.id)">
       <div class="item-main">
         <div class="item-name">{{ wf.name }}</div>
       </div>
@@ -25,7 +24,7 @@
 </template>
 
 <script setup lang="ts">
-import type { Workflow } from '@shared/types/workflow';
+import type { Workflow } from "@shared/types/workflow";
 
 defineProps<{
   workflows: Workflow[];
@@ -34,11 +33,10 @@ defineProps<{
 }>();
 
 defineEmits<{
-  (e: 'select', id: number): void;
-  (e: 'delete', id: number): void;
-  (e: 'clone', id: number): void;
+  (e: "select", id: number): void;
+  (e: "delete", id: number): void;
+  (e: "clone", id: number): void;
 }>();
-
 </script>
 
 <style scoped>
@@ -48,11 +46,12 @@ defineEmits<{
   padding: 8px;
 }
 
-.list-loading, .list-empty {
+.list-loading,
+.list-empty {
   padding: 32px 16px;
   text-align: center;
-  color: #9ca3af;
-  font-size: 13px;
+  color: var(--c-text-muted);
+  font-size: var(--text-base);
 }
 
 .workflow-item {
@@ -60,19 +59,19 @@ defineEmits<{
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   cursor: pointer;
   transition: all 0.2s ease;
   margin-bottom: 4px;
 }
 
 .workflow-item:hover {
-  background: rgba(16, 185, 129, 0.06);
+  background: var(--c-brand-soft);
 }
 
 .workflow-item.active {
-  background: rgba(16, 185, 129, 0.12);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  background: var(--c-brand-soft);
+  border: 1px solid var(--c-brand-border);
 }
 
 .item-main {
@@ -81,9 +80,9 @@ defineEmits<{
 }
 
 .item-name {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 500;
-  color: #1f2937;
+  color: var(--c-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -97,21 +96,36 @@ defineEmits<{
 }
 
 .item-status {
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 1px 6px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font-weight: 500;
 }
 
-.s-draft { background: rgba(156, 163, 175, 0.12); color: #6b7280; }
-.s-ready { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-.s-running { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
-.s-completed { background: rgba(16, 185, 129, 0.1); color: #10b981; }
-.s-failed { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+.s-draft {
+  background: rgba(156, 163, 175, 0.12);
+  color: var(--c-text-secondary);
+}
+.s-ready {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--c-info);
+}
+.s-running {
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--c-warning);
+}
+.s-completed {
+  background: var(--c-brand-soft);
+  color: var(--c-brand);
+}
+.s-failed {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--c-danger);
+}
 
 .item-time {
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
 }
 
 .item-actions {
@@ -129,9 +143,9 @@ defineEmits<{
   border: none;
   background: none;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-md);
   padding: 2px 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: background 0.15s;
 }
 

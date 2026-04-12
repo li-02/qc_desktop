@@ -1,17 +1,11 @@
-<template>
+﻿<template>
   <div class="execution-view">
     <div class="execution-header">
       <div class="execution-info">
         <span class="execution-label">执行进度</span>
         <span class="execution-percent">{{ overallProgress }}%</span>
       </div>
-      <button
-        v-if="executing"
-        class="btn-cancel"
-        @click="$emit('cancel')"
-      >
-        取消执行
-      </button>
+      <button v-if="executing" class="btn-cancel" @click="$emit('cancel')">取消执行</button>
     </div>
 
     <div class="progress-bar-container">
@@ -26,8 +20,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import type { WorkflowProgressEvent } from '@shared/types/workflow';
+import { computed } from "vue";
+import type { WorkflowProgressEvent } from "@shared/types/workflow";
 
 const props = defineProps<{
   progress: WorkflowProgressEvent | null;
@@ -36,31 +30,36 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  (e: 'cancel'): void;
+  (e: "cancel"): void;
 }>();
 
 const statusIcon = computed(() => {
-  if (!props.progress) return '⏳';
+  if (!props.progress) return "⏳";
   switch (props.progress.nodeStatus) {
-    case 'RUNNING': return '⏳';
-    case 'COMPLETED': return '✅';
-    case 'FAILED': return '❌';
-    case 'SKIPPED': return '⏭️';
-    default: return '⏳';
+    case "RUNNING":
+      return "⏳";
+    case "COMPLETED":
+      return "✅";
+    case "FAILED":
+      return "❌";
+    case "SKIPPED":
+      return "⏭️";
+    default:
+      return "⏳";
   }
 });
 
 const statusClass = computed(() => {
-  if (!props.progress) return '';
-  return 'status-' + props.progress.nodeStatus.toLowerCase();
+  if (!props.progress) return "";
+  return "status-" + props.progress.nodeStatus.toLowerCase();
 });
 </script>
 
 <style scoped>
 .execution-view {
   padding: 16px 20px;
-  border-top: 1px solid rgba(229, 231, 235, 0.4);
-  background: rgba(255, 255, 255, 0.6);
+  border-top: 1px solid var(--c-border);
+  background: var(--c-bg-surface);
   backdrop-filter: blur(8px);
 }
 
@@ -78,25 +77,25 @@ const statusClass = computed(() => {
 }
 
 .execution-label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #374151;
+  color: var(--c-text-base);
 }
 
 .execution-percent {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #10b981;
-  font-family: 'Courier New', monospace;
+  color: var(--c-brand);
+  font-family: var(--font-mono);
 }
 
 .btn-cancel {
   padding: 5px 14px;
   border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: rgba(239, 68, 68, 0.06);
-  color: #ef4444;
-  font-size: 12px;
+  color: var(--c-danger);
+  font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -104,21 +103,21 @@ const statusClass = computed(() => {
 
 .btn-cancel:hover {
   background: rgba(239, 68, 68, 0.12);
-  border-color: #ef4444;
+  border-color: var(--c-danger);
 }
 
 .progress-bar-container {
   height: 6px;
-  background: rgba(229, 231, 235, 0.4);
-  border-radius: 3px;
+  background: var(--c-border);
+  border-radius: var(--radius-xs);
   overflow: hidden;
   margin-bottom: 10px;
 }
 
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, #10b981, #34d399);
-  border-radius: 3px;
+  background: linear-gradient(90deg, var(--c-brand), var(--color-primary-300));
+  border-radius: var(--radius-xs);
   transition: width 0.4s ease;
 }
 
@@ -129,16 +128,24 @@ const statusClass = computed(() => {
 }
 
 .message-icon {
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 .message-text {
-  font-size: 13px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
 }
 
-.status-running { color: #f59e0b; }
-.status-completed { color: #10b981; }
-.status-failed { color: #ef4444; }
-.status-skipped { color: #9ca3af; }
+.status-running {
+  color: var(--c-warning);
+}
+.status-completed {
+  color: var(--c-brand);
+}
+.status-failed {
+  color: var(--c-danger);
+}
+.status-skipped {
+  color: var(--c-text-muted);
+}
 </style>

@@ -93,7 +93,7 @@ const getStageColor = (stageType: string) => {
   const colors: Record<string, string> = {
     RAW: "#94a3b8", // Slate-400
     FILTERED: "#06b6d4", // Cyan-500
-    QC: "#10b981", // Emerald-500
+    QC: "#2d6a4f", // Emerald-500
   };
   return colors[stageType] || "#94a3b8";
 };
@@ -253,12 +253,7 @@ onMounted(() => {
 
           <!-- 操作按钮（hover 显示） -->
           <div class="version-actions">
-            <button
-              class="version-action-btn"
-              title="重命名"
-              @click.stop="startRename(node, $event)">
-              ✎
-            </button>
+            <button class="version-action-btn" title="重命名" @click.stop="startRename(node, $event)">✎</button>
             <button
               v-if="canDelete(node)"
               class="version-action-btn version-action-danger"
@@ -282,14 +277,14 @@ onMounted(() => {
 .version-tree-container {
   margin-top: 2px;
   margin-left: 30px;
-  border-left: 1px solid #dcfce7;
+  border-left: 1px solid var(--c-border);
   padding-left: 2px;
 }
 
 .version-loading {
   padding: 6px 8px;
-  font-size: 11px;
-  color: #64748b;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -298,9 +293,9 @@ onMounted(() => {
 .loading-spinner {
   width: 8px;
   height: 8px;
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  border-left-color: #10b981;
-  border-radius: 50%;
+  border: 1px solid var(--c-border);
+  border-left-color: var(--c-brand);
+  border-radius: var(--radius-full);
   animation: spin 0.8s linear infinite;
 }
 
@@ -321,22 +316,22 @@ onMounted(() => {
   height: 26px;
   padding-right: 8px;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   transition: background-color 0.15s ease;
   position: relative;
   gap: 6px;
 }
 
 .version-row:hover {
-  background-color: #f8fafc;
+  background-color: var(--sb-item-bg-hover);
 }
 
 .version-row.is-active {
-  background-color: #ecfdf5;
+  background-color: var(--sb-item-bg-active);
 }
 
 .version-row.is-active .version-name {
-  color: #047857;
+  color: var(--c-brand);
   font-weight: 600;
 }
 
@@ -347,8 +342,8 @@ onMounted(() => {
   top: 1px;
   bottom: 50%;
   width: 6px;
-  border-bottom: 1px solid #bbf7d0;
-  border-left: 1px solid #bbf7d0;
+  border-bottom: 1px solid var(--c-border);
+  border-left: 1px solid var(--c-border);
 }
 
 .version-icon {
@@ -357,16 +352,16 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
+  font-size: var(--text-3xs);
   font-weight: 600;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
 
 .version-name {
   flex: 1;
-  font-size: 11px;
-  color: #475569;
+  font-size: var(--text-xs);
+  color: var(--c-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -374,19 +369,20 @@ onMounted(() => {
 }
 
 .version-stage {
-  font-size: 10px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 999px;
+  font-size: var(--text-2xs);
+  background: var(--c-bg-subtle);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-full);
   padding: 1px 6px;
   line-height: 1.2;
   flex-shrink: 0;
+  color: var(--c-text-muted);
 }
 
 .version-empty {
   padding: 6px 8px;
-  font-size: 11px;
-  color: #94a3b8;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
 }
 
 /* 操作按钮区域 - hover 时显示 */
@@ -409,36 +405,208 @@ onMounted(() => {
   justify-content: center;
   background: none;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 12px;
-  color: #94a3b8;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
   padding: 0;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
   line-height: 1;
 }
 
 .version-action-btn:hover {
-  background-color: rgba(16, 185, 129, 0.1);
-  color: #10b981;
+  background-color: var(--sb-item-bg-hover);
+  color: var(--c-brand);
 }
 
 .version-action-btn.version-action-danger:hover {
-  background-color: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background-color: var(--c-danger-bg);
+  color: var(--c-danger);
 }
 
 /* 内联编辑输入框 */
 .version-remark-input {
   flex: 1;
   height: 20px;
-  font-size: 11px;
-  color: #1f2937;
-  border: 1px solid #10b981;
-  border-radius: 4px;
+  font-size: var(--text-xs);
+  color: var(--c-text-base);
+  border: 1px solid var(--c-brand);
+  border-radius: var(--radius-sm);
   padding: 0 4px;
   outline: none;
-  background: #fff;
+  background: var(--c-bg-surface);
+  min-width: 0;
+}
+
+.version-loading {
+  padding: 6px 8px;
+  font-size: var(--text-xs);
+  color: rgba(255, 255, 255, 0.45);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.loading-spinner {
+  width: 8px;
+  height: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-left-color: rgba(255, 255, 255, 0.7);
+  border-radius: var(--radius-full);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.version-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.version-row {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding-right: 8px;
+  cursor: pointer;
+  border-radius: var(--radius-control);
+  transition: background-color 0.15s ease;
+  position: relative;
+  gap: 6px;
+}
+
+.version-row:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.version-row.is-active {
+  background-color: rgba(255, 255, 255, 0.13);
+}
+
+.version-row.is-active .version-name {
+  color: var(--sb-text-primary);
+  font-weight: 600;
+}
+
+/* Tree connection guide for nested items */
+.tree-guide {
+  position: absolute;
+  left: -6px;
+  top: 1px;
+  bottom: 50%;
+  width: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.version-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-3xs);
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.version-name {
+  flex: 1;
+  font-size: var(--text-xs);
+  color: var(--sb-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1;
+}
+
+.version-stage {
+  font-size: var(--text-2xs);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius-full);
+  padding: 1px 6px;
+  line-height: 1.2;
+  flex-shrink: 0;
+  color: var(--sb-text-secondary);
+}
+
+.version-stage {
+  font-size: var(--text-2xs);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-full);
+  padding: 1px 6px;
+  line-height: 1.2;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.version-empty {
+  padding: 6px 8px;
+  font-size: var(--text-xs);
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* 操作按钮区域 - hover 时显示 */
+.version-actions {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.version-row:hover .version-actions {
+  display: flex;
+}
+
+.version-action-btn {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: rgba(255, 255, 255, 0.45);
+  padding: 0;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+  line-height: 1;
+}
+
+.version-action-btn:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.version-action-btn.version-action-danger:hover {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+/* 内联编辑输入框 */
+.version-remark-input {
+  flex: 1;
+  height: 20px;
+  font-size: var(--text-xs);
+  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 0 4px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.08);
   min-width: 0;
 }
 </style>

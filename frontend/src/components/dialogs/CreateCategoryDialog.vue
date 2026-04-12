@@ -20,14 +20,26 @@ const nameStatusText = computed(() => {
   return nameCheckStatus.value.valid ? "名称可用" : nameCheckStatus.value.message || "名称不可用";
 });
 const canSubmit = computed(() => {
-  return !categoryStore.loading && !nameCheckStatus.value.checking && nameCheckStatus.value.valid && Boolean(categoryName.value.trim());
+  return (
+    !categoryStore.loading &&
+    !nameCheckStatus.value.checking &&
+    nameCheckStatus.value.valid &&
+    Boolean(categoryName.value.trim())
+  );
 });
 
-const open = () => { dialogVisible.value = true; };
-const close = () => { dialogVisible.value = false; };
+const open = () => {
+  dialogVisible.value = true;
+};
+const close = () => {
+  dialogVisible.value = false;
+};
 
 const handleClosed = () => {
-  if (nameCheckTimer) { clearTimeout(nameCheckTimer); nameCheckTimer = null; }
+  if (nameCheckTimer) {
+    clearTimeout(nameCheckTimer);
+    nameCheckTimer = null;
+  }
   nameCheckReqId += 1;
   categoryName.value = "";
   nameCheckStatus.value = { checking: false, valid: true, message: "" };
@@ -54,7 +66,10 @@ watch(
   () => categoryName.value,
   newName => {
     const name = newName?.trim() || "";
-    if (nameCheckTimer) { clearTimeout(nameCheckTimer); nameCheckTimer = null; }
+    if (nameCheckTimer) {
+      clearTimeout(nameCheckTimer);
+      nameCheckTimer = null;
+    }
     if (!name) {
       nameCheckStatus.value = { checking: false, valid: false, message: "" };
       return;
@@ -124,11 +139,7 @@ defineExpose({ open, close });
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="close" class="cancel-btn">取消</el-button>
-          <el-button
-            @click="handleSubmit"
-            :loading="categoryStore.loading"
-            :disabled="!canSubmit"
-            class="submit-btn">
+          <el-button @click="handleSubmit" :loading="categoryStore.loading" :disabled="!canSubmit" class="submit-btn">
             确定
           </el-button>
         </div>
@@ -144,8 +155,8 @@ defineExpose({ open, close });
   --dlg-border: #e2e8f0;
   --dlg-text: #1e293b;
   --dlg-muted: #64748b;
-  --dlg-accent: #10b981;
-  border-radius: 12px !important;
+  --dlg-accent: var(--c-brand);
+  border-radius: var(--radius-panel) !important;
   overflow: hidden;
   border: 1px solid var(--dlg-border);
   background: var(--dlg-surface-elevated) !important;
@@ -187,22 +198,24 @@ defineExpose({ open, close });
 .dialog-header-icon {
   width: 28px;
   height: 28px;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   border: 1px solid #a7f3d0;
   background: #d1fae5;
   color: #047857;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.dialog-header-text { min-width: 0; }
+.dialog-header-text {
+  min-width: 0;
+}
 
 .dialog-title {
   color: var(--dlg-text);
-  font-size: 16px;
+  font-size: var(--text-xl);
   font-weight: 700;
   line-height: 1.2;
 }
@@ -210,58 +223,95 @@ defineExpose({ open, close });
 .dialog-subtitle {
   margin-top: 2px;
   color: var(--dlg-muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
-.dialog-body { display: flex; flex-direction: column; }
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+}
 
 .input-label {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: #334155;
   margin-bottom: 8px;
 }
 
 .name-input :deep(.el-input__wrapper) {
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   box-shadow: 0 0 0 1px #e2e8f0 inset;
 }
-.name-input :deep(.el-input__wrapper:hover) { box-shadow: 0 0 0 1px #cbd5e1 inset; }
-.name-input :deep(.el-input.is-focus .el-input__wrapper) { box-shadow: 0 0 0 1px #10b981 inset !important; }
+.name-input :deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px #cbd5e1 inset;
+}
+.name-input :deep(.el-input.is-focus .el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--c-brand) inset !important;
+}
 
 .name-status {
   margin-top: 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--dlg-border);
   background: #ffffff;
   padding: 7px 10px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.4;
   color: var(--dlg-muted);
 }
-.name-status.is-success { border-color: #bbf7d0; background: #f8fffb; color: #047857; }
-.name-status.is-error { border-color: #fecaca; background: #fff7f7; color: #b91c1c; }
-.name-status.is-checking { border-color: #bfdbfe; background: #f8fbff; color: #1d4ed8; }
+.name-status.is-success {
+  border-color: #bbf7d0;
+  background: #f8fffb;
+  color: #047857;
+}
+.name-status.is-error {
+  border-color: #fecaca;
+  background: #fff7f7;
+  color: #b91c1c;
+}
+.name-status.is-checking {
+  border-color: #bfdbfe;
+  background: #f8fbff;
+  color: #1d4ed8;
+}
 
-.dialog-footer { display: flex; justify-content: flex-end; gap: 8px; }
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 
 .dialog-footer .el-button {
   height: 36px;
   min-width: 100px;
   padding: 0 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font-weight: 600;
 }
 
-.cancel-btn { border: 1px solid #cbd5e1; background: #ffffff; color: #334155; }
-.cancel-btn:hover { border-color: #a7f3d0; color: #059669; background: #ecfdf5; }
+.cancel-btn {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+}
+.cancel-btn:hover {
+  border-color: #a7f3d0;
+  color: #059669;
+  background: #ecfdf5;
+}
 
 .submit-btn {
-  background: #10b981 !important;
-  border: 1px solid #10b981 !important;
+  background: var(--c-brand) !important;
+  border: 1px solid var(--c-brand) !important;
   color: #ffffff !important;
   transition: all 0.2s;
 }
-.submit-btn:hover { background: #059669 !important; border-color: #059669 !important; }
-.submit-btn.is-disabled { background: #9ca3af !important; border-color: #9ca3af !important; }
+.submit-btn:hover {
+  background: var(--c-brand-hover) !important;
+  border-color: var(--c-brand-hover) !important;
+}
+.submit-btn.is-disabled {
+  background: #9ca3af !important;
+  border-color: #9ca3af !important;
+}
 </style>

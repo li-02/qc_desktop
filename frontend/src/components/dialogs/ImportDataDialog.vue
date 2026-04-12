@@ -1,16 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from "vue";
 import { ElMessage } from "element-plus";
-import {
-  UploadFilled,
-  Plus,
-  Delete,
-  CircleCheck,
-  CircleClose,
-  Loading,
-  Connection,
-  DocumentAdd,
-} from "@element-plus/icons-vue";
+import { Upload, Plus, Trash2, CheckCircle, XCircle, Loader2, Link, FilePlus } from "lucide-vue-next";
 import { useCategoryStore } from "@/stores/useCategoryStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
@@ -467,7 +458,7 @@ defineExpose({ open, close });
     <template #header>
       <div class="dialog-header">
         <div class="dialog-header-icon">
-          <el-icon><DocumentAdd /></el-icon>
+          <FilePlus :size="16" />
         </div>
         <div class="dialog-header-text">
           <div class="dialog-title">数据导入终端</div>
@@ -543,7 +534,7 @@ defineExpose({ open, close });
             drag>
             <div class="upload-content">
               <div class="upload-icon-wrapper">
-                <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+                <Upload :size="24" />
               </div>
               <div class="upload-text">
                 <h3>点击或拖拽结构化数据表至此处</h3>
@@ -564,7 +555,7 @@ defineExpose({ open, close });
                 class="file-row-name-input"
                 :maxlength="50" />
               <el-button circle size="large" class="file-row-remove" @click="removeFileEntry(entry.uid)">
-                <el-icon><Delete /></el-icon>
+                <Trash2 :size="16" />
               </el-button>
             </div>
           </div>
@@ -585,7 +576,7 @@ defineExpose({ open, close });
               {{ item.label || "空值" }}
             </span>
             <span v-if="!isAdding" class="missing-chip is-add" @click="onAddOption">
-              <el-icon style="font-size: 10px; vertical-align: -1px"><Plus /></el-icon>&nbsp;新增
+              <Plus :size="10" style="vertical-align: -1px" />&nbsp;新增
             </span>
           </div>
           <div v-if="isAdding" class="add-option-inline">
@@ -595,7 +586,7 @@ defineExpose({ open, close });
               size="large"
               class="option-input-inline"
               @keyup.enter="onConfirm" />
-            <el-button type="primary" size="large" color="#10b981" @click="onConfirm">确认</el-button>
+            <el-button type="primary" size="large" @click="onConfirm">确认</el-button>
             <el-button size="large" @click="clearInputOption">取消</el-button>
           </div>
         </div>
@@ -625,12 +616,12 @@ defineExpose({ open, close });
               :key="idx"
               class="progress-row"
               :class="`is-${item.status}`">
-              <el-icon class="progress-row-icon">
-                <CircleCheck v-if="item.status === 'completed'" />
-                <CircleClose v-else-if="item.status === 'failed'" />
-                <Loading v-else-if="item.status === 'processing'" class="is-spinning" />
+              <span class="progress-row-icon">
+                <CheckCircle v-if="item.status === 'completed'" :size="16" />
+                <XCircle v-else-if="item.status === 'failed'" :size="16" />
+                <Loader2 v-else-if="item.status === 'processing'" :size="16" class="is-spinning" />
                 <span v-else class="pending-dot">·</span>
-              </el-icon>
+              </span>
               <span class="progress-row-name">{{ item.datasetName }}</span>
               <span class="progress-row-msg">{{ item.error || statusLabel(item.status) }}</span>
             </div>
@@ -647,16 +638,16 @@ defineExpose({ open, close });
               style="
                 width: 32px;
                 height: 32px;
-                border-radius: 8px;
+                border-radius: var(--radius-panel);
                 background: #ecfdf5;
-                color: #10b981;
+                color: var(--c-brand);
                 display: flex;
                 align-items: center;
                 justify-content: center;
               ">
-              <el-icon size="18"><Connection /></el-icon>
+              <Link :size="18" />
             </div>
-            <div class="db-step-title" style="font-size: 15px; font-weight: 600; color: #1e293b">
+            <div class="db-step-title" style="font-size: var(--text-lg); font-weight: 600; color: #1e293b">
               从接入缓存池抽取数据片段
             </div>
           </div>
@@ -665,7 +656,7 @@ defineExpose({ open, close });
             style="
               background: #ffffff;
               border: 1px solid #e2e8f0;
-              border-radius: 12px;
+              border-radius: var(--radius-panel);
               padding: 20px;
               box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
             ">
@@ -674,7 +665,7 @@ defineExpose({ open, close });
                 <div
                   style="
                     border: 1px solid #dcdfe6;
-                    border-radius: 4px;
+                    border-radius: var(--radius-sm);
                     padding: 10px;
                     width: 100%;
                     max-height: 200px;
@@ -690,7 +681,7 @@ defineExpose({ open, close });
                     @check="handleDsTreeCheck"
                     style="background: transparent" />
                 </div>
-                <div style="font-size: 12px; color: #909399; margin-top: 4px">
+                <div style="font-size: var(--text-sm); color: #909399; margin-top: 4px">
                   已选中 {{ dsSelectedColumns.length }} 个指标，系统将按时间戳对齐合并
                 </div>
               </el-form-item>
@@ -862,7 +853,7 @@ defineExpose({ open, close });
               {{ item.label || "空值" }}
             </span>
             <span v-if="!isAdding" class="missing-chip is-add" @click="onAddOption">
-              <el-icon style="font-size: 10px; vertical-align: -1px"><Plus /></el-icon>&nbsp;新增
+              <Plus :size="10" style="vertical-align: -1px" />&nbsp;新增
             </span>
           </div>
           <div v-if="isAdding" class="add-option-inline">
@@ -872,7 +863,7 @@ defineExpose({ open, close });
               size="large"
               class="option-input-inline"
               @keyup.enter="onConfirm" />
-            <el-button type="primary" size="large" color="#10b981" @click="onConfirm">确认</el-button>
+            <el-button type="primary" size="large" @click="onConfirm">确认</el-button>
             <el-button size="large" @click="clearInputOption">取消</el-button>
           </div>
         </div>
@@ -886,11 +877,11 @@ defineExpose({ open, close });
             <div
               class="progress-row"
               :class="`is-${dbImportStatus === 'completed' ? 'completed' : dbImportStatus === 'failed' ? 'failed' : 'processing'}`">
-              <el-icon class="progress-row-icon">
-                <CircleCheck v-if="dbImportStatus === 'completed'" />
-                <CircleClose v-else-if="dbImportStatus === 'failed'" />
-                <Loading v-else class="is-spinning" />
-              </el-icon>
+              <span class="progress-row-icon">
+                <CheckCircle v-if="dbImportStatus === 'completed'" :size="16" />
+                <XCircle v-else-if="dbImportStatus === 'failed'" :size="16" />
+                <Loader2 v-else :size="16" class="is-spinning" />
+              </span>
               <span class="progress-row-name">{{ dbDatasetName }}</span>
               <span class="progress-row-msg">{{ dbImportMessage || "连接中..." }}</span>
             </div>
@@ -948,8 +939,8 @@ defineExpose({ open, close });
   --dlg-border: #e2e8f0;
   --dlg-text: #1e293b;
   --dlg-muted: #64748b;
-  --dlg-accent: #10b981;
-  border-radius: 12px !important;
+  --dlg-accent: var(--c-brand);
+  border-radius: var(--radius-overlay) !important;
   border: 1px solid var(--dlg-border);
   overflow: hidden;
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
@@ -996,11 +987,11 @@ defineExpose({ open, close });
 .dialog-header-icon {
   width: 32px;
   height: 32px;
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   border: 1px solid #6ee7b7;
   background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
   color: #047857;
-  font-size: 16px;
+  font-size: var(--text-xl);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1008,14 +999,14 @@ defineExpose({ open, close });
 }
 .dialog-title {
   color: #1e293b;
-  font-size: 16px;
+  font-size: var(--text-xl);
   font-weight: 700;
   line-height: 1.3;
 }
 .dialog-subtitle {
   margin-top: 2px;
   color: #64748b;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .dialog-steps {
@@ -1044,12 +1035,12 @@ defineExpose({ open, close });
 }
 
 :deep(.el-step__head.is-process) {
-  color: #059669;
-  border-color: #059669;
+  color: var(--c-brand-hover);
+  border-color: var(--c-brand-hover);
 }
 :deep(.el-step__head.is-process .el-step__icon) {
   background: #ecfdf5;
-  border: 2px solid #10b981;
+  border: 2px solid var(--c-brand);
   box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
 }
 :deep(.el-step__title.is-process) {
@@ -1057,11 +1048,11 @@ defineExpose({ open, close });
   font-weight: 600;
 }
 :deep(.el-step__head.is-success) {
-  color: #059669;
-  border-color: #059669;
+  color: var(--c-brand-hover);
+  border-color: var(--c-brand-hover);
 }
 :deep(.el-step__title.is-success) {
-  color: #059669;
+  color: var(--c-brand-hover);
   font-weight: 600;
 }
 
@@ -1070,7 +1061,7 @@ defineExpose({ open, close });
   width: 100%;
 }
 .section-label {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: #64748b;
   text-transform: uppercase;
@@ -1094,7 +1085,7 @@ defineExpose({ open, close });
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   border: 1px solid #e2e8f0;
   background: #fff;
   cursor: pointer;
@@ -1114,7 +1105,7 @@ defineExpose({ open, close });
   width: 34px;
   height: 34px;
   flex-shrink: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   border: 1px solid #e2e8f0;
   display: flex;
   align-items: center;
@@ -1138,20 +1129,20 @@ defineExpose({ open, close });
   min-width: 0;
 }
 .card-title {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: #1e293b;
   margin: 0 0 2px 0;
 }
 .card-desc {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #64748b;
   margin: 0;
 }
 .card-radio {
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   border: 1px solid #cbd5e1;
   display: flex;
   align-items: center;
@@ -1161,18 +1152,18 @@ defineExpose({ open, close });
   transition: all 0.2s;
 }
 .data-type-card.is-active .card-radio {
-  border-color: #10b981;
-  background: #10b981;
+  border-color: var(--c-brand);
+  background: var(--c-brand);
 }
 .radio-inner {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: #fff;
 }
 
 .missing-hint {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: #94a3b8;
   margin: 0 0 10px 0;
   line-height: 1.5;
@@ -1184,21 +1175,21 @@ defineExpose({ open, close });
   padding: 16px;
   background: #f8fafc;
   border: 1px dashed #cbd5e1;
-  border-radius: 12px;
+  border-radius: var(--radius-panel);
 }
 .missing-chip {
   display: inline-flex;
   align-items: center;
   padding: 6px 14px;
-  border-radius: 24px;
+  border-radius: var(--radius-full);
   border: 1px solid #e2e8f0;
   background: #ffffff;
-  font-size: 13px;
+  font-size: var(--text-base);
   color: #64748b;
   cursor: pointer;
   user-select: none;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  font-family: "Courier New", monospace;
+  font-family: var(--font-mono);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 .missing-chip:hover {
@@ -1209,7 +1200,7 @@ defineExpose({ open, close });
   box-shadow: 0 2px 4px rgba(16, 185, 129, 0.1);
 }
 .missing-chip.is-active {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(135deg, var(--c-brand) 0%, var(--c-brand-hover) 100%);
   border-color: transparent;
   color: #ffffff;
   font-weight: 600;
@@ -1221,8 +1212,8 @@ defineExpose({ open, close });
   font-family: inherit;
 }
 .missing-chip.is-add:hover {
-  border-color: #10b981;
-  color: #10b981;
+  border-color: var(--c-brand);
+  color: var(--c-brand);
   background: #f0fdf4;
   border-style: solid;
 }
@@ -1245,7 +1236,7 @@ defineExpose({ open, close });
   align-items: center;
   justify-content: center;
   border: 1px dashed #cbd5e1;
-  border-radius: 12px;
+  border-radius: var(--radius-panel);
   background: #f8fafc;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -1262,7 +1253,7 @@ defineExpose({ open, close });
 .upload-icon-wrapper {
   width: 44px;
   height: 44px;
-  border-radius: 12px;
+  border-radius: var(--radius-panel);
   background: #ffffff;
   border: 1px solid #e2e8f0;
   display: flex;
@@ -1279,7 +1270,7 @@ defineExpose({ open, close });
   box-shadow: 0 6px 8px -2px rgba(16, 185, 129, 0.1);
 }
 .multi-upload .el-icon--upload {
-  font-size: 22px;
+  font-size: var(--text-3xl);
   color: #94a3b8;
   margin: 0;
   transition: color 0.3s;
@@ -1288,13 +1279,13 @@ defineExpose({ open, close });
   color: #059669; /* deeper green */
 }
 .upload-text h3 {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: #1e293b;
   margin: 0 0 6px 0;
 }
 .upload-text p {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: #64748b;
   margin: 0;
 }
@@ -1313,7 +1304,7 @@ defineExpose({ open, close });
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   border: 1px solid #e2e8f0;
   background: #ffffff;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
@@ -1329,7 +1320,7 @@ defineExpose({ open, close });
 }
 .file-row-filename {
   display: block;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: #334155;
   white-space: nowrap;
@@ -1338,7 +1329,7 @@ defineExpose({ open, close });
 }
 .file-row-size {
   display: block;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #94a3b8;
 }
 .file-row-name-input {
@@ -1358,7 +1349,7 @@ defineExpose({ open, close });
   margin-top: 10px;
   text-align: center;
   color: #94a3b8;
-  font-size: 13px;
+  font-size: var(--text-base);
   padding: 16px;
 }
 
@@ -1375,12 +1366,12 @@ defineExpose({ open, close });
   padding: 4px 0;
 }
 .progress-title {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: #1e293b;
 }
 .progress-summary {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: #64748b;
 }
 .progress-done {
@@ -1407,7 +1398,7 @@ defineExpose({ open, close });
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   border: 1px solid #e2e8f0;
   background: #f8fafc;
   transition: all 0.2s;
@@ -1425,7 +1416,7 @@ defineExpose({ open, close });
   background: #f0f9ff;
 }
 .progress-row-icon {
-  font-size: 16px;
+  font-size: var(--text-xl);
   flex-shrink: 0;
 }
 .is-completed .progress-row-icon {
@@ -1439,7 +1430,7 @@ defineExpose({ open, close });
 }
 .pending-dot {
   color: #94a3b8;
-  font-size: 18px;
+  font-size: var(--text-2xl);
   line-height: 1;
 }
 .is-spinning {
@@ -1452,7 +1443,7 @@ defineExpose({ open, close });
 }
 .progress-row-name {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 500;
   color: #334155;
   min-width: 0;
@@ -1461,7 +1452,7 @@ defineExpose({ open, close });
   white-space: nowrap;
 }
 .progress-row-msg {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #64748b;
   flex-shrink: 0;
 }
@@ -1482,10 +1473,10 @@ defineExpose({ open, close });
   height: 40px;
   min-width: 110px;
   padding: 0 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font-weight: 600;
   transition: all 0.2s;
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 .btn-secondary {
   border: 1px solid #cbd5e1 !important;
@@ -1505,13 +1496,13 @@ defineExpose({ open, close });
   cursor: not-allowed !important;
 }
 .btn-primary {
-  background: #10b981 !important;
-  border: 1px solid #10b981 !important;
+  background: var(--c-brand) !important;
+  border: 1px solid var(--c-brand) !important;
   color: #fff !important;
 }
 .btn-primary:hover {
-  background: #059669 !important;
-  border-color: #059669 !important;
+  background: var(--c-brand-hover) !important;
+  border-color: var(--c-brand-hover) !important;
 }
 .btn-primary.is-disabled {
   background: #9ca3af !important;
@@ -1524,7 +1515,7 @@ defineExpose({ open, close });
   gap: 6px;
   padding: 6px;
   background: #f1f5f9; /* Soft background */
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   margin: 10px 20px;
 }
 .source-tab {
@@ -1536,12 +1527,12 @@ defineExpose({ open, close });
   padding: 10px 16px;
   border: none;
   background: transparent;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 500;
   color: #64748b;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   outline: none;
 }
 .source-tab:hover {
@@ -1555,7 +1546,7 @@ defineExpose({ open, close });
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
 }
 .source-tab-icon {
-  font-size: 15px;
+  font-size: var(--text-lg);
 }
 
 /* ── MySQL 连接表单 ── */
@@ -1583,7 +1574,7 @@ defineExpose({ open, close });
   gap: 5px;
 }
 .db-form-label {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: #475569;
   letter-spacing: 0.03em;
@@ -1598,7 +1589,7 @@ defineExpose({ open, close });
   border-top: 1px dashed #e2e8f0;
 }
 .db-conn-msg {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
 }
 .db-conn-msg.is-testing {
@@ -1628,7 +1619,7 @@ defineExpose({ open, close });
   overflow-y: auto;
   max-height: 290px;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   background: #f8fafc;
 }
 .db-table-item {
@@ -1649,14 +1640,14 @@ defineExpose({ open, close });
 }
 .db-table-item.is-active {
   background: #ecfdf5;
-  border-left: 3px solid #10b981;
+  border-left: 3px solid var(--c-brand);
   padding-left: 14px;
 }
 .db-table-badge {
   width: 20px;
   height: 20px;
-  border-radius: 6px;
-  font-size: 11px;
+  border-radius: var(--radius-control);
+  font-size: var(--text-xs);
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -1672,7 +1663,7 @@ defineExpose({ open, close });
   color: #7c3aed;
 }
 .db-table-name {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: #334155;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1681,7 +1672,7 @@ defineExpose({ open, close });
 .db-table-empty {
   padding: 20px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: #94a3b8;
 }
 .db-preview-panel {
@@ -1695,13 +1686,13 @@ defineExpose({ open, close });
   align-items: center;
   justify-content: center;
   border: 1px dashed #e2e8f0;
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: var(--radius-panel);
+  font-size: var(--text-base);
   color: #94a3b8;
   min-height: 200px;
 }
 .db-preview-meta {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: #64748b;
   margin-bottom: 8px;
 }
@@ -1710,12 +1701,12 @@ defineExpose({ open, close });
   overflow: auto;
   max-height: 270px;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
 }
 .db-preview-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .db-preview-table th {
   position: sticky;
@@ -1752,32 +1743,32 @@ defineExpose({ open, close });
   padding: 8px 12px;
   background: #f0fdf4;
   border: 1px solid #bbf7d0;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   margin-bottom: 16px;
 }
 .db-config-info-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: #059669;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 .db-config-info-value {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: #047857;
-  font-family: "Courier New", monospace;
+  font-family: var(--font-mono);
 }
 
 /* ── 剪贴板粘贴 ── */
 .clipboard-textarea :deep(.el-textarea__inner) {
-  font-family: "Courier New", Consolas, monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
   line-height: 1.5;
   background: #f8fafc;
   border: 1px dashed #cbd5e1;
 }
 .clipboard-textarea :deep(.el-textarea__inner:focus) {
-  border-color: #10b981;
+  border-color: var(--c-brand);
   border-style: solid;
 }
 .clipboard-options {

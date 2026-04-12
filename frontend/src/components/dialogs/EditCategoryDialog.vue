@@ -14,8 +14,8 @@ let nameCheckReqId = 0;
 
 const isNameChanged = computed(() => categoryName.value.trim() !== initialCategoryName.value);
 
-const showNameStatus = computed(() => 
-  (Boolean(categoryName.value?.trim()) && isNameChanged.value) || nameCheckStatus.value.checking
+const showNameStatus = computed(
+  () => (Boolean(categoryName.value?.trim()) && isNameChanged.value) || nameCheckStatus.value.checking
 );
 
 const nameStatusType = computed(() => {
@@ -29,23 +29,30 @@ const nameStatusText = computed(() => {
 });
 
 const canSubmit = computed(() => {
-  return !categoryStore.loading && 
-         !nameCheckStatus.value.checking && 
-         (nameCheckStatus.value.valid || !isNameChanged.value) && 
-         Boolean(categoryName.value.trim()) &&
-         isNameChanged.value;
+  return (
+    !categoryStore.loading &&
+    !nameCheckStatus.value.checking &&
+    (nameCheckStatus.value.valid || !isNameChanged.value) &&
+    Boolean(categoryName.value.trim()) &&
+    isNameChanged.value
+  );
 });
 
-const open = (id: string, name: string) => { 
+const open = (id: string, name: string) => {
   categoryId.value = id;
   categoryName.value = name;
   initialCategoryName.value = name;
-  dialogVisible.value = true; 
+  dialogVisible.value = true;
 };
-const close = () => { dialogVisible.value = false; };
+const close = () => {
+  dialogVisible.value = false;
+};
 
 const handleClosed = () => {
-  if (nameCheckTimer) { clearTimeout(nameCheckTimer); nameCheckTimer = null; }
+  if (nameCheckTimer) {
+    clearTimeout(nameCheckTimer);
+    nameCheckTimer = null;
+  }
   nameCheckReqId += 1;
   categoryId.value = "";
   categoryName.value = "";
@@ -57,7 +64,9 @@ const handleClosed = () => {
 const handleSubmit = async () => {
   if (!canSubmit.value) return;
   try {
-    const { success, error } = await categoryStore.updateCategory(categoryId.value, { name: categoryName.value.trim() });
+    const { success, error } = await categoryStore.updateCategory(categoryId.value, {
+      name: categoryName.value.trim(),
+    });
     if (success) {
       ElMessage.success("分类名称更新成功");
       close();
@@ -74,8 +83,11 @@ watch(
   () => categoryName.value,
   newName => {
     const name = newName?.trim() || "";
-    if (nameCheckTimer) { clearTimeout(nameCheckTimer); nameCheckTimer = null; }
-    
+    if (nameCheckTimer) {
+      clearTimeout(nameCheckTimer);
+      nameCheckTimer = null;
+    }
+
     // 如果名称没有真正的改变（如恢复初始值或者为空），则无需额外检查重名
     if (!name || name === initialCategoryName.value) {
       nameCheckStatus.value = { checking: false, valid: true, message: "" };
@@ -147,11 +159,7 @@ defineExpose({ open, close });
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="close" class="cancel-btn">取消</el-button>
-          <el-button
-            @click="handleSubmit"
-            :loading="categoryStore.loading"
-            :disabled="!canSubmit"
-            class="submit-btn">
+          <el-button @click="handleSubmit" :loading="categoryStore.loading" :disabled="!canSubmit" class="submit-btn">
             确定
           </el-button>
         </div>
@@ -163,13 +171,13 @@ defineExpose({ open, close });
 <style>
 /* 重用 CreateCategoryDialog 中的全局样式 */
 .create-category-dialog {
-  --dlg-surface: #f8fafc;
-  --dlg-surface-elevated: #ffffff;
-  --dlg-border: #e2e8f0;
-  --dlg-text: #1e293b;
-  --dlg-muted: #64748b;
-  --dlg-accent: #10b981;
-  border-radius: 12px !important;
+  --dlg-surface: var(--c-bg-muted);
+  --dlg-surface-elevated: var(--c-bg-surface);
+  --dlg-border: var(--c-border);
+  --dlg-text: var(--c-text-base);
+  --dlg-muted: var(--c-text-muted);
+  --dlg-accent: var(--c-brand);
+  border-radius: var(--radius-panel) !important;
   overflow: hidden;
   border: 1px solid var(--dlg-border);
   background: var(--dlg-surface-elevated) !important;
@@ -211,22 +219,24 @@ defineExpose({ open, close });
 .dialog-header-icon {
   width: 28px;
   height: 28px;
-  border-radius: 8px;
-  border: 1px solid #bfdbfe;
-  background: #dbeafe;
-  color: #1d4ed8;
-  font-size: 13px;
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--c-info-border);
+  background: var(--c-info-bg);
+  color: var(--color-blue-700);
+  font-size: var(--text-sm);
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.dialog-header-text { min-width: 0; }
+.dialog-header-text {
+  min-width: 0;
+}
 
 .dialog-title {
   color: var(--dlg-text);
-  font-size: 16px;
+  font-size: var(--text-xl);
   font-weight: 700;
   line-height: 1.2;
 }
@@ -234,58 +244,95 @@ defineExpose({ open, close });
 .dialog-subtitle {
   margin-top: 2px;
   color: var(--dlg-muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
-.dialog-body { display: flex; flex-direction: column; }
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+}
 
 .input-label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #334155;
-  margin-bottom: 8px;
+  color: var(--c-text-base);
+  margin-bottom: var(--space-2);
 }
 
 .name-input :deep(.el-input__wrapper) {
-  border-radius: 8px;
-  box-shadow: 0 0 0 1px #e2e8f0 inset;
+  border-radius: var(--radius-control);
+  box-shadow: 0 0 0 1px var(--c-border) inset;
 }
-.name-input :deep(.el-input__wrapper:hover) { box-shadow: 0 0 0 1px #cbd5e1 inset; }
-.name-input :deep(.el-input.is-focus .el-input__wrapper) { box-shadow: 0 0 0 1px #10b981 inset !important; }
+.name-input :deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px var(--c-border-strong) inset;
+}
+.name-input :deep(.el-input.is-focus .el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--c-brand) inset !important;
+}
 
 .name-status {
-  margin-top: 10px;
-  border-radius: 8px;
+  margin-top: var(--space-2);
+  border-radius: var(--radius-control);
   border: 1px solid var(--dlg-border);
-  background: #ffffff;
+  background: var(--c-bg-surface);
   padding: 7px 10px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.4;
   color: var(--dlg-muted);
 }
-.name-status.is-success { border-color: #bbf7d0; background: #f8fffb; color: #047857; }
-.name-status.is-error { border-color: #fecaca; background: #fff7f7; color: #b91c1c; }
-.name-status.is-checking { border-color: #bfdbfe; background: #f8fbff; color: #1d4ed8; }
+.name-status.is-success {
+  border-color: var(--c-brand-border);
+  background: var(--c-brand-soft);
+  color: var(--c-brand-active);
+}
+.name-status.is-error {
+  border-color: var(--c-danger-border);
+  background: var(--c-danger-bg);
+  color: var(--color-red-700);
+}
+.name-status.is-checking {
+  border-color: var(--c-info-border);
+  background: var(--c-info-bg);
+  color: var(--color-blue-700);
+}
 
-.dialog-footer { display: flex; justify-content: flex-end; gap: 8px; }
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
 
 .dialog-footer .el-button {
   height: 36px;
   min-width: 100px;
   padding: 0 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font-weight: 600;
 }
 
-.cancel-btn { border: 1px solid #cbd5e1; background: #ffffff; color: #334155; }
-.cancel-btn:hover { border-color: #a7f3d0; color: #059669; background: #ecfdf5; }
+.cancel-btn {
+  border: 1px solid var(--c-border-strong);
+  background: var(--c-bg-surface);
+  color: var(--c-text-base);
+}
+.cancel-btn:hover {
+  border-color: var(--c-brand-border);
+  color: var(--c-brand-hover);
+  background: var(--c-brand-soft);
+}
 
 .submit-btn {
-  background: #10b981 !important;
-  border: 1px solid #10b981 !important;
-  color: #ffffff !important;
+  background: var(--c-brand) !important;
+  border: 1px solid var(--c-brand) !important;
+  color: var(--c-text-inverse) !important;
   transition: all 0.2s;
 }
-.submit-btn:hover { background: #059669 !important; border-color: #059669 !important; }
-.submit-btn.is-disabled { background: #9ca3af !important; border-color: #9ca3af !important; }
+.submit-btn:hover {
+  background: var(--c-brand-hover) !important;
+  border-color: var(--c-brand-hover) !important;
+}
+.submit-btn.is-disabled {
+  background: var(--c-text-disabled) !important;
+  border-color: var(--c-text-disabled) !important;
+}
 </style>

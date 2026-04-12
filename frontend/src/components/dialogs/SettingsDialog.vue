@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Setting, Document, Search, View, Edit, Download, Delete, Close, Check, Plus } from "@element-plus/icons-vue";
+import { Settings, FileText, Search, Eye, Pencil, Download, Trash2, X, Check, Plus } from "lucide-vue-next";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import type { UserTemplateListItem, ThresholdTemplateEntry } from "@shared/types/database";
 
@@ -14,9 +14,7 @@ const saving = ref(false);
 // 左侧导航当前选中分类
 const activeCategory = ref<"templates">("templates");
 
-const navCategories = [
-  { key: "templates", label: "模板管理", icon: Document },
-];
+const navCategories = [{ key: "templates", label: "模板管理", icon: FileText }];
 
 // ==================== 模板管理 - 阈值行数组类型 ====================
 
@@ -197,7 +195,11 @@ const saveEdit = async () => {
   if (!tpl) return;
 
   const newThresholds = rowsToThresholds(tmplEditRows.value);
-  const updates: { name?: string; description?: string; templateData?: Record<string, { min: number; max: number; unit?: string }> } = {};
+  const updates: {
+    name?: string;
+    description?: string;
+    templateData?: Record<string, { min: number; max: number; unit?: string }>;
+  } = {};
   if (tmplEditForm.value.name.trim() !== tpl.name) updates.name = tmplEditForm.value.name.trim();
   if (tmplEditForm.value.description !== (tpl.description || "")) updates.description = tmplEditForm.value.description;
   updates.templateData = newThresholds;
@@ -262,12 +264,17 @@ const saveCreate = async () => {
 const handleDeleteTemplate = async (tpl: UserTemplateListItem) => {
   try {
     await ElMessageBox.confirm(`确定要删除"${tpl.name}"模板吗？此操作不可恢复。`, "删除模板", {
-      confirmButtonText: "确定", cancelButtonText: "取消", type: "warning", customClass: "qc-message-box",
+      confirmButtonText: "确定",
+      cancelButtonText: "取消",
+      type: "warning",
+      customClass: "qc-message-box",
     });
     await outlierStore.deleteUserTemplate(tpl.id);
     if (tmplExpandedId.value === tpl.id) tmplExpandedId.value = null;
     if (tmplEditingId.value === tpl.id) cancelEdit();
-  } catch { /* 用户取消 */ }
+  } catch {
+    /* 用户取消 */
+  }
 };
 
 const handleExportTemplate = (tpl: UserTemplateListItem) => {
@@ -278,7 +285,9 @@ const formatDate = (dateStr: string) => {
   try {
     const d = new Date(dateStr);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  } catch { return dateStr; }
+  } catch {
+    return dateStr;
+  }
 };
 
 // ==================== 对话框控制 ====================
@@ -315,7 +324,7 @@ defineExpose({ open, close });
       <template #header>
         <div class="dialog-header">
           <div class="dialog-header-icon">
-            <el-icon><Setting /></el-icon>
+            <Settings :size="14" />
           </div>
           <div class="dialog-header-text">
             <div class="dialog-title">系统设置</div>
@@ -334,7 +343,7 @@ defineExpose({ open, close });
             :class="{ active: activeCategory === cat.key }"
             @click="activeCategory = cat.key as 'templates'">
             <div class="nav-item-icon">
-              <el-icon><component :is="cat.icon" /></el-icon>
+              <component :is="cat.icon" :size="14" />
             </div>
             <span class="nav-item-label">{{ cat.label }}</span>
           </div>
@@ -342,13 +351,22 @@ defineExpose({ open, close });
 
         <!-- 右侧内容区 -->
         <div class="settings-content">
-
           <!-- 模板管理 -->
           <div v-if="activeCategory === 'templates'" class="content-section tmpl-section">
             <div class="tmpl-topbar">
-              <div class="content-section-title" style="margin-bottom:0">模板管理 <span class="section-subtitle">异常值检测阈值模板</span></div>
-              <el-button v-if="!isCreating" size="small" type="primary" :icon="Plus" @click="startCreate" class="create-tmpl-btn">新建模板</el-button>
-              <el-button v-else size="small" :icon="Close" @click="cancelCreate">取消新建</el-button>
+              <div class="content-section-title" style="margin-bottom: 0">
+                模板管理 <span class="section-subtitle">异常值检测阈值模板</span>
+              </div>
+              <el-button
+                v-if="!isCreating"
+                size="small"
+                type="primary"
+                :icon="Plus"
+                @click="startCreate"
+                class="create-tmpl-btn"
+                >新建模板</el-button
+              >
+              <el-button v-else size="small" :icon="X" @click="cancelCreate">取消新建</el-button>
             </div>
 
             <!-- 新建模板面板 -->
@@ -357,21 +375,40 @@ defineExpose({ open, close });
               <div class="create-fields">
                 <div class="edit-field-row">
                   <label class="edit-field-label">名称 <span class="required">*</span></label>
-                  <el-input v-model="createForm.name" size="small" placeholder="模板名称" maxlength="50" show-word-limit class="edit-name-input" />
+                  <el-input
+                    v-model="createForm.name"
+                    size="small"
+                    placeholder="模板名称"
+                    maxlength="50"
+                    show-word-limit
+                    class="edit-name-input" />
                 </div>
                 <div class="edit-field-row">
                   <label class="edit-field-label">描述</label>
-                  <el-input v-model="createForm.description" type="textarea" :rows="2" placeholder="适用场景或来源说明（可选）" maxlength="200" resize="none" class="edit-desc-input" />
+                  <el-input
+                    v-model="createForm.description"
+                    type="textarea"
+                    :rows="2"
+                    placeholder="适用场景或来源说明（可选）"
+                    maxlength="200"
+                    resize="none"
+                    class="edit-desc-input" />
                 </div>
               </div>
               <div class="create-rows-section">
                 <div class="create-rows-header">
-                  <span class="detail-section-label" style="margin-bottom:0">阈值配置</span>
+                  <span class="detail-section-label" style="margin-bottom: 0">阈值配置</span>
                   <el-button size="small" text :icon="Plus" @click="addCreateRow" class="add-row-btn">添加列</el-button>
                 </div>
                 <table class="detail-table editable-table">
                   <thead>
-                    <tr><th>列名</th><th>最小值</th><th>最大值</th><th>单位</th><th></th></tr>
+                    <tr>
+                      <th>列名</th>
+                      <th>最小值</th>
+                      <th>最大值</th>
+                      <th>单位</th>
+                      <th></th>
+                    </tr>
                   </thead>
                   <tbody>
                     <tr v-for="(row, idx) in createRows" :key="idx">
@@ -388,7 +425,13 @@ defineExpose({ open, close });
                         <el-input v-model="row.unit" size="small" placeholder="单位" class="unit-input" />
                       </td>
                       <td class="action-cell">
-                        <el-button size="small" type="danger" text :icon="Delete" @click="removeCreateRow(idx)" :disabled="createRows.length <= 1"></el-button>
+                        <el-button
+                          size="small"
+                          type="danger"
+                          text
+                          :icon="Trash2"
+                          @click="removeCreateRow(idx)"
+                          :disabled="createRows.length <= 1"></el-button>
                       </td>
                     </tr>
                     <tr v-if="createRows.length === 0">
@@ -399,14 +442,16 @@ defineExpose({ open, close });
               </div>
               <div class="create-panel-footer">
                 <el-button size="small" @click="cancelCreate">取消</el-button>
-                <el-button size="small" type="primary" :icon="Check" @click="saveCreate" :loading="outlierStore.saving">创建模板</el-button>
+                <el-button size="small" type="primary" :icon="Check" @click="saveCreate" :loading="outlierStore.saving"
+                  >创建模板</el-button
+                >
               </div>
             </div>
 
             <!-- 搜索栏 -->
             <div class="tmpl-search">
               <el-input v-model="tmplSearchText" placeholder="搜索模板..." clearable size="small">
-                <template #prefix><el-icon><Search /></el-icon></template>
+                <template #prefix><Search :size="14" /></template>
               </el-input>
             </div>
 
@@ -420,23 +465,42 @@ defineExpose({ open, close });
                     :key="bt.key"
                     class="template-card builtin"
                     :class="{ expanded: builtinExpanded === bt.key, editing: builtinEditingKey === bt.key }">
-
                     <!-- 内置模板编辑态头部 -->
                     <template v-if="builtinEditingKey === bt.key">
                       <div class="edit-header" @click.stop>
                         <div class="edit-fields">
                           <div class="edit-field-row">
                             <label class="edit-field-label">名称 <span class="required">*</span></label>
-                            <el-input v-model="builtinEditForm.name" size="small" placeholder="新模板名称" maxlength="50" show-word-limit class="edit-name-input" />
+                            <el-input
+                              v-model="builtinEditForm.name"
+                              size="small"
+                              placeholder="新模板名称"
+                              maxlength="50"
+                              show-word-limit
+                              class="edit-name-input" />
                           </div>
                           <div class="edit-field-row">
                             <label class="edit-field-label">描述</label>
-                            <el-input v-model="builtinEditForm.description" type="textarea" :rows="2" placeholder="适用场景或来源说明（可选）" maxlength="200" resize="none" class="edit-desc-input" />
+                            <el-input
+                              v-model="builtinEditForm.description"
+                              type="textarea"
+                              :rows="2"
+                              placeholder="适用场景或来源说明（可选）"
+                              maxlength="200"
+                              resize="none"
+                              class="edit-desc-input" />
                           </div>
                         </div>
                         <div class="edit-actions">
-                          <el-button size="small" type="primary" :icon="Check" @click="saveBuiltinEdit" :loading="outlierStore.saving">另存为</el-button>
-                          <el-button size="small" :icon="Close" @click="cancelBuiltinEdit">取消</el-button>
+                          <el-button
+                            size="small"
+                            type="primary"
+                            :icon="Check"
+                            @click="saveBuiltinEdit"
+                            :loading="outlierStore.saving"
+                            >另存为</el-button
+                          >
+                          <el-button size="small" :icon="X" @click="cancelBuiltinEdit">取消</el-button>
                         </div>
                       </div>
                     </template>
@@ -445,14 +509,17 @@ defineExpose({ open, close });
                     <template v-else>
                       <div class="tcard-header" @click="toggleBuiltinExpand(bt.key)">
                         <div class="tcard-info">
-                          <div class="tcard-name">
-                            <span class="builtin-badge">内置</span>{{ bt.label }}
-                          </div>
+                          <div class="tcard-name"><span class="builtin-badge">内置</span>{{ bt.label }}</div>
                           <div class="tcard-meta">{{ bt.columnCount }} 列配置</div>
                         </div>
                         <div class="tcard-actions" @click.stop>
-                          <el-button size="small" text :icon="Edit" title="编辑并另存为用户模板" @click="startBuiltinEdit(bt)"></el-button>
-                          <el-icon class="expand-icon" :class="{ rotated: builtinExpanded === bt.key }"><View /></el-icon>
+                          <el-button
+                            size="small"
+                            text
+                            :icon="Pencil"
+                            title="编辑并另存为用户模板"
+                            @click="startBuiltinEdit(bt)"></el-button>
+                          <Eye class="expand-icon" :class="{ rotated: builtinExpanded === bt.key }" :size="13" />
                         </div>
                       </div>
                     </template>
@@ -463,29 +530,55 @@ defineExpose({ open, close });
                         <!-- 编辑态：可增删行、列名可编辑 -->
                         <template v-if="builtinEditingKey === bt.key">
                           <div class="create-rows-header">
-                            <span class="detail-section-label" style="margin-bottom:0">阈值配置</span>
-                            <el-button size="small" text :icon="Plus" @click="addBuiltinEditRow" class="add-row-btn">添加列</el-button>
+                            <span class="detail-section-label" style="margin-bottom: 0">阈值配置</span>
+                            <el-button size="small" text :icon="Plus" @click="addBuiltinEditRow" class="add-row-btn"
+                              >添加列</el-button
+                            >
                           </div>
                           <table class="detail-table editable-table">
                             <thead>
-                              <tr><th>列名</th><th>最小值</th><th>最大值</th><th>单位</th><th></th></tr>
+                              <tr>
+                                <th>列名</th>
+                                <th>最小值</th>
+                                <th>最大值</th>
+                                <th>单位</th>
+                                <th></th>
+                              </tr>
                             </thead>
                             <tbody>
                               <tr v-for="(row, idx) in builtinEditRows" :key="idx">
                                 <td class="col-name-cell">
-                                  <el-input v-model="row.columnName" size="small" placeholder="列名" class="col-name-input" />
+                                  <el-input
+                                    v-model="row.columnName"
+                                    size="small"
+                                    placeholder="列名"
+                                    class="col-name-input" />
                                 </td>
                                 <td class="value-cell">
-                                  <el-input-number v-model="row.min" size="small" :controls="false" class="threshold-input" />
+                                  <el-input-number
+                                    v-model="row.min"
+                                    size="small"
+                                    :controls="false"
+                                    class="threshold-input" />
                                 </td>
                                 <td class="value-cell">
-                                  <el-input-number v-model="row.max" size="small" :controls="false" class="threshold-input" />
+                                  <el-input-number
+                                    v-model="row.max"
+                                    size="small"
+                                    :controls="false"
+                                    class="threshold-input" />
                                 </td>
                                 <td class="unit-cell">
                                   <el-input v-model="row.unit" size="small" placeholder="单位" class="unit-input" />
                                 </td>
                                 <td class="action-cell">
-                                  <el-button size="small" type="danger" text :icon="Delete" @click="removeBuiltinEditRow(idx)" :disabled="builtinEditRows.length <= 1"></el-button>
+                                  <el-button
+                                    size="small"
+                                    type="danger"
+                                    text
+                                    :icon="Trash2"
+                                    @click="removeBuiltinEditRow(idx)"
+                                    :disabled="builtinEditRows.length <= 1"></el-button>
                                 </td>
                               </tr>
                               <tr v-if="builtinEditRows.length === 0">
@@ -497,7 +590,14 @@ defineExpose({ open, close });
                         <!-- 只读态 -->
                         <template v-else>
                           <table class="detail-table">
-                            <thead><tr><th>列名</th><th>最小值</th><th>最大值</th><th>单位</th></tr></thead>
+                            <thead>
+                              <tr>
+                                <th>列名</th>
+                                <th>最小值</th>
+                                <th>最大值</th>
+                                <th>单位</th>
+                              </tr>
+                            </thead>
                             <tbody>
                               <tr v-for="(entry, colName) in bt.data" :key="colName">
                                 <td class="col-name-cell">{{ colName }}</td>
@@ -528,23 +628,42 @@ defineExpose({ open, close });
                     :key="tpl.id"
                     class="template-card user"
                     :class="{ expanded: tmplExpandedId === tpl.id, editing: tmplEditingId === tpl.id }">
-
                     <!-- 编辑态头部 -->
                     <template v-if="tmplEditingId === tpl.id">
                       <div class="edit-header" @click.stop>
                         <div class="edit-fields">
                           <div class="edit-field-row">
                             <label class="edit-field-label">名称 <span class="required">*</span></label>
-                            <el-input v-model="tmplEditForm.name" size="small" placeholder="模板名称" maxlength="50" show-word-limit class="edit-name-input" />
+                            <el-input
+                              v-model="tmplEditForm.name"
+                              size="small"
+                              placeholder="模板名称"
+                              maxlength="50"
+                              show-word-limit
+                              class="edit-name-input" />
                           </div>
                           <div class="edit-field-row">
                             <label class="edit-field-label">描述</label>
-                            <el-input v-model="tmplEditForm.description" type="textarea" :rows="2" placeholder="适用场景或来源说明（可选）" maxlength="200" resize="none" class="edit-desc-input" />
+                            <el-input
+                              v-model="tmplEditForm.description"
+                              type="textarea"
+                              :rows="2"
+                              placeholder="适用场景或来源说明（可选）"
+                              maxlength="200"
+                              resize="none"
+                              class="edit-desc-input" />
                           </div>
                         </div>
                         <div class="edit-actions">
-                          <el-button size="small" type="primary" :icon="Check" @click="saveEdit" :loading="outlierStore.saving">保存</el-button>
-                          <el-button size="small" :icon="Close" @click="cancelEdit">取消</el-button>
+                          <el-button
+                            size="small"
+                            type="primary"
+                            :icon="Check"
+                            @click="saveEdit"
+                            :loading="outlierStore.saving"
+                            >保存</el-button
+                          >
+                          <el-button size="small" :icon="X" @click="cancelEdit">取消</el-button>
                         </div>
                       </div>
                     </template>
@@ -561,13 +680,26 @@ defineExpose({ open, close });
                           </div>
                         </div>
                         <div class="tcard-actions" @click.stop>
-                          <el-button size="small" text :icon="Edit" title="编辑" @click="startEdit(tpl)"></el-button>
-                          <el-button size="small" text :icon="Download" title="导出" @click="handleExportTemplate(tpl)"></el-button>
-                          <el-button size="small" type="danger" text :icon="Delete" title="删除" @click="handleDeleteTemplate(tpl)"></el-button>
-                          <el-icon class="expand-icon" :class="{ rotated: tmplExpandedId === tpl.id }"><View /></el-icon>
+                          <el-button size="small" text :icon="Pencil" title="编辑" @click="startEdit(tpl)"></el-button>
+                          <el-button
+                            size="small"
+                            text
+                            :icon="Download"
+                            title="导出"
+                            @click="handleExportTemplate(tpl)"></el-button>
+                          <el-button
+                            size="small"
+                            type="danger"
+                            text
+                            :icon="Trash2"
+                            title="删除"
+                            @click="handleDeleteTemplate(tpl)"></el-button>
+                          <Eye class="expand-icon" :class="{ rotated: tmplExpandedId === tpl.id }" :size="13" />
                         </div>
                       </div>
-                      <div v-if="tpl.description && tmplExpandedId === tpl.id" class="tcard-description">{{ tpl.description }}</div>
+                      <div v-if="tpl.description && tmplExpandedId === tpl.id" class="tcard-description">
+                        {{ tpl.description }}
+                      </div>
                     </template>
 
                     <!-- 列阈值详情 / 编辑区 -->
@@ -576,29 +708,55 @@ defineExpose({ open, close });
                         <!-- 编辑态：可增删行、列名可编辑 -->
                         <template v-if="tmplEditingId === tpl.id">
                           <div class="create-rows-header">
-                            <span class="detail-section-label" style="margin-bottom:0">阈值配置</span>
-                            <el-button size="small" text :icon="Plus" @click="addEditRow" class="add-row-btn">添加列</el-button>
+                            <span class="detail-section-label" style="margin-bottom: 0">阈值配置</span>
+                            <el-button size="small" text :icon="Plus" @click="addEditRow" class="add-row-btn"
+                              >添加列</el-button
+                            >
                           </div>
                           <table class="detail-table editable-table">
                             <thead>
-                              <tr><th>列名</th><th>最小值</th><th>最大值</th><th>单位</th><th></th></tr>
+                              <tr>
+                                <th>列名</th>
+                                <th>最小值</th>
+                                <th>最大值</th>
+                                <th>单位</th>
+                                <th></th>
+                              </tr>
                             </thead>
                             <tbody>
                               <tr v-for="(row, idx) in tmplEditRows" :key="idx">
                                 <td class="col-name-cell">
-                                  <el-input v-model="row.columnName" size="small" placeholder="列名" class="col-name-input" />
+                                  <el-input
+                                    v-model="row.columnName"
+                                    size="small"
+                                    placeholder="列名"
+                                    class="col-name-input" />
                                 </td>
                                 <td class="value-cell">
-                                  <el-input-number v-model="row.min" size="small" :controls="false" class="threshold-input" />
+                                  <el-input-number
+                                    v-model="row.min"
+                                    size="small"
+                                    :controls="false"
+                                    class="threshold-input" />
                                 </td>
                                 <td class="value-cell">
-                                  <el-input-number v-model="row.max" size="small" :controls="false" class="threshold-input" />
+                                  <el-input-number
+                                    v-model="row.max"
+                                    size="small"
+                                    :controls="false"
+                                    class="threshold-input" />
                                 </td>
                                 <td class="unit-cell">
                                   <el-input v-model="row.unit" size="small" placeholder="单位" class="unit-input" />
                                 </td>
                                 <td class="action-cell">
-                                  <el-button size="small" type="danger" text :icon="Delete" @click="removeEditRow(idx)" :disabled="tmplEditRows.length <= 1"></el-button>
+                                  <el-button
+                                    size="small"
+                                    type="danger"
+                                    text
+                                    :icon="Trash2"
+                                    @click="removeEditRow(idx)"
+                                    :disabled="tmplEditRows.length <= 1"></el-button>
                                 </td>
                               </tr>
                               <tr v-if="tmplEditRows.length === 0">
@@ -610,7 +768,14 @@ defineExpose({ open, close });
                         <!-- 只读态 -->
                         <template v-else>
                           <table class="detail-table">
-                            <thead><tr><th>列名</th><th>最小值</th><th>最大值</th><th>单位</th></tr></thead>
+                            <thead>
+                              <tr>
+                                <th>列名</th>
+                                <th>最小值</th>
+                                <th>最大值</th>
+                                <th>单位</th>
+                              </tr>
+                            </thead>
                             <tbody>
                               <tr v-for="(entry, colName) in tpl.thresholds" :key="colName">
                                 <td class="col-name-cell">{{ colName }}</td>
@@ -628,7 +793,6 @@ defineExpose({ open, close });
               </div>
             </el-scrollbar>
           </div>
-
         </div>
       </div>
 
@@ -648,8 +812,8 @@ defineExpose({ open, close });
   --dlg-border: #e2e8f0;
   --dlg-text: #1e293b;
   --dlg-muted: #64748b;
-  --dlg-accent: #10b981;
-  border-radius: 12px !important;
+  --dlg-accent: var(--c-brand);
+  border-radius: var(--radius-overlay) !important;
   overflow: hidden;
   border: 1px solid var(--dlg-border);
   background: var(--dlg-surface-elevated) !important;
@@ -674,11 +838,11 @@ defineExpose({ open, close });
 .settings-dialog .dialog-header-icon {
   width: 28px;
   height: 28px;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   border: 1px solid #a7f3d0;
   background: #d1fae5;
   color: #047857;
-  font-size: 14px;
+  font-size: var(--text-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -690,7 +854,7 @@ defineExpose({ open, close });
 
 .settings-dialog .dialog-title {
   color: var(--dlg-text);
-  font-size: 16px;
+  font-size: var(--text-xl);
   font-weight: 700;
   line-height: 1.2;
 }
@@ -698,7 +862,7 @@ defineExpose({ open, close });
 .settings-dialog .dialog-subtitle {
   margin-top: 2px;
   color: var(--dlg-muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .settings-dialog .el-dialog__headerbtn {
@@ -733,11 +897,11 @@ defineExpose({ open, close });
   align-items: center;
   gap: 10px;
   padding: 9px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.15s ease;
   color: var(--dlg-muted);
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 500;
 }
 
@@ -755,11 +919,11 @@ defineExpose({ open, close });
 .settings-dialog .nav-item-icon {
   width: 28px;
   height: 28px;
-  border-radius: 7px;
+  border-radius: var(--radius-panel);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: var(--text-md);
   flex-shrink: 0;
   background: rgba(0, 0, 0, 0.04);
   transition: all 0.15s ease;
@@ -791,7 +955,7 @@ defineExpose({ open, close });
 }
 
 .settings-dialog .content-section-title {
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 700;
   color: var(--dlg-text);
   margin-bottom: 16px;
@@ -801,7 +965,7 @@ defineExpose({ open, close });
 }
 
 .settings-dialog .section-subtitle {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 400;
   color: var(--dlg-muted);
 }
@@ -809,7 +973,7 @@ defineExpose({ open, close });
 /* 通用设置卡片 */
 .settings-dialog .settings-card {
   border: 1px solid var(--dlg-border);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   background: var(--dlg-surface-elevated);
   padding: 16px;
 }
@@ -824,11 +988,11 @@ defineExpose({ open, close });
 .settings-dialog .card-icon {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   border: 1px solid #a7f3d0;
   background: #d1fae5;
   color: #047857;
-  font-size: 15px;
+  font-size: var(--text-lg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -843,14 +1007,14 @@ defineExpose({ open, close });
 }
 
 .settings-dialog .card-label {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--dlg-text);
   line-height: 1.3;
 }
 
 .settings-dialog .card-desc {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--dlg-muted);
   line-height: 1.4;
 }
@@ -866,13 +1030,13 @@ defineExpose({ open, close });
 .settings-dialog .el-form-item__label {
   color: #334155;
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .settings-dialog .el-select .el-input__wrapper {
   box-shadow: 0 0 0 1px #e2e8f0 inset !important;
   background: #ffffff !important;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .settings-dialog .el-select .el-input__wrapper:hover {
@@ -890,15 +1054,10 @@ defineExpose({ open, close });
   padding: 8px 12px;
   border: 1px solid var(--dlg-border);
   background: var(--dlg-surface);
-  border-radius: 8px;
-  font-size: 12px;
+  border-radius: var(--radius-panel);
+  font-size: var(--text-sm);
   color: var(--dlg-muted);
   line-height: 1.4;
-}
-
-.settings-dialog .timezone-hint .el-icon {
-  font-size: 13px;
-  color: var(--dlg-accent);
 }
 
 .settings-dialog .general-footer {
@@ -923,10 +1082,10 @@ defineExpose({ open, close });
 }
 
 .settings-dialog .create-tmpl-btn {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
-  border-color: #10b981 !important;
+  background: linear-gradient(135deg, var(--c-brand) 0%, var(--c-brand-hover) 100%) !important;
+  border-color: var(--c-brand) !important;
   color: #fff !important;
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   font-weight: 600;
 }
 
@@ -935,13 +1094,13 @@ defineExpose({ open, close });
   flex-shrink: 0;
   background: #f0fdf4;
   border: 1px solid #86efac;
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   padding: 14px 16px;
   margin-bottom: 12px;
 }
 
 .settings-dialog .create-panel-title {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 700;
   color: #047857;
   margin-bottom: 10px;
@@ -957,7 +1116,7 @@ defineExpose({ open, close });
 .settings-dialog .create-rows-section {
   background: #ffffff;
   border: 1px solid #d1fae5;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   padding: 10px 12px;
 }
 
@@ -969,8 +1128,8 @@ defineExpose({ open, close });
 }
 
 .settings-dialog .add-row-btn {
-  color: #10b981 !important;
-  font-size: 12px;
+  color: var(--c-brand) !important;
+  font-size: var(--text-sm);
   padding: 2px 6px !important;
 }
 
@@ -999,10 +1158,10 @@ defineExpose({ open, close });
 }
 
 .settings-dialog .col-name-input :deep(.el-input__wrapper) {
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 0 6px;
-  font-family: "Courier New", monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
 }
 
 .settings-dialog .unit-input {
@@ -1010,9 +1169,9 @@ defineExpose({ open, close });
 }
 
 .settings-dialog .unit-input :deep(.el-input__wrapper) {
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 0 6px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .settings-dialog .action-cell .el-button {
@@ -1022,7 +1181,7 @@ defineExpose({ open, close });
 .settings-dialog .empty-row-hint {
   text-align: center;
   color: #9ca3af;
-  font-size: 12px;
+  font-size: var(--text-sm);
   padding: 12px !important;
 }
 
@@ -1032,7 +1191,7 @@ defineExpose({ open, close });
 }
 
 .settings-dialog .tmpl-search :deep(.el-input__wrapper) {
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .settings-dialog .tmpl-scroll {
@@ -1045,7 +1204,7 @@ defineExpose({ open, close });
 }
 
 .settings-dialog .tmpl-section-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
   color: #6b7280;
   text-transform: uppercase;
@@ -1060,18 +1219,18 @@ defineExpose({ open, close });
 }
 
 .settings-dialog .tmpl-empty-icon {
-  font-size: 32px;
+  font-size: var(--text-display-sm);
   margin-bottom: 8px;
 }
 
 .settings-dialog .tmpl-empty-text {
-  font-size: 13px;
+  font-size: var(--text-base);
   color: #6b7280;
   margin-bottom: 4px;
 }
 
 .settings-dialog .tmpl-empty-hint {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: #9ca3af;
 }
 
@@ -1085,7 +1244,7 @@ defineExpose({ open, close });
 .settings-dialog .template-card {
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   overflow: hidden;
   transition: all 0.2s ease;
 }
@@ -1100,7 +1259,7 @@ defineExpose({ open, close });
 }
 
 .settings-dialog .template-card.editing {
-  border-color: #10b981;
+  border-color: var(--c-brand);
   box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
 }
 
@@ -1119,7 +1278,7 @@ defineExpose({ open, close });
 }
 
 .settings-dialog .tcard-name {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: #1e293b;
   overflow: hidden;
@@ -1132,17 +1291,17 @@ defineExpose({ open, close });
 
 .settings-dialog .builtin-badge {
   display: inline-block;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 700;
   color: #059669;
   background: rgba(16, 185, 129, 0.1);
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
 
 .settings-dialog .tcard-meta {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #9ca3af;
   margin-top: 3px;
   display: flex;
@@ -1166,7 +1325,7 @@ defineExpose({ open, close });
 }
 
 .settings-dialog .expand-icon {
-  font-size: 13px;
+  font-size: var(--text-base);
   color: #9ca3af;
   transition: transform 0.2s ease;
   margin-left: 4px;
@@ -1174,7 +1333,7 @@ defineExpose({ open, close });
 
 .settings-dialog .expand-icon.rotated {
   transform: rotate(90deg);
-  color: #10b981;
+  color: var(--c-brand);
 }
 
 /* 编辑态 */
@@ -1202,7 +1361,7 @@ defineExpose({ open, close });
 .settings-dialog .edit-field-label {
   flex-shrink: 0;
   width: 30px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: #6b7280;
   padding-top: 6px;
@@ -1213,7 +1372,7 @@ defineExpose({ open, close });
 }
 
 .settings-dialog .edit-name-input :deep(.el-input__wrapper) {
-  border-radius: 6px;
+  border-radius: var(--radius-control);
 }
 
 .settings-dialog .edit-desc-input {
@@ -1221,8 +1380,8 @@ defineExpose({ open, close });
 }
 
 .settings-dialog .edit-desc-input :deep(.el-textarea__inner) {
-  border-radius: 6px;
-  font-size: 13px;
+  border-radius: var(--radius-control);
+  font-size: var(--text-base);
 }
 
 .settings-dialog .edit-actions {
@@ -1240,13 +1399,13 @@ defineExpose({ open, close });
 
 .settings-dialog .tcard-description {
   padding: 0 14px 8px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: #6b7280;
   line-height: 1.5;
 }
 
 .settings-dialog .detail-section-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
   color: #9ca3af;
   text-transform: uppercase;
@@ -1263,14 +1422,14 @@ defineExpose({ open, close });
 .settings-dialog .detail-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .settings-dialog .detail-table thead th {
   text-align: left;
   font-weight: 600;
   color: #6b7280;
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 5px 8px;
   border-bottom: 1px solid #e2e8f0;
 }
@@ -1284,11 +1443,11 @@ defineExpose({ open, close });
 .settings-dialog .col-name-cell {
   font-weight: 500;
   color: #1e293b;
-  font-family: "Courier New", monospace;
+  font-family: var(--font-mono);
 }
 
 .settings-dialog .value-cell {
-  font-family: "Courier New", monospace;
+  font-family: var(--font-mono);
   color: #059669;
 }
 
@@ -1301,13 +1460,13 @@ defineExpose({ open, close });
 }
 
 .settings-dialog .threshold-input :deep(.el-input__wrapper) {
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 0 6px;
 }
 
 .settings-dialog .threshold-input :deep(.el-input__inner) {
-  font-family: "Courier New", monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
   text-align: right;
 }
 
@@ -1349,7 +1508,7 @@ defineExpose({ open, close });
   height: 34px;
   min-width: 80px;
   padding: 0 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font-weight: 600;
 }
 
@@ -1378,15 +1537,15 @@ defineExpose({ open, close });
 }
 
 .settings-dialog .submit-btn {
-  background: #10b981 !important;
-  border: 1px solid #10b981 !important;
+  background: var(--c-brand) !important;
+  border: 1px solid var(--c-brand) !important;
   color: #ffffff !important;
   transition: all 0.2s;
 }
 
 .settings-dialog .submit-btn:hover {
-  background: #059669 !important;
-  border-color: #059669 !important;
+  background: var(--c-brand-hover) !important;
+  border-color: var(--c-brand-hover) !important;
 }
 
 .settings-dialog .el-button.is-disabled.submit-btn {

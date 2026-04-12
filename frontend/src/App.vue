@@ -1,267 +1,443 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from "vue";
 import GlobalDialogs from "./components/dialogs/index.vue";
-// import emitter from "./utils/eventBus";
 import { useCategoryStore } from "./stores/useCategoryStore";
 const categoryStore = useCategoryStore();
 onMounted(() => {
   categoryStore.loadCategories();
-  // 设置项目状态管理
-  // setupProjectStore();
-
-  // if (window.electronAPI) {
-  //   // 事件转发到Vue事件总线
-  //   window.electronAPI.onOpenCreateProjectDialog(() => {
-  //     emitter.emit("open-create-project-dialog");
-  //   });
-
-  //   window.electronAPI.onOpenImportDataDialog(() => {
-  //     console.log("App.vue 收到主进程的open-import-data-dialog事件，转发到事件总线");
-  //     emitter.emit("open-import-data-dialog");
-  //   });
-  // }
 });
 
-onUnmounted(() => {
-  // 清理项目状态管理
-  // cleanupProjectStore();
-});
+onUnmounted(() => {});
 </script>
 
 <template>
   <router-view />
-  <!-- 引入全局对话框管理器 -->
   <GlobalDialogs />
 </template>
 
 <style>
-/* 全局样式（作为补充，不覆盖 assets/style.css 中的主要样式）*/
+/* ============================================================
+   App.vue — Element Plus 全局组件覆盖
+   所有色彩/间距令牌均来自 design-system.css（已在 style.css 中引入）
+   ============================================================ */
+
+/* --- 基础 --- */
 body {
   margin: 0;
-  font-family: inherit;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
-  color: #1f2937;
+  color: var(--c-text-base);
+  background: var(--c-bg-app);
 }
 
-/* 标题规范 */
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  margin: 0;
-  font-family: inherit;
-  font-weight: 600;
-  line-height: 1.3;
-  color: #111827;
-}
-
-h1 {
-  font-size: 24px;
-}
-h2 {
-  font-size: 20px;
-}
-h3 {
-  font-size: 18px;
-}
-h4 {
-  font-size: 16px;
-}
-
-/* 基础表单组件字体统一 */
-button,
-input,
-select,
-textarea {
-  font-family: inherit;
-}
-
-/* 设置一些全局有用的辅助类 */
+/* --- 语义文字辅助类 --- */
 .text-danger {
-  color: #f56c6c !important;
+  color: var(--c-danger-text) !important;
 }
-
 .text-success {
-  color: #67c23a !important;
+  color: var(--c-success-text) !important;
 }
-
 .text-warning {
-  color: #e6a23c !important;
+  color: var(--c-warning-text) !important;
 }
-
 .text-info {
-  color: #909399 !important;
+  color: var(--c-info-text) !important;
 }
 
-/* 为Element Plus组件添加一些全局样式覆盖 */
-:root {
-  --el-color-primary: #3b82f6;
-  --el-color-primary-light-3: #60a5fa;
-  --el-color-primary-light-5: #93c5fd;
-  --el-color-primary-light-7: #bfdbfe;
-  --el-color-primary-light-9: #ebf5ff;
-  --el-color-primary-dark-2: #2563eb;
-}
-
-/* 定制对话框样式 */
+/* ============================================================
+   Element Plus — 对话框 (Dialog)
+   ============================================================ */
 .el-dialog {
-  border-radius: 8px;
+  border-radius: var(--dialog-radius) !important;
   overflow: hidden;
+  box-shadow: var(--dialog-shadow) !important;
+  border: 1px solid var(--dialog-border) !important;
 }
 
 .el-dialog__header {
   margin: 0;
-  padding: 16px 20px;
-  background-color: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
+  padding: var(--dialog-header-padding);
+  background-color: var(--dialog-header-bg);
+  border-bottom: 1px solid var(--dialog-header-border);
 }
 
-.el-dialog__title,
-.el-message-box__title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #111827;
-}
-
-.el-message-box__header {
-  padding: 16px 20px;
-  background-color: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.el-message-box__content {
-  padding: 24px 20px;
-  font-size: 14px;
-  color: #374151;
-}
-
-.el-message-box__btns {
-  padding: 12px 20px 16px;
-  background-color: #f9fafb;
-  border-top: 1px solid #e5e7eb;
+.el-dialog__title {
+  font-size: var(--dialog-header-font);
+  font-weight: var(--dialog-header-weight);
+  color: var(--c-text-primary);
 }
 
 .el-dialog__headerbtn {
-  top: 16px;
+  top: 18px;
   right: 20px;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-control);
+  transition: var(--transition-colors);
+}
+
+.el-dialog__headerbtn:hover {
+  background: var(--c-bg-subtle);
+}
+
+.el-dialog__headerbtn .el-dialog__close {
+  color: var(--c-text-muted);
+  font-size: var(--text-md);
+}
+
+.el-dialog__headerbtn:hover .el-dialog__close {
+  color: var(--c-text-base);
 }
 
 .el-dialog__body {
-  padding: 24px 0;
+  padding: var(--dialog-body-padding);
+  color: var(--c-text-base);
 }
 
 .el-dialog__footer {
-  padding: 16px 20px;
-  border-top: 1px solid #e5e7eb;
-  background-color: #f9fafb;
+  padding: var(--dialog-footer-padding);
+  border-top: 1px solid var(--dialog-footer-border);
+  background-color: var(--dialog-footer-bg);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--dialog-footer-gap);
 }
 
-/* 定制表单样式 */
-.el-form-item__label {
-  font-size: 14px;
-  font-weight: 500;
-  color: #374151;
+/* ============================================================
+   Element Plus — MessageBox
+   ============================================================ */
+.el-message-box {
+  border-radius: var(--radius-overlay) !important;
+  border: 1px solid var(--c-border-subtle) !important;
+  box-shadow: var(--shadow-2xl) !important;
 }
 
-.el-input__inner {
-  height: 36px;
-  line-height: 36px;
+.el-message-box__header {
+  padding: var(--space-5) var(--space-6) var(--space-3);
+  background-color: var(--c-bg-muted);
+  border-bottom: 1px solid var(--c-border-subtle);
 }
 
-.el-input__wrapper {
-  border-radius: 4px;
+.el-message-box__title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--c-text-primary);
 }
 
+.el-message-box__content {
+  padding: var(--space-5) var(--space-6);
+  font-size: var(--text-md);
+  color: var(--c-text-secondary);
+}
+
+.el-message-box__btns {
+  padding: var(--space-3) var(--space-6) var(--space-5);
+  background-color: var(--c-bg-muted);
+  border-top: 1px solid var(--c-border-subtle);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+/* ============================================================
+   Element Plus — 按钮 (Button)
+   ============================================================ */
 .el-button {
-  font-weight: 500;
-  border-radius: 4px;
+  font-weight: var(--btn-font-weight);
+  border-radius: var(--btn-radius);
+  font-size: var(--btn-font-md);
+  height: var(--btn-height-md);
+  transition:
+    var(--transition-colors),
+    var(--transition-shadow),
+    transform var(--duration-base) var(--ease-inout);
+}
+
+.el-button--small {
+  height: var(--btn-height-sm);
+  font-size: var(--btn-font-sm);
+  border-radius: var(--radius-sm);
+}
+
+.el-button--large {
+  height: var(--btn-height-lg);
+  font-size: var(--btn-font-lg);
 }
 
 .el-button--primary {
-  background-color: var(--el-color-primary);
+  background-color: var(--c-brand);
+  border-color: var(--c-brand);
+  box-shadow: var(--shadow-brand-sm);
 }
 
-.el-button--primary:hover {
-  background-color: var(--el-color-primary-dark-2);
+.el-button--primary:hover,
+.el-button--primary:focus {
+  background-color: var(--c-brand-hover);
+  border-color: var(--c-brand-hover);
+  box-shadow: var(--shadow-brand-md);
+  transform: translateY(-1px);
 }
 
-/* 定制菜单样式 */
+.el-button--primary:active {
+  transform: translateY(0);
+}
+
+.el-button--danger {
+  background-color: var(--c-danger);
+  border-color: var(--c-danger);
+}
+
+.el-button--danger:hover {
+  background-color: var(--c-danger-hover);
+  border-color: var(--c-danger-hover);
+  transform: translateY(-1px);
+}
+
+/* ============================================================
+   Element Plus — 输入框 (Input)
+   ============================================================ */
+.el-input__wrapper {
+  border-radius: var(--input-radius);
+  box-shadow: 0 0 0 1px var(--input-border) inset;
+  transition: var(--transition-colors);
+}
+
+.el-input__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--color-neutral-400) inset;
+}
+
+.el-input__wrapper.is-focus {
+  box-shadow:
+    0 0 0 1px var(--input-border-focus) inset,
+    var(--input-focus-ring);
+}
+
+.el-input__inner {
+  color: var(--input-text);
+  font-size: var(--input-font);
+}
+
+.el-input__inner::placeholder {
+  color: var(--input-placeholder);
+}
+
+/* ============================================================
+   Element Plus — 选择器 (Select)
+   ============================================================ */
+.el-select .el-input__wrapper.is-focus {
+  box-shadow:
+    0 0 0 1px var(--input-border-focus) inset,
+    var(--input-focus-ring);
+}
+
+/* ============================================================
+   Element Plus — 表单 (Form)
+   ============================================================ */
+.el-form-item__label {
+  font-size: var(--form-label-font);
+  font-weight: var(--form-label-weight);
+  color: var(--form-label-color);
+}
+
+.el-form-item__error {
+  font-size: var(--text-xs);
+  color: var(--c-danger-text);
+}
+
+/* ============================================================
+   Element Plus — 表格 (Table)
+   ============================================================ */
+.el-table {
+  border-radius: var(--table-radius);
+  border: 1px solid var(--table-border);
+  overflow: hidden;
+  font-size: var(--table-row-font);
+  color: var(--table-row-color);
+}
+
+.el-table th.el-table__cell {
+  background-color: var(--table-header-bg);
+  color: var(--table-header-text);
+  font-size: var(--table-header-font);
+  font-weight: var(--table-header-weight);
+  height: var(--table-header-height);
+  border-bottom: 1px solid var(--table-border);
+}
+
+.el-table td.el-table__cell {
+  height: var(--table-row-height);
+  border-bottom: 1px solid var(--c-border-subtle);
+  padding: var(--table-cell-padding);
+}
+
+.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+  background-color: var(--table-row-stripe-bg);
+}
+
+.el-table__body tr:hover td.el-table__cell {
+  background-color: var(--table-row-hover-bg) !important;
+}
+
+/* ============================================================
+   Element Plus — 标签 (Tag)
+   ============================================================ */
+.el-tag {
+  height: var(--tag-height-md);
+  padding: var(--tag-padding-md);
+  font-size: var(--tag-font-md);
+  font-weight: var(--tag-font-weight);
+  border-radius: var(--tag-radius);
+}
+
+.el-tag--small {
+  height: var(--tag-height-sm);
+  padding: var(--tag-padding-sm);
+  font-size: var(--tag-font-sm);
+}
+
+.el-tag--large {
+  height: var(--tag-height-lg);
+  padding: var(--tag-padding-lg);
+  font-size: var(--tag-font-lg);
+}
+
+/* ============================================================
+   Element Plus — 菜单 (Menu / Dropdown)
+   ============================================================ */
 .el-menu-item {
-  font-size: 14px;
-}
-
-.el-breadcrumb__item {
-  font-size: 14px;
+  font-size: var(--text-base);
+  height: var(--sb-item-height);
+  line-height: var(--sb-item-height);
 }
 
 .el-dropdown-menu__item {
-  font-size: 14px;
-  padding: 8px 12px;
+  font-size: var(--text-base);
+  padding: var(--space-2) var(--space-3);
+  color: var(--c-text-base);
+  transition: var(--transition-colors);
+}
+
+.el-dropdown-menu__item:hover {
+  background-color: var(--c-brand-soft);
+  color: var(--c-brand);
 }
 
 .el-dropdown-menu__item i {
-  margin-right: 6px;
+  margin-right: var(--space-1-5);
 }
 
-/* 滚动条样式 */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* ============================================================
+   Element Plus — 面包屑 (Breadcrumb)
+   ============================================================ */
+.el-breadcrumb__item {
+  font-size: var(--text-base);
 }
 
-::-webkit-scrollbar-thumb {
-  background-color: #d1d5db;
-  border-radius: 3px;
+.el-breadcrumb__inner {
+  color: var(--c-text-secondary);
 }
 
-::-webkit-scrollbar-track {
-  background-color: #f3f4f6;
-  border-radius: 3px;
+.el-breadcrumb__inner.is-link:hover {
+  color: var(--c-brand);
 }
 
-/* ----------------------------------------------------------------------
-   Custom Message Box Styles (Glassmorphism) - Global Override
-   ---------------------------------------------------------------------- */
+/* ============================================================
+   Element Plus — 分页 (Pagination)
+   ============================================================ */
+.el-pagination {
+  font-size: var(--text-base);
+  color: var(--c-text-secondary);
+}
+
+.el-pagination .el-pager li {
+  border-radius: var(--radius-control);
+  font-size: var(--text-base);
+}
+
+.el-pagination .el-pager li.is-active {
+  background-color: var(--c-brand);
+}
+
+/* ============================================================
+   Element Plus — 步骤条 (Steps)
+   ============================================================ */
+.el-step__title {
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+}
+
+.el-step__description {
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
+}
+
+/* ============================================================
+   Element Plus — 提示 (Tooltip / Popover)
+   ============================================================ */
+.el-tooltip__popper {
+  font-size: var(--text-sm);
+  border-radius: var(--radius-overlay);
+}
+
+.el-popover {
+  border-radius: var(--radius-overlay) !important;
+  border: 1px solid var(--c-border) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+
+/* ============================================================
+   Element Plus — 通知 (Message / Notification)
+   ============================================================ */
+.el-message {
+  border-radius: var(--radius-overlay);
+  font-size: var(--text-base);
+  box-shadow: var(--shadow-lg);
+}
+
+.el-notification {
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-xl);
+  border: 1px solid var(--c-border);
+}
+
+/* ============================================================
+   Glassmorphism MessageBox（qc-message-box 专属）
+   ============================================================ */
 .qc-message-box.el-message-box {
-  /* 重置变量 */
-  --el-messagebox-title-color: #1f2937;
-  --el-messagebox-content-color: #4b5563;
-  --el-messagebox-border-radius: 20px;
+  --el-messagebox-title-color: var(--c-text-primary);
+  --el-messagebox-content-color: var(--c-text-secondary);
+  --el-messagebox-border-radius: var(--radius-3xl);
 
-  /* 核心样式覆盖 */
   width: 480px !important;
   max-width: 90vw !important;
-  padding-bottom: 24px !important;
+  padding-bottom: var(--space-6) !important;
   border: 1px solid rgba(255, 255, 255, 0.8) !important;
-  background: rgba(255, 255, 255, 0.9) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
   backdrop-filter: blur(24px) !important;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15) !important;
+  box-shadow: var(--shadow-2xl) !important;
   overflow: visible !important;
 }
 
-/* 头部：移除默认灰色背景和边框 */
 .qc-message-box.el-message-box .el-message-box__header {
-  padding: 24px 24px 12px !important;
+  padding: var(--space-6) var(--space-6) var(--space-3) !important;
   background: transparent !important;
   border-bottom: none !important;
 }
 
 .qc-message-box.el-message-box .el-message-box__title {
-  font-size: 20px !important;
-  font-weight: 700 !important;
+  font-size: var(--text-2xl) !important;
+  font-weight: var(--font-bold) !important;
 }
 
 .qc-message-box.el-message-box .el-message-box__headerbtn {
-  top: 24px !important;
-  right: 24px !important;
+  top: var(--space-6) !important;
+  right: var(--space-6) !important;
   width: 32px;
   height: 32px;
-  border-radius: 50%;
-  transition: background 0.2s;
+  border-radius: var(--radius-full);
+  transition: var(--transition-colors);
 }
 
 .qc-message-box.el-message-box .el-message-box__headerbtn:hover {
@@ -269,69 +445,58 @@ textarea {
 }
 
 .qc-message-box.el-message-box .el-message-box__headerbtn .el-message-box__close {
-  color: #9ca3af !important;
+  color: var(--c-text-muted) !important;
 }
 
 .qc-message-box.el-message-box .el-message-box__headerbtn:hover .el-message-box__close {
-  color: #1f2937 !important;
+  color: var(--c-text-base) !important;
 }
 
-/* 内容区域 */
 .qc-message-box.el-message-box .el-message-box__content {
-  padding: 0 24px 24px !important;
+  padding: 0 var(--space-6) var(--space-6) !important;
   background: transparent !important;
-  font-size: 15px !important;
+  font-size: var(--text-md) !important;
 }
 
-/* 状态图标调整 */
-.qc-message-box.el-message-box .el-message-box__status {
-  top: -2px !important; /* 微调对齐 */
-}
-
-/* 底部按钮区：移除灰色背景和边框 */
 .qc-message-box.el-message-box .el-message-box__btns {
-  padding: 0 24px 0 !important;
+  padding: 0 var(--space-6) !important;
   background: transparent !important;
   border-top: none !important;
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
-/* 按钮通用样式 */
 .qc-message-box.el-message-box .el-button {
-  margin-left: 0 !important; /* 覆盖默认 margin */
-  height: 38px !important;
-  padding: 0 20px !important;
-  border-radius: 10px !important;
-  font-weight: 600 !important;
+  margin-left: 0 !important;
+  height: var(--btn-height-lg) !important;
+  padding: var(--btn-padding-lg) !important;
+  border-radius: var(--radius-control) !important;
+  font-weight: var(--font-semibold) !important;
 }
 
-/* 取消按钮 */
 .qc-message-box.el-message-box .el-button:not(.el-button--primary) {
   background: transparent !important;
-  border: 1px solid rgba(156, 163, 175, 0.3) !important;
-  color: #4b5563 !important;
+  border: 1px solid var(--c-border-strong) !important;
+  color: var(--c-text-secondary) !important;
 }
 
 .qc-message-box.el-message-box .el-button:not(.el-button--primary):hover {
-  background: rgba(0, 0, 0, 0.05) !important;
-  border-color: rgba(156, 163, 175, 0.5) !important;
-  color: #1f2937 !important;
+  background: var(--c-bg-subtle) !important;
+  border-color: var(--c-border-strong) !important;
+  color: var(--c-text-base) !important;
 }
 
-/* 确认按钮 */
 .qc-message-box.el-message-box .el-button--primary {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  background: linear-gradient(135deg, var(--color-primary-500) 0%, var(--color-primary-600) 100%) !important;
   border: none !important;
-  color: #ffffff !important;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25) !important;
+  color: var(--c-text-inverse) !important;
+  box-shadow: var(--shadow-brand-sm) !important;
 }
 
 .qc-message-box.el-message-box .el-button--primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35) !important;
-  opacity: 0.95;
+  box-shadow: var(--shadow-brand-md) !important;
 }
 
 .qc-message-box--outlier-filter.el-message-box {

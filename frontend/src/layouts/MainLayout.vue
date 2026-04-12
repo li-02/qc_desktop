@@ -5,18 +5,18 @@ import emitter from "@/utils/eventBus";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
   Plus,
-  Refresh,
-  ArrowDown,
-  ArrowUp,
-  CaretLeft,
-  CaretRight,
-  Sort,
-  Delete,
-  Files,
-  Close,
-  Setting,
-  Edit,
-} from "@element-plus/icons-vue";
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUpDown,
+  Trash2,
+  FolderOpen,
+  X,
+  Settings,
+  Pencil,
+} from "lucide-vue-next";
 import DatasetVersionTree from "@/components/sidebar/DatasetVersionTree.vue";
 import { useCategoryStore } from "@/stores/useCategoryStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
@@ -297,16 +297,16 @@ onUnmounted(() => {
           </div>
         </div>
         <button v-if="!isCollapsed" class="settings-btn" @click="openSettingsDialog" title="系统设置">
-          <el-icon><Setting /></el-icon>
+          <Settings :size="15" />
         </button>
       </div>
 
       <!-- 侧边栏折叠按钮 -->
       <button class="collapse-btn" @click="toggleCollapse" :title="isCollapsed ? '展开侧边栏' : '折叠侧边栏'">
-        <el-icon class="collapse-icon">
-          <CaretRight v-if="isCollapsed" />
-          <CaretLeft v-else />
-        </el-icon>
+        <span class="collapse-icon">
+          <ChevronRight v-if="isCollapsed" :size="11" />
+          <ChevronLeft v-else :size="11" />
+        </span>
       </button>
 
       <!-- 分类管理区域 -->
@@ -329,22 +329,22 @@ onUnmounted(() => {
               @click="handleBatchDelete"
               title="删除选中"
               :disabled="selectedCategoryIds.size === 0"
-              :style="{ color: selectedCategoryIds.size > 0 ? '#dc2626' : '#9ca3af' }">
-              <el-icon><Delete /></el-icon>
+              :style="{ color: selectedCategoryIds.size > 0 ? 'var(--c-danger)' : 'var(--c-text-muted)' }">
+              <Trash2 :size="14" />
             </button>
             <button class="action-btn" @click="toggleBatchMode" title="退出批量模式">
-              <el-icon><Close /></el-icon>
+              <X :size="14" />
             </button>
           </div>
 
           <!-- 正常模式操作栏 -->
           <div v-else class="section-actions">
             <button class="action-btn" @click="categoryStore.loadCategories" title="刷新分类列表">
-              <el-icon><Refresh /></el-icon>
+              <RefreshCw :size="14" />
             </button>
             <el-dropdown trigger="click" @command="handleSortCommand">
               <button class="action-btn" title="排序">
-                <el-icon><Sort /></el-icon>
+                <ArrowUpDown :size="14" />
               </button>
               <template #dropdown>
                 <el-dropdown-menu>
@@ -364,16 +364,16 @@ onUnmounted(() => {
               </template>
             </el-dropdown>
             <button class="action-btn" @click="expandAllCategories" title="展开所有分类">
-              <el-icon><ArrowDown /></el-icon>
+              <ChevronDown :size="14" />
             </button>
             <button class="action-btn" @click="collapseAllCategories" title="折叠所有分类">
-              <el-icon><ArrowUp /></el-icon>
+              <ChevronUp :size="14" />
             </button>
             <button class="action-btn" @click="toggleBatchMode" title="批量管理">
-              <el-icon><Files /></el-icon>
+              <FolderOpen :size="14" />
             </button>
             <button class="action-btn" @click="createNewCategory" title="新建分类">
-              <el-icon><Plus /></el-icon>
+              <Plus :size="14" />
             </button>
           </div>
         </div>
@@ -414,7 +414,7 @@ onUnmounted(() => {
                   class="project-expand-caret"
                   :class="{ expanded: isCategoryExpanded(category.id), invisible: !category.datasets?.length }"
                   @click.stop="toggleCategoryExpanded(category.id)">
-                  <el-icon><CaretRight /></el-icon>
+                  <ChevronRight :size="12" />
                 </button>
 
                 <div class="project-main">
@@ -430,16 +430,19 @@ onUnmounted(() => {
                 <div class="project-right">
                   <div class="project-actions">
                     <button class="project-action-btn" @click.stop="handleImportData(category.id)" title="导入数据集">
-                      <el-icon><Plus /></el-icon>
+                      <Plus :size="12" />
                     </button>
-                    <button class="project-action-btn" @click.stop="editCategory(category.id, category.name)" title="编辑分类">
-                      <el-icon><Edit /></el-icon>
+                    <button
+                      class="project-action-btn"
+                      @click.stop="editCategory(category.id, category.name)"
+                      title="编辑分类">
+                      <Pencil :size="12" />
                     </button>
                     <button
                       class="project-action-btn delete-btn"
                       @click.stop="confirmDeleteCategory(category.id)"
                       title="删除分类">
-                      <el-icon><Delete /></el-icon>
+                      <Trash2 :size="12" />
                     </button>
                   </div>
                 </div>
@@ -479,7 +482,7 @@ onUnmounted(() => {
                           class="dataset-expand-btn"
                           :class="{ expanded: isDatasetExpanded(dataset.id) }"
                           @click.stop="toggleDatasetExpanded(dataset.id)">
-                          <el-icon><CaretRight /></el-icon>
+                          <ChevronRight :size="10" />
                         </button>
                         <div class="dataset-icon">{{ getDatasetIcon(dataset.type) }}</div>
                         <div class="dataset-name">{{ dataset.name }}</div>
@@ -488,7 +491,7 @@ onUnmounted(() => {
                           class="dataset-delete-btn"
                           @click.stop="confirmDeleteDataset(category.id, dataset.id)"
                           title="删除数据集">
-                          <el-icon><Delete /></el-icon>
+                          <Trash2 :size="10" />
                         </button>
                       </div>
                     </div>
@@ -556,7 +559,13 @@ onUnmounted(() => {
 
       <!-- 内容区域 -->
       <div class="content-area">
-        <router-view v-if="categoryStore.currentCategory || $route.path === '/' || $route.path === '/workflow' || $route.path === '/data-source'" />
+        <router-view
+          v-if="
+            categoryStore.currentCategory ||
+            $route.path === '/' ||
+            $route.path === '/workflow' ||
+            $route.path === '/data-source'
+          " />
         <div v-else class="content-empty">
           <el-empty description="请先选择一个分类" :image-size="128">
             <el-button type="primary" @click="createNewCategory">新建分类</el-button>
@@ -571,63 +580,63 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* 应用主容器 */
+/* ── 应用主容器 ── */
 .app-container {
   display: flex;
   height: 100vh;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
+  background: var(--c-bg-app);
 }
 
-/* 侧边栏主容器 */
+/* ── 侧边栏 ── */
 .sidebar {
-  --sb-surface: #f8fafc;
-  --sb-surface-elevated: #ffffff;
-  --sb-border: #e2e8f0;
-  --sb-muted: #64748b;
-  --sb-text: #1e293b;
-  --sb-accent: #10b981;
-  --sb-accent-soft: #ecfdf5;
-  width: 320px;
-  background: var(--sb-surface);
-  border-right: 1px solid var(--sb-border);
+  width: var(--sb-width); /* 220px */
+  background: var(--sb-bg);
+  border-right: none;
   display: flex;
   flex-direction: column;
-  box-shadow: 2px 0 12px rgba(15, 23, 42, 0.04);
+  box-shadow: 2px 0 12px rgba(45, 106, 79, 0.1);
   position: relative;
-  transition: width 0.3s ease-in-out;
+  transition: width var(--duration-slower) var(--ease-inout);
   overflow: visible;
-  z-index: 20;
+  z-index: var(--z-sticky);
+  flex-shrink: 0;
 }
 
 .sidebar.collapsed {
-  width: 80px;
+  width: 64px;
 }
 
-.sidebar::before {
-  content: none;
+/* ── 侧边栏内局部 token 覆盖 — 浅色主题，与全局一致 ── */
+.sidebar {
+  --c-bg-surface: rgba(255, 255, 255, 0.55);
+  --c-bg-muted: rgba(255, 255, 255, 0.3);
+  --c-bg-subtle: rgba(255, 255, 255, 0.2);
+  --c-border: rgba(45, 106, 79, 0.15);
+  --c-border-strong: rgba(45, 106, 79, 0.25);
+  --c-border-subtle: rgba(45, 106, 79, 0.08);
 }
 
-/* 应用标题区域 */
+/* ── 应用标题区 ── */
 .app-header {
-  padding: 16px;
+  height: var(--sb-header-height); /* 52px */
+  padding: var(--sb-header-padding);
   border-bottom: 1px solid var(--sb-border);
-  position: relative;
-  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
+  gap: var(--space-2);
 }
 
 .sidebar.collapsed .app-header {
-  padding: 16px 12px;
+  padding: 0 var(--space-3);
   justify-content: center;
 }
 
 .app-title {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2-5);
   min-width: 0;
   flex: 1;
 }
@@ -637,142 +646,125 @@ onUnmounted(() => {
 }
 
 .app-icon {
-  width: 34px;
-  height: 34px;
-  background: #d1fae5;
-  border: 1px solid #a7f3d0;
-  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  background: rgba(116, 198, 157, 0.2);
+  border: 1px solid rgba(116, 198, 157, 0.35);
+  border-radius: var(--radius-panel);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
-  position: relative;
+  font-size: var(--text-lg);
   flex-shrink: 0;
-}
-
-.app-icon::after {
-  content: none;
-}
-
-.app-icon span {
-  color: #047857;
 }
 
 .app-title-text {
   opacity: 1;
   transform: translateX(0);
   transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
+    opacity var(--duration-slow) var(--ease-inout),
+    transform var(--duration-slow) var(--ease-inout);
   white-space: nowrap;
   overflow: hidden;
 }
 
 .sidebar.collapsed .app-title-text {
   opacity: 0;
-  transform: translateX(-20px);
+  transform: translateX(-12px);
   width: 0;
-  overflow: hidden;
 }
 
-/* 设置按钮 */
+.app-name {
+  font-size: var(--text-md);
+  font-weight: var(--font-bold);
+  color: var(--c-text-primary);
+  letter-spacing: var(--tracking-tight);
+  white-space: nowrap;
+  line-height: var(--leading-tight);
+}
+
+.app-subtitle {
+  font-size: var(--text-2xs);
+  color: var(--c-text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  font-weight: var(--font-medium);
+  white-space: nowrap;
+}
+
+/* ── 设置按钮 ── */
 .settings-btn {
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--sb-border);
-  background: var(--sb-surface-elevated);
-  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-surface);
+  border-radius: var(--radius-control);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: var(--sb-muted);
-  transition: all 0.2s ease;
+  color: var(--c-text-muted);
+  transition: var(--transition-colors);
   flex-shrink: 0;
 }
 
 .settings-btn:hover {
-  background: var(--sb-accent-soft);
-  color: var(--sb-accent);
-  border-color: #a7f3d0;
+  background: var(--c-brand-soft);
+  color: var(--c-brand);
+  border-color: var(--c-brand-border);
 }
 
-.settings-btn .el-icon {
-  font-size: 16px;
-}
-
-.app-name {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--sb-text);
-  letter-spacing: -0.02em;
-  white-space: nowrap;
-}
-
-.app-subtitle {
-  font-size: 10px;
-  color: var(--sb-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-/* 侧边栏折叠按钮 - 悬浮在右侧边缘 */
+/* ── 折叠按钮（浮于右侧边缘）── */
 .collapse-btn {
   position: absolute;
   top: 50%;
-  right: -12px;
+  right: -11px;
   transform: translateY(-50%);
-  width: 24px;
-  height: 24px;
-  border: 1px solid var(--sb-border);
-  background: var(--sb-surface-elevated);
-  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-surface);
+  border-radius: var(--radius-full);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
-  color: #94a3b8;
-  z-index: 100;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  transition: var(--transition-colors), var(--transition-shadow);
+  color: var(--c-text-disabled);
+  z-index: var(--z-raised);
+  box-shadow: var(--shadow-sm);
   padding: 0;
 }
 
 .collapse-btn:hover {
-  color: var(--sb-accent);
-  border-color: #86efac;
-  background: var(--sb-accent-soft);
-  box-shadow: 0 3px 10px rgba(16, 185, 129, 0.14);
+  color: var(--c-brand);
+  border-color: var(--c-brand-border);
+  background: var(--c-brand-soft);
+  box-shadow: var(--shadow-brand-sm);
   transform: translateY(-50%);
 }
 
 .collapse-icon {
-  font-size: 12px;
-  transition: color 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* 项目管理区域 */
+/* ── 分类管理区域 ── */
 .projects-section {
   flex: 1;
-  padding: 0 12px 16px;
+  padding: 0 var(--space-3) var(--space-4);
   overflow-y: auto;
   position: relative;
-  z-index: 10;
-  opacity: 1;
-  transform: translateX(0);
+  z-index: var(--z-raised);
   transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
+    opacity var(--duration-slow) var(--ease-inout),
+    transform var(--duration-slow) var(--ease-inout);
 }
 
 .sidebar.collapsed .projects-section {
   opacity: 0;
-  transform: translateX(-20px);
+  transform: translateX(-12px);
   pointer-events: none;
 }
 
@@ -780,38 +772,40 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 6px;
-  padding: 12px 2px 10px;
+  margin-bottom: var(--space-1-5);
+  padding: var(--space-3) var(--space-0-5) var(--space-2);
   position: sticky;
   top: 0;
-  z-index: 20;
-  background: #f8fafc;
+  z-index: var(--z-raised);
+  background: var(--sb-bg);
 }
 
 .section-title-wrap {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .section-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #334155;
+  font-size: var(--sb-section-font);
+  font-weight: var(--sb-section-weight);
+  color: var(--sb-section-color);
+  text-transform: uppercase;
+  letter-spacing: var(--sb-section-tracking);
 }
 
 .selected-badge {
-  font-size: 11px;
-  color: #475569;
-  background: #f1f5f9;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid #e2e8f0;
+  font-size: var(--text-xs);
+  color: var(--c-text-secondary);
+  background: var(--c-bg-subtle);
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--c-border);
 }
 
 .section-actions {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 .batch-actions {
@@ -819,48 +813,48 @@ onUnmounted(() => {
 }
 
 .batch-select-all {
-  margin-right: 6px;
-  height: 24px;
+  margin-right: var(--space-1-5);
+  height: var(--btn-height-xs);
 }
 
 .action-btn {
   width: 26px;
   height: 26px;
-  border: 1px solid var(--sb-border);
-  background: var(--sb-surface-elevated);
-  border-radius: 6px;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-surface);
+  border-radius: var(--radius-control);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
-  color: var(--sb-muted);
-  font-size: 14px;
+  transition: var(--transition-colors);
+  color: var(--c-text-muted);
+  font-size: var(--text-md);
 }
 
 .action-btn:hover {
-  background: var(--sb-accent-soft);
-  color: #059669;
-  border-color: #a7f3d0;
+  background: var(--c-brand-soft);
+  color: var(--c-brand-hover);
+  border-color: var(--c-brand-border);
 }
 
-/* 项目列表 */
+.action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── 分类项 ── */
 .project-item {
-  background: var(--sb-surface-elevated);
-  border: 1px solid var(--sb-border);
-  border-radius: 10px;
-  padding: 12px;
-  margin-bottom: 8px;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: var(--transition-base);
   position: relative;
   overflow: visible;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-}
-
-.project-item.collapsed {
-  padding: 12px;
-  text-align: center;
+  box-shadow: var(--shadow-xs);
 }
 
 .project-item.batch-mode {
@@ -869,36 +863,36 @@ onUnmounted(() => {
 
 .project-checkbox {
   position: absolute;
-  left: 8px;
+  left: var(--space-2);
   top: 50%;
   transform: translateY(-50%);
-  z-index: 10;
+  z-index: var(--z-raised);
 }
 
 .project-item.batch-mode .project-header,
 .project-item.batch-mode .project-stats,
 .project-item.batch-mode .datasets-list {
-  padding-left: 24px;
-  transition: padding-left 0.2s ease;
+  padding-left: var(--space-6);
+  transition: padding-left var(--duration-slow) var(--ease-inout);
 }
 
-/* Gradient accent bar on hover/active */
+/* 左侧品牌色竖条 */
 .project-item::before {
   content: "";
   position: absolute;
-  top: 10px;
+  top: var(--space-2-5);
   left: 0;
   width: 2px;
-  bottom: 10px;
-  background: var(--sb-accent);
-  border-radius: 0 4px 4px 0;
+  bottom: var(--space-2-5);
+  background: var(--c-brand);
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
   transform: scaleY(0);
-  transition: transform 0.2s ease;
+  transition: transform var(--duration-slow) var(--ease-inout);
 }
 
 .project-item:hover {
-  border-color: #cbd5e1;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+  border-color: var(--c-border-strong);
+  box-shadow: var(--shadow-md);
 }
 
 .project-item:hover::before {
@@ -906,50 +900,49 @@ onUnmounted(() => {
 }
 
 .project-item.active {
-  background: #f8fffb;
-  border-color: #86efac;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
+  box-shadow: var(--shadow-brand-sm);
 }
 
 .project-item.active::before {
   transform: scaleY(1);
-  background: #10b981;
 }
 
+/* ── 分类头部 ── */
 .project-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
-  gap: 8px; /* Add gap for caret */
+  margin-bottom: var(--space-2-5);
+  gap: var(--space-2);
 }
 
-/* New Caret Styles */
 .project-expand-caret {
   width: 18px;
   height: 18px;
   border: none;
   background: transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
-  color: #94a3b8;
-  font-size: 12px;
+  transition: var(--transition-base);
+  color: var(--c-text-disabled);
+  font-size: var(--text-sm);
   flex-shrink: 0;
-  margin-left: -4px; /* Pull slightly left to align */
+  margin-left: calc(-1 * var(--space-1));
 }
 
 .project-expand-caret:hover {
-  background: #f0fdf4;
-  color: #10b981;
+  background: var(--c-brand-soft);
+  color: var(--c-brand);
 }
 
 .project-expand-caret.expanded {
   transform: rotate(90deg);
-  color: #10b981;
+  color: var(--c-brand);
 }
 
 .project-expand-caret.invisible {
@@ -960,7 +953,7 @@ onUnmounted(() => {
 .project-main {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2-5);
   min-width: 0;
   flex: 1;
 }
@@ -968,32 +961,28 @@ onUnmounted(() => {
 .project-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
-/* Removed old project-expand-btn styles */
-
 .project-icon {
-  width: 34px;
-  height: 34px;
-  background: #f1f5f9;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  width: 32px;
+  height: 32px;
+  background: var(--c-bg-subtle);
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--c-border);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
-  color: #475569;
-  transition: all 0.3s ease;
-  box-shadow: none;
+  font-size: var(--text-lg);
+  flex-shrink: 0;
+  transition: var(--transition-colors);
 }
 
 .project-item:hover .project-icon,
 .project-item.active .project-icon {
-  background: #d1fae5;
-  border-color: #86efac;
-  color: #047857;
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
 }
 
 .project-info {
@@ -1002,47 +991,46 @@ onUnmounted(() => {
 }
 
 .project-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1e293b;
-  margin-bottom: 2px;
+  font-size: var(--text-md);
+  font-weight: var(--font-semibold);
+  color: var(--c-text-base);
+  margin-bottom: var(--space-0-5);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: color 0.2s;
+  transition: var(--transition-colors);
 }
 
 .project-item.active .project-name {
-  color: #047857;
+  color: var(--c-brand-active);
 }
 
 .project-meta {
-  font-size: 11px;
-  color: #64748b;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .project-item.active .project-meta {
-  color: #059669;
+  color: var(--c-brand-hover);
 }
 
 .project-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--duration-fast) var(--ease-inout);
   flex-shrink: 0;
-  background: #ffffff;
-  padding: 2px;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
-  margin-left: -4px;
+  background: var(--c-bg-surface);
+  padding: var(--space-0-5);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--c-border);
 }
 
 .project-item:hover .project-actions {
@@ -1051,84 +1039,81 @@ onUnmounted(() => {
 }
 
 .project-item.active .project-actions {
-  background: #f8fffb;
-  border-color: #bbf7d0;
+  background: var(--c-bg-surface);
+  border-color: var(--c-brand-border);
 }
 
 .project-action-btn {
   width: 22px;
   height: 22px;
-  border: none;
-  background: transparent;
   border: 1px solid transparent;
-  border-radius: 5px;
+  background: transparent;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
-  color: #64748b;
-  font-size: 12px;
+  transition: var(--transition-colors);
+  color: var(--c-text-muted);
+  font-size: var(--text-sm);
 }
 
 .project-action-btn:hover {
-  background: #f0fdf4;
-  border-color: #a7f3d0;
-  color: #059669;
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
+  color: var(--c-brand-hover);
 }
 
 .project-action-btn.delete-btn:hover {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #dc2626;
+  background: var(--c-danger-bg);
+  border-color: var(--c-danger-border);
+  color: var(--c-danger-hover);
 }
 
+/* ── 分类统计 ── */
 .project-stats {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #f1f5f9;
+  gap: var(--space-2-5);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--c-border);
 }
 
 .stat-item {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: #64748b;
+  gap: var(--space-1-5);
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
 }
 
 .stat-icon {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
 }
 
 .stat-icon.datasets {
-  background: #f59e0b;
-  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.1);
+  background: var(--c-warning);
 }
 .stat-icon.files {
-  background: #8b5cf6;
-  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.1);
+  background: var(--color-purple-500);
 }
 .stat-icon.size {
-  background: #06b6d4;
-  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.1);
+  background: var(--c-chart-6);
 }
 
-/* 数据集列表 - 使用 CSS Grid 实现平滑展开 */
+/* ── 数据集列表（CSS Grid 展开动画）── */
 .datasets-list {
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
   margin-top: 0;
   transition:
-    grid-template-rows 0.25s ease-out,
-    opacity 0.2s ease-out,
-    margin-top 0.25s ease-out;
+    grid-template-rows var(--duration-slower) var(--ease-inout),
+    opacity var(--duration-slow) var(--ease-inout),
+    margin-top var(--duration-slower) var(--ease-inout);
 }
 
 .datasets-list > .datasets-container,
@@ -1139,48 +1124,48 @@ onUnmounted(() => {
 .datasets-list.expanded {
   grid-template-rows: 1fr;
   opacity: 1;
-  margin-top: 10px;
+  margin-top: var(--space-2-5);
 }
 
 .datasets-container {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding-left: 6px;
+  gap: var(--space-1);
+  padding-left: var(--space-1-5);
   position: relative;
 }
 
-/* Connecting line for datasets */
+/* 连接线 */
 .datasets-container::before {
   content: "";
   position: absolute;
   left: 16px;
-  top: 2px;
-  bottom: 10px;
+  top: var(--space-1);
+  bottom: var(--space-2-5);
   width: 1px;
-  background: #dcfce7;
-  border-radius: 1px;
+  background: var(--c-brand-border);
+  border-radius: var(--radius-xs);
 }
 
 .dataset-wrapper {
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
   position: relative;
 }
 
 .dataset-item {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 7px 8px 7px 10px;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
+  padding: var(--space-1-5) var(--space-2) var(--space-1-5) var(--space-2-5);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: var(--transition-base);
   position: relative;
   display: flex;
   align-items: center;
-  margin-left: 16px;
+  margin-left: var(--space-4);
 }
 
-/* Connector curve */
+/* 水平连接线 */
 .dataset-item::before {
   content: "";
   position: absolute;
@@ -1188,104 +1173,101 @@ onUnmounted(() => {
   top: 50%;
   width: 8px;
   height: 1px;
-  background: #bbf7d0;
+  background: var(--color-primary-200);
 }
 
 .dataset-item:hover {
-  border-color: #cbd5e1;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+  border-color: var(--c-border-strong);
+  box-shadow: var(--shadow-sm);
 }
 
 .dataset-item.active {
-  background: #f8fffb;
-  border-color: #86efac;
-  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.1);
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
+  box-shadow: var(--shadow-brand-sm);
 }
-
-/* .dataset-item.expanded removed */
 
 .dataset-header {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-1-5);
   width: 100%;
 }
 
-/* 数据集展开按钮 */
 .dataset-expand-btn {
   width: 16px;
   height: 16px;
   border: none;
   background: transparent;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
-  color: #94a3b8;
-  font-size: 10px;
+  transition: var(--transition-base);
+  color: var(--c-text-disabled);
+  font-size: var(--text-xs);
   flex-shrink: 0;
   padding: 0;
 }
 
 .dataset-expand-btn:hover {
-  background: #f0fdf4;
-  color: #10b981;
+  background: var(--c-brand-soft);
+  color: var(--c-brand);
 }
 
 .dataset-expand-btn.expanded {
   transform: rotate(90deg);
-  color: #10b981;
+  color: var(--c-brand);
 }
 
 .dataset-icon {
   width: 18px;
   height: 18px;
-  background: #f8fafc;
-  border-radius: 4px;
+  background: var(--c-bg-muted);
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
-  color: #64748b;
-  transition: all 0.2s;
-  border: 1px solid #e2e8f0;
+  font-size: var(--text-3xs);
+  color: var(--c-text-muted);
+  border: 1px solid var(--c-border);
+  transition: var(--transition-colors);
 }
 
 .dataset-item:hover .dataset-icon,
 .dataset-item.active .dataset-icon {
-  background: #f0fdf4;
-  color: #059669;
-  border-color: #bbf7d0;
+  background: var(--c-brand-soft);
+  color: var(--c-brand-hover);
+  border-color: var(--c-brand-border);
 }
 
 .dataset-name {
-  font-size: 12px;
-  font-weight: 500;
-  color: #334155;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--c-text-secondary);
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: color 0.2s;
+  transition: var(--transition-colors);
 }
 
 .dataset-item.active .dataset-name {
-  color: #047857;
-  font-weight: 600;
+  color: var(--c-brand-active);
+  font-weight: var(--font-semibold);
 }
 
 .dataset-type {
-  font-size: 9px;
-  padding: 1px 6px;
-  background: #f8fafc;
-  color: #64748b;
-  border-radius: 4px;
-  font-weight: 500;
+  font-size: var(--text-2xs);
+  padding: var(--space-0-5) var(--space-1-5);
+  background: var(--c-bg-muted);
+  color: var(--c-text-muted);
+  border-radius: var(--radius-xs);
+  font-weight: var(--font-medium);
   text-transform: uppercase;
-  letter-spacing: 0.3px;
-  border: 1px solid #e2e8f0;
+  letter-spacing: var(--tracking-wide);
+  border: 1px solid var(--c-border);
 }
 
 .dataset-delete-btn {
@@ -1293,16 +1275,16 @@ onUnmounted(() => {
   height: 18px;
   border: none;
   background: transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
-  color: #ef4444;
-  font-size: 12px;
+  transition: var(--transition-colors);
+  color: var(--c-danger);
+  font-size: var(--text-sm);
   opacity: 0;
-  margin-left: 4px;
+  margin-left: var(--space-1);
 }
 
 .dataset-item:hover .dataset-delete-btn {
@@ -1310,138 +1292,112 @@ onUnmounted(() => {
 }
 
 .dataset-delete-btn:hover {
-  background: #fef2f2;
-  color: #dc2626;
+  background: var(--c-danger-bg);
+  color: var(--c-danger-hover);
 }
 
-.dataset-meta {
-  font-size: 10px;
-  color: #9ca3af;
-  margin-left: 24px;
-}
-
-/* 数据集空状态 */
+/* ── 数据集空状态 ── */
 .datasets-empty {
   text-align: center;
-  padding: 16px 12px;
-  color: #9ca3af;
+  padding: var(--space-4) var(--space-3);
+  color: var(--c-text-disabled);
 }
 
 .datasets-empty-icon {
-  font-size: 24px;
-  margin-bottom: 8px;
+  font-size: var(--text-3xl);
+  margin-bottom: var(--space-2);
 }
 
 .datasets-empty-text {
-  font-size: 11px;
-  margin-bottom: 8px;
+  font-size: var(--text-xs);
+  margin-bottom: var(--space-2);
+  color: var(--c-text-muted);
 }
 
 .datasets-empty-action {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--c-brand) 0%, var(--c-brand-hover) 100%);
+  color: var(--c-text-inverse);
   border: none;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 10px;
-  font-weight: 500;
+  border-radius: var(--radius-control);
+  padding: var(--space-1-5) var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: var(--transition-base);
 }
 
 .datasets-empty-action:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+  box-shadow: var(--shadow-brand-md);
 }
 
-/* 空状态 */
+/* ── 分类列表空状态 ── */
 .empty-state {
   text-align: center;
-  padding: 32px 20px;
-  color: #9ca3af;
+  padding: var(--space-8) var(--space-5);
+  color: var(--c-text-muted);
 }
 
 .empty-icon {
   width: 48px;
   height: 48px;
-  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
-  border-radius: 12px;
+  background: var(--c-bg-subtle);
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--c-border);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 12px;
-  font-size: 20px;
+  margin: 0 auto var(--space-3);
+  font-size: var(--text-3xl);
 }
 
 .empty-text {
-  font-size: 13px;
-  margin-bottom: 16px;
-  line-height: 1.5;
+  font-size: var(--text-base);
+  margin-bottom: var(--space-4);
+  line-height: var(--leading-relaxed);
+  color: var(--c-text-secondary);
 }
 
 .empty-action {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--c-brand) 0%, var(--c-brand-hover) 100%);
+  color: var(--c-text-inverse);
   border: none;
-  border-radius: 8px;
-  padding: 8px 16px;
-  font-size: 12px;
-  font-weight: 500;
+  border-radius: var(--radius-control);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: var(--transition-base);
 }
 
 .empty-action:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+  box-shadow: var(--shadow-brand-md);
 }
 
-/* 滚动条样式 */
-.projects-section::-webkit-scrollbar {
-  width: 4px;
-}
-
-.projects-section::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.projects-section::-webkit-scrollbar-thumb {
-  background: rgba(16, 185, 129, 0.3);
-  border-radius: 2px;
-}
-
-.projects-section::-webkit-scrollbar-thumb:hover {
-  background: rgba(16, 185, 129, 0.5);
-}
-
-/* 主内容区域 */
+/* ── 主内容区 ── */
 .main-content {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #ffffff;
+  background: var(--c-bg-page);
   overflow: hidden;
+  min-width: 0;
 }
 
 .main-header {
   border-bottom: none;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-}
-
-.main-nav {
-  border: none;
-  transition: all 0.3s ease;
+  background: var(--c-bg-surface);
 }
 
 .content-area {
   flex: 1;
   padding: 0;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
-  overflow: hidden; /* 防止外层滚动，强制内部滚动 */
+  background: var(--c-bg-app);
+  overflow: hidden;
   position: relative;
-  display: flex; /* 使用 Flex 布局 */
-  flex-direction: column; /* 垂直排列 */
+  display: flex;
+  flex-direction: column;
 }
 
 .content-empty {
@@ -1451,88 +1407,98 @@ onUnmounted(() => {
   justify-content: center;
 }
 
-/* 响应式处理 */
-@media (max-width: 768px) {
-  .sidebar {
-    width: 280px;
-  }
-
-  .sidebar.collapsed {
-    width: 60px;
-  }
-
-  .app-header {
-    padding: 20px 16px 12px;
-  }
-
-  .project-item {
-    padding: 12px;
-  }
+/* ── 底部导航 ── */
+.sidebar-footer {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--sb-border);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
 }
 
-:deep(.el-dropdown-menu__item.active) {
-  color: #10b981;
-  background-color: #ecfdf5;
-}
-
-/* Element Plus 样式覆盖 */
-:deep(.el-menu--horizontal) {
-  justify-content: flex-start !important;
-  padding-left: 0;
-  border: none !important;
-}
-
-:deep(.el-menu-item.is-active) {
-  background-color: #4b5563 !important;
-}
-
-:deep(.el-menu-item:hover) {
-  background-color: #374151 !important;
-}
-
-:deep(.el-breadcrumb__item) {
-  display: inline-flex;
+.sidebar-nav-btn {
+  display: flex;
   align-items: center;
+  gap: var(--space-2-5);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
+  background: var(--c-bg-surface);
+  color: var(--c-text-secondary);
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: var(--transition-colors);
 }
 
-:deep(.el-breadcrumb__inner) {
-  font-weight: normal;
-  color: #4b5563;
+.sidebar-nav-btn:hover {
+  background: var(--c-brand-soft);
+  color: var(--c-brand);
+  border-color: var(--c-brand-border);
 }
 
-:deep(.el-breadcrumb__inner.is-link:hover) {
-  color: #3b82f6;
+.sidebar-nav-btn.active {
+  background: var(--c-brand-soft);
+  color: var(--c-brand);
+  border-color: var(--c-brand);
+  font-weight: var(--font-semibold);
+}
+
+.sidebar-nav-btn .nav-icon {
+  font-size: var(--text-lg);
+}
+.sidebar-nav-btn .nav-text {
+  white-space: nowrap;
+}
+
+/* ── 滚动条 ── */
+.projects-section::-webkit-scrollbar {
+  width: 3px;
+}
+.projects-section::-webkit-scrollbar-track {
+  background: transparent;
+}
+.projects-section::-webkit-scrollbar-thumb {
+  background: var(--c-brand-border);
+  border-radius: var(--radius-full);
+}
+
+/* ── Element Plus 局部覆盖 ── */
+:deep(.el-dropdown-menu__item.active) {
+  color: var(--c-brand);
+  background-color: var(--c-brand-soft);
+}
+
+:deep(.el-dropdown-menu) {
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--c-border);
+}
+
+:deep(.el-dropdown-menu__item) {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-base);
+  transition: var(--transition-colors);
+}
+
+:deep(.el-dropdown-menu__item:hover) {
+  background-color: var(--c-brand-soft);
+  color: var(--c-brand-hover);
 }
 
 :deep(.el-button-group .el-button) {
   margin-left: 0;
 }
-
 :deep(.el-button-group .el-button:first-child) {
   border-right: none;
 }
-
 :deep(.el-button-group .el-button + .el-button) {
   margin-left: -1px;
 }
 
-:deep(.el-dropdown-menu) {
-  border-radius: 8px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-}
-
-:deep(.el-dropdown-menu__item) {
-  padding: 8px 16px;
-  font-size: 13px;
-  transition: all 0.2s ease;
-}
-
-:deep(.el-dropdown-menu__item:hover) {
-  background-color: rgba(16, 185, 129, 0.05);
-  color: #059669;
-}
-
-/* 加载状态 */
+/* ── 加载动画 ── */
 .action-btn[loading] {
   position: relative;
   color: transparent;
@@ -1543,62 +1509,9 @@ onUnmounted(() => {
   position: absolute;
   width: 12px;
   height: 12px;
-  border: 2px solid #059669;
-  border-top: 2px solid transparent;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-/* 侧边栏底部导航 */
-.sidebar-footer {
-  padding: 12px 16px;
-  border-top: 1px solid var(--sb-border);
-  flex-shrink: 0;
-}
-
-.sidebar-nav-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 14px;
-  border: 1px solid var(--sb-border);
-  border-radius: 10px;
-  background: var(--sb-surface-elevated);
-  color: var(--sb-muted);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.sidebar-nav-btn:hover {
-  background: var(--sb-accent-soft);
-  color: var(--sb-accent);
-  border-color: #a7f3d0;
-}
-
-.sidebar-nav-btn.active {
-  background: var(--sb-accent-soft);
-  color: var(--sb-accent);
-  border-color: var(--sb-accent);
-  font-weight: 600;
-}
-
-.sidebar-nav-btn .nav-icon {
-  font-size: 16px;
-}
-
-.sidebar-nav-btn .nav-text {
-  white-space: nowrap;
+  border: 2px solid var(--c-brand-hover);
+  border-top-color: transparent;
+  border-radius: var(--radius-full);
+  animation: qc-spin 0.6s linear infinite;
 }
 </style>

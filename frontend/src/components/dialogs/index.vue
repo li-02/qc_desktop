@@ -48,6 +48,6 @@ onUnmounted(() => {
 <style scoped>
 .global-dialogs {
   position: relative;
-  z-index: 2000;
+  z-index: var(--z-modal);
 }
 </style>

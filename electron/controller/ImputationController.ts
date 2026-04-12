@@ -1,5 +1,5 @@
-import { BaseController } from './BaseController';
-import { ImputationService } from '../service/ImputationService';
+import { BaseController } from "./BaseController";
+import { ImputationService } from "../service/ImputationService";
 import type {
   ImputationMethod,
   ImputationMethodParam,
@@ -11,8 +11,9 @@ import type {
   ExecuteImputationResponse,
   GetImputationResultsRequest,
   ImputationProgressEvent,
-} from '@shared/types/imputation';
-import { dialog, BrowserWindow } from 'electron';
+  CustomModelConfig,
+} from "@shared/types/imputation";
+import { dialog, BrowserWindow } from "electron";
 
 export class ImputationController extends BaseController {
   private service: ImputationService;
@@ -25,32 +26,39 @@ export class ImputationController extends BaseController {
   getRoutes(): Record<string, (args: any, event: Electron.IpcMainInvokeEvent) => Promise<any>> {
     return {
       // 方法管理
-      'imputation:getMethods': this.getMethods.bind(this),
-      'imputation:getMethodsByCategory': this.getMethodsByCategory.bind(this),
-      'imputation:getAvailableMethods': this.getAvailableMethods.bind(this),
-      'imputation:getMethodParams': this.getMethodParams.bind(this),
-      'imputation:getMethodWithParams': this.getMethodWithParams.bind(this),
+      "imputation:getMethods": this.getMethods.bind(this),
+      "imputation:getMethodsByCategory": this.getMethodsByCategory.bind(this),
+      "imputation:getAvailableMethods": this.getAvailableMethods.bind(this),
+      "imputation:getMethodParams": this.getMethodParams.bind(this),
+      "imputation:getMethodWithParams": this.getMethodWithParams.bind(this),
 
       // 执行插补
-      'imputation:execute': this.executeImputation.bind(this),
+      "imputation:execute": this.executeImputation.bind(this),
 
       // 结果管理
-      'imputation:getResult': this.getResult.bind(this),
-      'imputation:getResultsByDataset': this.getResultsByDataset.bind(this),
-      'imputation:getColumnStats': this.getColumnStats.bind(this),
-      'imputation:deleteResult': this.deleteResult.bind(this),
-      'imputation:applyVersion': this.applyVersion.bind(this),
-      'imputation:exportFile': this.exportFile.bind(this),
-      'imputation:renameResult': this.renameResult.bind(this),
-      'imputation:reorderResults': this.reorderResults.bind(this),
+      "imputation:getResult": this.getResult.bind(this),
+      "imputation:getResultsByDataset": this.getResultsByDataset.bind(this),
+      "imputation:getColumnStats": this.getColumnStats.bind(this),
+      "imputation:deleteResult": this.deleteResult.bind(this),
+      "imputation:applyVersion": this.applyVersion.bind(this),
+      "imputation:exportFile": this.exportFile.bind(this),
+      "imputation:renameResult": this.renameResult.bind(this),
+      "imputation:reorderResults": this.reorderResults.bind(this),
 
       // 模型管理
-      'imputation:createModel': this.createModel.bind(this),
-      'imputation:getModelsByDataset': this.getModelsByDataset.bind(this),
-      'imputation:getModel': this.getModel.bind(this),
-      'imputation:setActiveModel': this.setActiveModel.bind(this),
-      'imputation:updateModel': this.updateModel.bind(this),
-      'imputation:deleteModel': this.deleteModel.bind(this),
+      "imputation:createModel": this.createModel.bind(this),
+      "imputation:getModelsByDataset": this.getModelsByDataset.bind(this),
+      "imputation:getModel": this.getModel.bind(this),
+      "imputation:setActiveModel": this.setActiveModel.bind(this),
+      "imputation:updateModel": this.updateModel.bind(this),
+      "imputation:deleteModel": this.deleteModel.bind(this),
+
+      // 自定义模型管理
+      "imputation:registerCustomModel": this.registerCustomModel.bind(this),
+      "imputation:getCustomModels": this.getCustomModels.bind(this),
+      "imputation:deleteCustomModel": this.deleteCustomModel.bind(this),
+      "imputation:validateModelFile": this.validateModelFile.bind(this),
+      "imputation:validateScriptFile": this.validateScriptFile.bind(this),
     };
   }
 
@@ -128,11 +136,15 @@ export class ImputationController extends BaseController {
   private async getMethodWithParams(
     methodId: string,
     _event: Electron.IpcMainInvokeEvent
-  ): Promise<{ success: boolean; data?: { method: ImputationMethod; params: ImputationMethodParam[] }; error?: string }> {
+  ): Promise<{
+    success: boolean;
+    data?: { method: ImputationMethod; params: ImputationMethodParam[] };
+    error?: string;
+  }> {
     try {
       // 验证 methodId 参数
       if (methodId === undefined || methodId === null) {
-        return { success: false, error: 'methodId 参数不能为空' };
+        return { success: false, error: "methodId 参数不能为空" };
       }
       // 确保 methodId 是字符串类型
       const validMethodId = String(methodId);
@@ -158,9 +170,9 @@ export class ImputationController extends BaseController {
         try {
           // 使用 JSON 序列化来确保对象可以被克隆（移除 undefined 值）
           const serializableEvent = JSON.parse(JSON.stringify(progressEvent));
-          event.sender.send('imputation:progress', serializableEvent);
+          event.sender.send("imputation:progress", serializableEvent);
         } catch (err) {
-          console.error('发送进度事件失败:', err);
+          console.error("发送进度事件失败:", err);
         }
       };
 
@@ -196,11 +208,7 @@ export class ImputationController extends BaseController {
     _event: Electron.IpcMainInvokeEvent
   ): Promise<{ success: boolean; data?: ImputationResult[]; error?: string }> {
     try {
-      const results = this.service.getResultsByDataset(
-        request.datasetId,
-        request.limit,
-        request.offset
-      );
+      const results = this.service.getResultsByDataset(request.datasetId, request.limit, request.offset);
       return { success: true, data: results };
     } catch (error: any) {
       return { success: false, error: error.message };
@@ -262,9 +270,9 @@ export class ImputationController extends BaseController {
     try {
       const win = BrowserWindow.fromWebContents(event.sender);
       const options = {
-        title: '导出插补结果',
-        defaultPath: 'imputed_data.csv',
-        filters: [{ name: 'CSV Files', extensions: ['csv'] }]
+        title: "导出插补结果",
+        defaultPath: "imputed_data.csv",
+        filters: [{ name: "CSV Files", extensions: ["csv"] }],
       };
 
       const { canceled, filePath } = win
@@ -368,6 +376,7 @@ export class ImputationController extends BaseController {
       targetColumn?: string;
       featureColumns?: string[];
       timeColumn?: string;
+      columnMapping?: Record<string, string>;
       validationScore?: number;
     },
     _event: Electron.IpcMainInvokeEvent
@@ -380,6 +389,7 @@ export class ImputationController extends BaseController {
         targetColumn: args.targetColumn,
         featureColumns: args.featureColumns,
         timeColumn: args.timeColumn,
+        columnMapping: args.columnMapping,
         validationScore: args.validationScore,
       });
       return { success: true };
@@ -412,11 +422,11 @@ export class ImputationController extends BaseController {
   ): Promise<{ success: boolean; error?: string }> {
     try {
       if (!args.name || !args.name.trim()) {
-        return { success: false, error: '名称不能为空' };
+        return { success: false, error: "名称不能为空" };
       }
       const success = this.service.renameResult(args.resultId, args.name.trim());
       if (!success) {
-        return { success: false, error: '结果不存在' };
+        return { success: false, error: "结果不存在" };
       }
       return { success: true };
     } catch (error: any) {
@@ -434,6 +444,95 @@ export class ImputationController extends BaseController {
     try {
       this.service.reorderResults(args.orders);
       return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  // ==================== 自定义模型管理 ====================
+
+  /**
+   * 注册自定义模型
+   */
+  private async registerCustomModel(
+    args: CustomModelConfig,
+    _event: Electron.IpcMainInvokeEvent
+  ): Promise<{ success: boolean; data?: { methodId: string; modelId: number }; error?: string }> {
+    try {
+      if (!args.modelName || !args.modelName.trim()) {
+        return { success: false, error: "模型名称不能为空" };
+      }
+      if (!args.modelFilePath) {
+        return { success: false, error: "模型文件路径不能为空" };
+      }
+      if (!args.inferenceScriptPath) {
+        return { success: false, error: "推理脚本路径不能为空" };
+      }
+      const result = this.service.registerCustomModel(args);
+      return { success: true, data: result };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 获取所有自定义模型
+   */
+  private async getCustomModels(
+    _args: any,
+    _event: Electron.IpcMainInvokeEvent
+  ): Promise<{ success: boolean; data?: any[]; error?: string }> {
+    try {
+      const models = this.service.getCustomModels();
+      return { success: true, data: models };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 删除自定义模型
+   */
+  private async deleteCustomModel(
+    args: { methodId: string },
+    _event: Electron.IpcMainInvokeEvent
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (!args.methodId) {
+        return { success: false, error: "方法ID不能为空" };
+      }
+      this.service.deleteCustomModel(args.methodId);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 验证模型文件
+   */
+  private async validateModelFile(
+    args: { filePath: string },
+    _event: Electron.IpcMainInvokeEvent
+  ): Promise<{ success: boolean; data?: { valid: boolean; error?: string }; error?: string }> {
+    try {
+      const result = this.service.validateModelFile(args.filePath);
+      return { success: true, data: result };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 验证推理脚本文件
+   */
+  private async validateScriptFile(
+    args: { filePath: string },
+    _event: Electron.IpcMainInvokeEvent
+  ): Promise<{ success: boolean; data?: { valid: boolean; error?: string }; error?: string }> {
+    try {
+      const result = this.service.validateScriptFile(args.filePath);
+      return { success: true, data: result };
     } catch (error: any) {
       return { success: false, error: error.message };
     }

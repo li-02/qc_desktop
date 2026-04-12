@@ -1,6 +1,7 @@
-import { ImputationRepository } from '../repository/ImputationRepository';
-import { DatabaseManager } from '../core/DatabaseManager';
-import { PythonBridgeService } from './PythonBridgeService';
+import { ImputationRepository } from "../repository/ImputationRepository";
+import { DatabaseManager } from "../core/DatabaseManager";
+import { PythonBridgeService, type PythonTaskResult } from "./PythonBridgeService";
+import { MySQLService } from "./MySQLService";
 import type {
   ImputationMethod,
   ImputationMethodParam,
@@ -15,11 +16,18 @@ import type {
   ImputationMethodRow,
   ImputationMethodParamRow,
   ImputationResultRow,
-} from '@shared/types/imputation';
-import type { DatasetVersion } from '@shared/types/database';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as Papa from 'papaparse';
+  CustomModelConfig,
+} from "@shared/types/imputation";
+import type { DatasetVersion } from "@shared/types/database";
+import type {
+  BEONResolvedSiteContext,
+  BEONSiteRule,
+  DatabaseConnectionProfile,
+  MySQLConnectionConfig,
+} from "@shared/types/mysqlInterface";
+import * as fs from "fs";
+import * as path from "path";
+import * as Papa from "papaparse";
 
 // 进度回调类型
 type ProgressCallback = (event: ImputationProgressEvent) => void;
@@ -27,6 +35,7 @@ type ProgressCallback = (event: ImputationProgressEvent) => void;
 export class ImputationService {
   private repository: ImputationRepository;
   private db = DatabaseManager.getInstance().getDatabase();
+  private mysqlService = new MySQLService();
   private progressCallbacks: Map<number, ProgressCallback> = new Map();
 
   constructor() {
@@ -80,6 +89,525 @@ export class ImputationService {
     };
   }
 
+  private getDatasetTimeColumn(datasetId: number): string {
+    const dataset = this.db.prepare("SELECT time_column FROM sys_dataset WHERE id = ?").get(datasetId) as
+      | { time_column?: string }
+      | undefined;
+    return dataset?.time_column || "TIMESTAMP";
+  }
+
+  private normalizeBEONSiteCode(value: unknown): string {
+    return String(value ?? "")
+      .trim()
+      .toLowerCase();
+  }
+
+  private normalizeBEONTimeKey(value: unknown): string {
+    if (value === null || value === undefined) return "";
+
+    if (value instanceof Date) {
+      return this.formatDateToLocalSecond(value);
+    }
+
+    const raw = String(value).trim();
+    if (!raw) return "";
+
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) {
+      return this.formatDateToLocalSecond(parsed);
+    }
+
+    return raw.replace("T", " ").replace(/Z$/i, "");
+  }
+
+  private formatDateToLocalSecond(date: Date): string {
+    const pad = (num: number) => String(num).padStart(2, "0");
+    return (
+      [date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join("-") +
+      " " +
+      [pad(date.getHours()), pad(date.getMinutes()), pad(date.getSeconds())].join(":")
+    );
+  }
+
+  private parseBEONRuleConfig(rule: BEONSiteRule): Record<string, any> {
+    return rule.ruleConfig && typeof rule.ruleConfig === "object" ? rule.ruleConfig : {};
+  }
+
+  private toOptionalConnectionProfileId(value: unknown): number | undefined {
+    if (value === null || value === undefined) return undefined;
+    if (typeof value === "string" && value.trim().length === 0) return undefined;
+
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
+    return parsed;
+  }
+
+  private getBEONResolvedSiteContext(siteCode: string, connectionProfileId?: number): BEONResolvedSiteContext | null {
+    const normalizedSiteCode = this.normalizeBEONSiteCode(siteCode);
+    if (!normalizedSiteCode) return null;
+
+    const result = this.mysqlService.resolveBEONSiteContext(normalizedSiteCode, connectionProfileId);
+    if (!result.success) {
+      throw new Error(result.error || `解析站点规则失败: ${normalizedSiteCode}`);
+    }
+    return result.data || null;
+  }
+
+  private getBEONRuleProvidedTargets(rules: BEONSiteRule[]): Set<string> {
+    const targets = new Set<string>();
+
+    for (const rule of rules) {
+      const config = this.parseBEONRuleConfig(rule);
+
+      const targetMapping = config.target_mapping;
+      if (targetMapping && typeof targetMapping === "object") {
+        for (const target of Object.values(targetMapping)) {
+          const columnName = String(target ?? "").trim();
+          if (columnName) targets.add(columnName);
+        }
+      }
+
+      const copyColumns = Array.isArray(config.copy_columns) ? config.copy_columns : [];
+      for (const item of copyColumns) {
+        if (!item || typeof item !== "object") continue;
+        const target = String((item as Record<string, any>).target ?? "").trim();
+        if (target) targets.add(target);
+      }
+
+      const vpdFormula = config.vpd_formula;
+      if (vpdFormula && typeof vpdFormula === "object") {
+        const target = String((vpdFormula as Record<string, any>).target ?? "").trim();
+        if (target) targets.add(target);
+      }
+    }
+
+    return targets;
+  }
+
+  private toMySQLConnectionConfig(profile: DatabaseConnectionProfile): MySQLConnectionConfig {
+    return {
+      host: profile.host,
+      port: profile.port,
+      user: profile.user,
+      password: profile.password,
+      database: profile.database,
+    };
+  }
+
+  private isMissingParamValue(paramType: ImputationMethodParam["paramType"], value: unknown): boolean {
+    if (value === null || value === undefined) return true;
+
+    switch (paramType) {
+      case "number":
+        return Number.isNaN(Number(value));
+      case "string":
+      case "select":
+        return String(value).trim().length === 0;
+      default:
+        return false;
+    }
+  }
+
+  private validateRequiredMethodParams(methodId: string, params: Record<string, any>): void {
+    const methodParams = this.repository.getMethodParams(methodId);
+    const missingParams = methodParams.filter(
+      param => param.is_required === 1 && this.isMissingParamValue(param.param_type as any, params[param.param_key])
+    );
+
+    if (missingParams.length > 0) {
+      throw new Error(`缺少必需参数: ${missingParams.map(param => param.param_name).join("、")}`);
+    }
+  }
+
+  private validateREddyProcParams(datasetId: number, availableColumns: string[], params: Record<string, any>): void {
+    const timeColumn = this.getDatasetTimeColumn(datasetId);
+    if (!availableColumns.includes(timeColumn)) {
+      throw new Error(`无法执行 REddyProc：缺少时间列 ${timeColumn}`);
+    }
+
+    const requiredColumnMappings: Array<{ key: string; label: string }> = [
+      { key: "rg_col", label: "Rg" },
+      { key: "tair_col", label: "Tair" },
+      { key: "rh_col", label: "rH" },
+      { key: "par_col", label: "Par" },
+      { key: "nee_col", label: "NEE" },
+      { key: "ustar_col", label: "Ustar" },
+    ];
+
+    for (const mapping of requiredColumnMappings) {
+      const columnName = String(params[mapping.key] ?? "").trim();
+      if (!columnName || !availableColumns.includes(columnName)) {
+        throw new Error(`无法执行 REddyProc：缺少${mapping.label}列 ${columnName || `(${mapping.key})`}`);
+      }
+    }
+
+    const optionalColumnMappings: Array<{ key: string; label: string }> = [
+      { key: "vpd_col", label: "VPD" },
+      { key: "h2o_col", label: "H2O" },
+      { key: "le_col", label: "LE" },
+      { key: "h_col", label: "H" },
+    ];
+
+    for (const mapping of optionalColumnMappings) {
+      const rawValue = params[mapping.key];
+      if (rawValue === null || rawValue === undefined) continue;
+      const columnName = String(rawValue).trim();
+      if (!columnName) continue;
+      if (!availableColumns.includes(columnName)) {
+        throw new Error(`无法执行 REddyProc：配置的${mapping.label}列不存在: ${columnName}`);
+      }
+    }
+  }
+
+  private validateBEONREddyProcParams(
+    datasetId: number,
+    availableColumns: string[],
+    params: Record<string, any>
+  ): void {
+    const timeColumn = this.getDatasetTimeColumn(datasetId);
+    if (!availableColumns.includes(timeColumn)) {
+      throw new Error(`无法执行 BEON-REddyProc：缺少时间列 ${timeColumn}`);
+    }
+
+    const requireColumn = (key: string, label: string): string => {
+      const columnName = String(params[key] ?? "").trim();
+      if (!columnName || !availableColumns.includes(columnName)) {
+        throw new Error(`无法执行 BEON-REddyProc：缺少${label}列 ${columnName || `(${key})`}`);
+      }
+      return columnName;
+    };
+
+    requireColumn("co2_flux_col", "CO2通量");
+    requireColumn("ppfd_col", "PPFD");
+    requireColumn("ustar_raw_col", "u*原始");
+
+    const siteCode = this.normalizeBEONSiteCode(params.site_code);
+    const connectionProfileId = this.toOptionalConnectionProfileId(params.connection_profile_id);
+    const context = siteCode ? this.getBEONResolvedSiteContext(siteCode, connectionProfileId) : null;
+    const providedTargets = context
+      ? this.getBEONRuleProvidedTargets([...(context.fallbackRules || []), ...(context.localOverrideRules || [])])
+      : new Set<string>();
+
+    const requireDirectOrRuleProvided = (key: string, label: string): void => {
+      const columnName = String(params[key] ?? "").trim();
+      if (!columnName) {
+        throw new Error(`无法执行 BEON-REddyProc：缺少${label}列 (${key})`);
+      }
+      if (availableColumns.includes(columnName) || providedTargets.has(columnName)) {
+        return;
+      }
+      throw new Error(`无法执行 BEON-REddyProc：缺少${label}列 ${columnName}`);
+    };
+
+    requireDirectOrRuleProvided("rg_raw_col", "Rg原始");
+    requireDirectOrRuleProvided("tair_raw_col", "Tair原始");
+    requireDirectOrRuleProvided("rh_raw_col", "rH原始");
+
+    if (siteCode && context?.fallbackRules?.length && !context.connectionProfile) {
+      throw new Error(`无法执行 BEON-REddyProc：站点 ${siteCode} 命中了补站规则，但没有可用的数据库连接配置`);
+    }
+
+    const optionalColumnMappings: Array<{ key: string; label: string }> = [
+      { key: "h2o_flux_col", label: "H2O通量" },
+      { key: "le_col", label: "LE" },
+      { key: "h_col", label: "H" },
+      { key: "vpd_raw_col", label: "VPD原始" },
+      { key: "qc_co2_flux_col", label: "CO2 QC" },
+      { key: "qc_h2o_flux_col", label: "H2O QC" },
+      { key: "qc_le_col", label: "LE QC" },
+      { key: "qc_h_col", label: "H QC" },
+    ];
+
+    for (const mapping of optionalColumnMappings) {
+      const rawValue = params[mapping.key];
+      if (rawValue === null || rawValue === undefined) continue;
+      const columnName = String(rawValue).trim();
+      if (!columnName) continue;
+      if (!availableColumns.includes(columnName) && !providedTargets.has(columnName)) {
+        throw new Error(`无法执行 BEON-REddyProc：配置的${mapping.label}列不存在: ${columnName}`);
+      }
+    }
+  }
+
+  private getDatasetThresholdMap(
+    datasetId: number,
+    columnNames: string[]
+  ): Record<string, { lower?: number; upper?: number }> {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT column_name, min_threshold, max_threshold, physical_min, physical_max, warning_min, warning_max
+        FROM conf_column_setting
+        WHERE dataset_id = ? AND is_del = 0
+      `
+      )
+      .all(datasetId) as Array<{
+      column_name: string;
+      min_threshold: number | null;
+      max_threshold: number | null;
+      physical_min: number | null;
+      physical_max: number | null;
+      warning_min: number | null;
+      warning_max: number | null;
+    }>;
+
+    const requested = new Set(columnNames.filter(Boolean));
+    const thresholdMap: Record<string, { lower?: number; upper?: number }> = {};
+
+    for (const row of rows) {
+      if (!requested.has(row.column_name)) continue;
+
+      const lower = row.min_threshold ?? row.physical_min ?? row.warning_min ?? undefined;
+      const upper = row.max_threshold ?? row.physical_max ?? row.warning_max ?? undefined;
+      if (lower === undefined && upper === undefined) continue;
+
+      thresholdMap[row.column_name] = {
+        ...(lower !== undefined ? { lower } : {}),
+        ...(upper !== undefined ? { upper } : {}),
+      };
+    }
+
+    return thresholdMap;
+  }
+
+  private isMissingDataValue(value: unknown): boolean {
+    return value === null || value === undefined || value === "" || Number.isNaN(Number(value));
+  }
+
+  private toNumericValue(value: unknown): number | null {
+    if (this.isMissingDataValue(value)) return null;
+    const numericValue = Number(value);
+    return Number.isNaN(numericValue) ? null : numericValue;
+  }
+
+  private buildREddyProcColumnStat(
+    resultId: number,
+    originalData: Record<string, any>[],
+    outputData: Record<string, any>[],
+    sourceColumn: string,
+    outputColumn: string
+  ) {
+    const missingIndices: number[] = [];
+    const validValues: number[] = [];
+
+    originalData.forEach((row, idx) => {
+      const numericValue = this.toNumericValue(row[sourceColumn]);
+      if (numericValue === null) {
+        missingIndices.push(idx);
+      } else {
+        validValues.push(numericValue);
+      }
+    });
+
+    if (missingIndices.length === 0) {
+      return {
+        resultId,
+        columnName: sourceColumn,
+        missingCount: 0,
+        imputedCount: 0,
+        imputationRate: 0,
+        imputedRowIndices: [],
+        imputedValues: [],
+      };
+    }
+
+    const meanBefore = this.calculateMean(validValues);
+    const stdBefore = this.calculateStd(validValues, meanBefore);
+    const imputedRowIndices: number[] = [];
+    const imputedValues: number[] = [];
+
+    for (const idx of missingIndices) {
+      const imputedValue = this.toNumericValue(outputData[idx]?.[outputColumn]);
+      if (imputedValue !== null) {
+        imputedRowIndices.push(idx);
+        imputedValues.push(imputedValue);
+      }
+    }
+
+    const allValuesAfter = [...validValues, ...imputedValues];
+    const meanAfter = this.calculateMean(allValuesAfter);
+    const stdAfter = this.calculateStd(allValuesAfter, meanAfter);
+
+    return {
+      resultId,
+      columnName: sourceColumn,
+      missingCount: missingIndices.length,
+      imputedCount: imputedValues.length,
+      imputationRate: missingIndices.length > 0 ? imputedValues.length / missingIndices.length : 0,
+      meanBefore,
+      meanAfter,
+      stdBefore,
+      stdAfter,
+      minImputed: imputedValues.length > 0 ? Math.min(...imputedValues) : undefined,
+      maxImputed: imputedValues.length > 0 ? Math.max(...imputedValues) : undefined,
+      imputedRowIndices,
+      imputedValues,
+    };
+  }
+
+  private async applyBEONFallbackRules(
+    data: Record<string, any>[],
+    timeColumn: string,
+    context: BEONResolvedSiteContext,
+    onProgress: (progress: number, message: string, currentColumn?: string) => void
+  ): Promise<Record<string, any>[]> {
+    if (!context.fallbackRules.length) {
+      return data;
+    }
+    if (!context.connectionProfile) {
+      throw new Error(`站点 ${context.siteCode} 命中了补站规则，但没有可用的数据库连接配置`);
+    }
+
+    const preparedData = data.map(row => ({ ...row }));
+    const connectionConfig = this.toMySQLConnectionConfig(context.connectionProfile);
+    const validTimeValues = preparedData
+      .map(row => row[timeColumn])
+      .filter(value => value !== null && value !== undefined && String(value).trim().length > 0);
+
+    if (validTimeValues.length === 0) {
+      throw new Error(`无法执行 BEON-REddyProc：时间列 ${timeColumn} 为空，无法按时间范围补站`);
+    }
+
+    const startTime = this.normalizeBEONTimeKey(validTimeValues[0]);
+    const endTime = this.normalizeBEONTimeKey(validTimeValues[validTimeValues.length - 1]);
+
+    for (const rule of context.fallbackRules) {
+      const config = this.parseBEONRuleConfig(rule);
+      const sourceTable = String(rule.sourceTable || config.source_table || "").trim();
+      if (!sourceTable) {
+        throw new Error(`站点 ${context.siteCode} 的补站规则 ${rule.ruleName} 缺少 source_table`);
+      }
+
+      const matchTimeColumn = String(rule.matchTimeColumn || config.match_time_column || "record_time").trim();
+      const selectColumns = Array.isArray(config.select_columns)
+        ? config.select_columns.map((item: unknown) => String(item ?? "").trim()).filter(Boolean)
+        : [];
+      const queryColumns = selectColumns.filter(column => column !== matchTimeColumn);
+      const targetMapping =
+        config.target_mapping && typeof config.target_mapping === "object"
+          ? (config.target_mapping as Record<string, string>)
+          : queryColumns.reduce(
+              (acc, column) => {
+                acc[column] = column;
+                return acc;
+              },
+              {} as Record<string, string>
+            );
+      const dropLocalColumns = Array.isArray(config.drop_local_columns)
+        ? config.drop_local_columns.map((item: unknown) => String(item ?? "").trim()).filter(Boolean)
+        : [];
+      const requiredColumns = Array.isArray(config.required_columns)
+        ? config.required_columns.map((item: unknown) => String(item ?? "").trim()).filter(Boolean)
+        : [];
+      const requireAll = config.require_all === true;
+
+      onProgress(12, `正在从数据库补取站点 ${context.siteCode} 的规则数据: ${rule.ruleName}`);
+      const rowsResult = await this.mysqlService.getRowsByTimeRange(
+        connectionConfig,
+        sourceTable,
+        queryColumns,
+        matchTimeColumn,
+        startTime,
+        endTime
+      );
+
+      if (!rowsResult.success) {
+        throw new Error(`补站数据读取失败(${rule.ruleName}): ${rowsResult.error}`);
+      }
+
+      const fetchedRows = rowsResult.data || [];
+      if (requireAll && fetchedRows.length === 0) {
+        throw new Error(`补站规则 ${rule.ruleName} 未返回任何数据，无法继续执行`);
+      }
+
+      const rowsByTime = new Map<string, Record<string, any>>();
+      for (const row of fetchedRows) {
+        const timeKey = this.normalizeBEONTimeKey(row[matchTimeColumn]);
+        if (!timeKey) continue;
+        rowsByTime.set(timeKey, row);
+      }
+
+      for (const row of preparedData) {
+        for (const columnName of dropLocalColumns) {
+          delete row[columnName];
+        }
+
+        const timeKey = this.normalizeBEONTimeKey(row[timeColumn]);
+        if (!timeKey) continue;
+        const matchedRow = rowsByTime.get(timeKey);
+        if (!matchedRow) continue;
+
+        for (const [sourceColumn, targetColumn] of Object.entries(targetMapping)) {
+          if (!targetColumn) continue;
+          if (Object.prototype.hasOwnProperty.call(matchedRow, sourceColumn)) {
+            row[targetColumn] = matchedRow[sourceColumn];
+          }
+        }
+      }
+
+      if (requireAll && requiredColumns.length > 0) {
+        const unresolved = requiredColumns.filter(requiredColumn => {
+          const targetColumn = targetMapping[requiredColumn] || requiredColumn;
+          return !preparedData.some(
+            row =>
+              row[targetColumn] !== null && row[targetColumn] !== undefined && String(row[targetColumn]).trim() !== ""
+          );
+        });
+
+        if (unresolved.length > 0) {
+          throw new Error(`补站规则 ${rule.ruleName} 未能生成所需列: ${unresolved.join(", ")}`);
+        }
+      }
+    }
+
+    return preparedData;
+  }
+
+  private async buildBEONExecutionInput(
+    resultId: number,
+    data: Record<string, any>[],
+    params: Record<string, any>,
+    version: { file_path: string; dataset_id: number },
+    timeColumn: string,
+    onProgress: (progress: number, message: string, currentColumn?: string) => void
+  ): Promise<{
+    inputFile: string;
+    context: BEONResolvedSiteContext | null;
+    localRulesJson: string;
+    cleanupInputFile: boolean;
+  }> {
+    const siteCode = this.normalizeBEONSiteCode(params.site_code);
+    const connectionProfileId = this.toOptionalConnectionProfileId(params.connection_profile_id);
+    const context = siteCode ? this.getBEONResolvedSiteContext(siteCode, connectionProfileId) : null;
+    const localRulesJson =
+      context && context.localOverrideRules.length > 0 ? JSON.stringify(context.localOverrideRules) : "";
+
+    if (!context || context.fallbackRules.length === 0) {
+      return {
+        inputFile: version.file_path,
+        context,
+        localRulesJson,
+        cleanupInputFile: false,
+      };
+    }
+
+    onProgress(8, `正在解析站点 ${siteCode} 的数据库补站规则...`);
+    const preparedData = await this.applyBEONFallbackRules(data, timeColumn, context, onProgress);
+
+    const versionDir = path.dirname(version.file_path);
+    const versionExt = path.extname(version.file_path) || ".csv";
+    const versionName = path.basename(version.file_path, versionExt);
+    const inputFile = path.join(versionDir, `${versionName}_beon_input_${resultId}.csv`);
+    fs.writeFileSync(inputFile, Papa.unparse(preparedData), "utf-8");
+
+    return {
+      inputFile,
+      context,
+      localRulesJson,
+      cleanupInputFile: true,
+    };
+  }
+
   // ==================== 执行插补 ====================
 
   /**
@@ -92,9 +620,9 @@ export class ImputationService {
     const startTime = Date.now();
 
     // 获取版本信息
-    const version = this.db
-      .prepare('SELECT * FROM biz_dataset_version WHERE id = ?')
-      .get(request.versionId) as DatasetVersion | undefined;
+    const version = this.db.prepare("SELECT * FROM biz_dataset_version WHERE id = ?").get(request.versionId) as
+      | DatasetVersion
+      | undefined;
     if (!version) {
       throw new Error(`版本不存在: ${request.versionId}`);
     }
@@ -102,12 +630,26 @@ export class ImputationService {
     // 读取数据以确定列名
     const data = await this.readDataFile(version.file_path);
     if (!data || data.length === 0) {
-      throw new Error('数据为空');
+      throw new Error("数据为空");
     }
 
     // 处理目标列
     const availableColumns = Object.keys(data[0]);
     const targetColumns = request.targetColumns || availableColumns;
+
+    // 验证目标列
+    const invalidColumns = targetColumns.filter(col => !availableColumns.includes(col));
+    if (invalidColumns.length > 0) {
+      throw new Error(`无效的列: ${invalidColumns.join(", ")}`);
+    }
+
+    const methodParams = request.params || {};
+    this.validateRequiredMethodParams(request.methodId, methodParams);
+    if (this.isDirectREddyProcMethod(request.methodId)) {
+      this.validateREddyProcParams(request.datasetId, availableColumns, methodParams);
+    } else if (this.isBEONREddyProcMethod(request.methodId)) {
+      this.validateBEONREddyProcParams(request.datasetId, availableColumns, methodParams);
+    }
 
     // 创建结果记录
     const resultId = this.repository.createResult({
@@ -115,7 +657,7 @@ export class ImputationService {
       versionId: request.versionId,
       methodId: request.methodId,
       targetColumns: targetColumns,
-      methodParams: request.params,
+      methodParams,
     });
 
     if (progressCallback) {
@@ -124,26 +666,20 @@ export class ImputationService {
 
     try {
       // 更新状态为运行中
-      this.repository.updateResultStatus(resultId, 'RUNNING');
+      this.repository.updateResultStatus(resultId, "RUNNING");
       this.emitProgress(resultId, {
         resultId,
-        stage: 'preparing',
+        stage: "preparing",
         progress: 0,
-        message: '正在准备数据...',
+        message: "正在准备数据...",
       });
-
-      // 验证目标列
-      const invalidColumns = targetColumns.filter(col => !availableColumns.includes(col));
-      if (invalidColumns.length > 0) {
-        throw new Error(`无效的列: ${invalidColumns.join(', ')}`);
-      }
 
       // 执行插补
       this.emitProgress(resultId, {
         resultId,
-        stage: 'imputing',
+        stage: "imputing",
         progress: 20,
-        message: '正在执行插补...',
+        message: "正在执行插补...",
       });
 
       // 根据方法类型选择执行路径
@@ -157,12 +693,12 @@ export class ImputationService {
           data,
           targetColumns,
           request.methodId,
-          request.params || {},
+          methodParams,
           { file_path: version.file_path, dataset_id: request.datasetId },
           (progress, message, currentColumn) => {
             this.emitProgress(resultId, {
               resultId,
-              stage: 'imputing',
+              stage: "imputing",
               progress: 20 + progress * 0.6,
               message,
               currentColumn,
@@ -171,18 +707,78 @@ export class ImputationService {
         );
         imputedData = result.imputedData;
         columnStats = result.columnStats;
-      } else if (this.isREddyProcMethod(request.methodId)) {
-        // REddyProc MDS 方法
+      } else if (this.isDirectREddyProcMethod(request.methodId)) {
         const result = await this.performREddyProcImputation(
           resultId,
           data,
           targetColumns,
-          request.params || {},
+          methodParams,
           { file_path: version.file_path, dataset_id: request.datasetId },
           (progress, message, currentColumn) => {
             this.emitProgress(resultId, {
               resultId,
-              stage: 'imputing',
+              stage: "imputing",
+              progress: 20 + progress * 0.6,
+              message,
+              currentColumn,
+            });
+          }
+        );
+        imputedData = result.imputedData;
+        columnStats = result.columnStats;
+      } else if (this.isBEONREddyProcMethod(request.methodId)) {
+        const result = await this.performBEONREddyProcImputation(
+          resultId,
+          data,
+          targetColumns,
+          methodParams,
+          { file_path: version.file_path, dataset_id: request.datasetId },
+          (progress, message, currentColumn) => {
+            this.emitProgress(resultId, {
+              resultId,
+              stage: "imputing",
+              progress: 20 + progress * 0.6,
+              message,
+              currentColumn,
+            });
+          }
+        );
+        imputedData = result.imputedData;
+        columnStats = result.columnStats;
+      } else if (this.isXGBoostMethod(request.methodId)) {
+        const result = await this.performCustomModelImputation(
+          resultId,
+          data,
+          targetColumns,
+          request.methodId,
+          methodParams,
+          { file_path: version.file_path, dataset_id: request.datasetId },
+          request.columnMapping,
+          (progress, message, currentColumn) => {
+            this.emitProgress(resultId, {
+              resultId,
+              stage: "imputing",
+              progress: 20 + progress * 0.6,
+              message,
+              currentColumn,
+            });
+          }
+        );
+        imputedData = result.imputedData;
+        columnStats = result.columnStats;
+      } else if (this.isCustomMethod(request.methodId)) {
+        const result = await this.performCustomModelImputation(
+          resultId,
+          data,
+          targetColumns,
+          request.methodId,
+          methodParams,
+          { file_path: version.file_path, dataset_id: request.datasetId },
+          request.columnMapping,
+          (progress, message, currentColumn) => {
+            this.emitProgress(resultId, {
+              resultId,
+              stage: "imputing",
               progress: 20 + progress * 0.6,
               message,
               currentColumn,
@@ -198,11 +794,11 @@ export class ImputationService {
           data,
           targetColumns,
           request.methodId,
-          request.params || {},
+          methodParams,
           (progress, message, currentColumn) => {
             this.emitProgress(resultId, {
               resultId,
-              stage: 'imputing',
+              stage: "imputing",
               progress: 20 + progress * 0.6, // 20% - 80%
               message,
               currentColumn,
@@ -216,9 +812,9 @@ export class ImputationService {
       // 保存统计
       this.emitProgress(resultId, {
         resultId,
-        stage: 'saving',
+        stage: "saving",
         progress: 80,
-        message: '正在保存插补结果...',
+        message: "正在保存插补结果...",
       });
 
       let totalMissing = 0;
@@ -239,12 +835,12 @@ export class ImputationService {
       });
 
       // 更新状态为完成
-      this.repository.updateResultStatus(resultId, 'COMPLETED');
+      this.repository.updateResultStatus(resultId, "COMPLETED");
       this.emitProgress(resultId, {
         resultId,
-        stage: 'saving',
+        stage: "saving",
         progress: 100,
-        message: '插补完成',
+        message: "插补完成",
       });
 
       return {
@@ -253,7 +849,7 @@ export class ImputationService {
         message: `成功插补 ${totalImputed} 个缺失值`,
       };
     } catch (error: any) {
-      this.repository.updateResultStatus(resultId, 'FAILED', error.message);
+      this.repository.updateResultStatus(resultId, "FAILED", error.message);
       return {
         success: false,
         resultId,
@@ -318,7 +914,7 @@ export class ImputationService {
       // 提取列数据
       const columnData = data.map(row => row[columnName]);
       const numericData = columnData.map(v =>
-        v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? null : Number(v)
+        v === null || v === undefined || v === "" || Number.isNaN(Number(v)) ? null : Number(v)
       );
 
       // 找出缺失值索引
@@ -386,7 +982,7 @@ export class ImputationService {
       });
     }
 
-    onProgress(100, '插补完成');
+    onProgress(100, "插补完成");
 
     return { imputedData: data, columnStats };
   }
@@ -409,34 +1005,34 @@ export class ImputationService {
     let imputed: (number | null)[];
 
     switch (methodId) {
-      case 'MEAN':
+      case "MEAN":
         imputed = this.imputeMean(result, validValues);
         break;
-      case 'MEDIAN':
+      case "MEDIAN":
         imputed = this.imputeMedian(result, validValues);
         break;
-      case 'MODE':
+      case "MODE":
         imputed = this.imputeMode(result, validValues);
         break;
-      case 'FORWARD_FILL':
+      case "FORWARD_FILL":
         imputed = this.imputeForwardFill(result);
         break;
-      case 'BACKWARD_FILL':
+      case "BACKWARD_FILL":
         imputed = this.imputeBackwardFill(result);
         break;
-      case 'LINEAR':
+      case "LINEAR":
         imputed = this.imputeLinear(result);
         break;
-      case 'SPLINE':
+      case "SPLINE":
         imputed = this.imputeSpline(result, params.degree || 3);
         break;
-      case 'POLYNOMIAL':
+      case "POLYNOMIAL":
         imputed = this.imputePolynomial(result, params.degree || 2);
         break;
-      case 'ITRANSFORMER':
-      case 'SAITS':
-      case 'BITS':
-      case 'TIMEMIXER':
+      case "ITRANSFORMER":
+      case "SAITS":
+      case "BITS":
+      case "TIMEMIXER":
         // 深度学习方法需要整体数据处理，在 performImputation 中特殊处理
         // 这里返回原数据，实际插补在 performDeepLearningImputation 中执行
         return result;
@@ -454,7 +1050,7 @@ export class ImputationService {
    * 检查是否为深度学习方法
    */
   private isDeepLearningMethod(methodId: ImputationMethodId): boolean {
-    return ['ITRANSFORMER', 'SAITS', 'BITS', 'TIMEMIXER'].includes(methodId);
+    return ["ITRANSFORMER", "SAITS", "BITS", "TIMEMIXER"].includes(methodId);
   }
 
   /**
@@ -463,8 +1059,20 @@ export class ImputationService {
   /**
    * 检查是否为REddyProc方法
    */
-  private isREddyProcMethod(methodId: ImputationMethodId): boolean {
-    return methodId === 'MDS_REDDYPROC';
+  private isDirectREddyProcMethod(methodId: ImputationMethodId): boolean {
+    return methodId === "MDS_REDDYPROC";
+  }
+
+  private isBEONREddyProcMethod(methodId: ImputationMethodId): boolean {
+    return methodId === "BEON_REDDYPROC";
+  }
+
+  private isCustomMethod(methodId: ImputationMethodId): boolean {
+    return typeof methodId === "string" && methodId.startsWith("CUSTOM_");
+  }
+
+  private isXGBoostMethod(methodId: ImputationMethodId): boolean {
+    return methodId === "XGBOOST";
   }
 
   /**
@@ -482,50 +1090,286 @@ export class ImputationService {
     columnStats: Array<any>;
   }> {
     const pythonBridge = PythonBridgeService.getInstance();
-    const columnStats: Array<any> = [];
 
     // 检查 Python/R 环境 (REddyProc需要rpy2和R)
-    onProgress(5, '正在检查 Python/R 环境...');
+    onProgress(5, "正在检查 Python/R 环境...");
     const pythonStatus = await pythonBridge.detectPython();
     if (!pythonStatus.available) {
-      throw new Error('Python 环境未找到。REddyProc方法需要: Python 3.8+, R 4.0+, rpy2==3.5.16, REddyProc R包');
+      throw new Error("Python 环境未找到。REddyProc方法需要: Python 3.8+, R 4.0+, rpy2==3.5.16, REddyProc R包");
     }
 
     // 获取数据集时间列配置
-    const dataset = this.db.prepare('SELECT time_column FROM sys_dataset WHERE id = ?').get(version.dataset_id) as { time_column?: string } | undefined;
-    const timeColumn = dataset?.time_column || 'TIMESTAMP';
+    const timeColumn = this.getDatasetTimeColumn(version.dataset_id);
 
     // 验证必需的参数
-    if (!params.lat_deg || !params.long_deg || params.timezone_hour === undefined) {
-      throw new Error('REddyProc MDS 方法需要提供站点位置信息（纬度、经度、时区）');
-    }
-    if (!params.rg_col || !params.tair_col) {
-      throw new Error('REddyProc MDS 方法需要提供气象变量列映射（Rg、Tair）');
+    if (
+      params.lat_deg === undefined ||
+      params.lat_deg === null ||
+      params.long_deg === undefined ||
+      params.long_deg === null ||
+      params.timezone_hour === undefined ||
+      params.timezone_hour === null
+    ) {
+      throw new Error("REddyProc MDS 方法需要提供站点位置信息（纬度、经度、时区）");
     }
 
-    // 验证气象变量列是否存在
     const availableColumns = Object.keys(data[0] || {});
-    const requiredCols = [params.rg_col, params.tair_col];
-    if (params.vpd_col) requiredCols.push(params.vpd_col);
-    if (params.rh_col) requiredCols.push(params.rh_col);
-    
-    const missingCols = requiredCols.filter(col => col && !availableColumns.includes(col));
-    if (missingCols.length > 0) {
-      throw new Error(`数据缺少必需的气象变量列: ${missingCols.join(', ')}`);
+    this.validateREddyProcParams(version.dataset_id, availableColumns, params);
+
+    const versionDir = path.dirname(version.file_path);
+    const versionExt = path.extname(version.file_path) || ".csv";
+    const versionName = path.basename(version.file_path, versionExt);
+    const outputFile = path.join(versionDir, `${versionName}_reddyproc_result_${resultId}.csv`);
+
+    onProgress(10, "正在执行 REddyProc 通量完整流程...");
+    const result = await pythonBridge.runREddyProcImputation(
+      {
+        inputFile: version.file_path,
+        outputFile,
+        timeColumn,
+        latDeg: Number(params.lat_deg),
+        longDeg: Number(params.long_deg),
+        timezoneHour: Number(params.timezone_hour),
+        neeCol: String(params.nee_col),
+        parCol: String(params.par_col),
+        rgCol: String(params.rg_col),
+        tairCol: String(params.tair_col),
+        rhCol: String(params.rh_col),
+        ustarCol: String(params.ustar_col),
+        vpdCol: params.vpd_col ? String(params.vpd_col) : "",
+        h2oCol: params.h2o_col ? String(params.h2o_col) : "",
+        leCol: params.le_col ? String(params.le_col) : "",
+        hCol: params.h_col ? String(params.h_col) : "",
+        despikingZ: Number(params.despiking_z ?? 4),
+        fillAll: params.fill_all !== false,
+      },
+      pythonProgress => {
+        onProgress(pythonProgress.progress, pythonProgress.message);
+      }
+    );
+
+    if (!result.success) {
+      throw new Error(`REddyProc 通量流程失败: ${result.error}`);
     }
+
+    if (!fs.existsSync(outputFile)) {
+      throw new Error(`REddyProc 输出文件未生成: ${outputFile}`);
+    }
+
+    const outputData = await this.readDataFile(outputFile);
+    if (outputData.length !== data.length) {
+      throw new Error(`REddyProc 输出行数异常: 期望 ${data.length}，实际 ${outputData.length}`);
+    }
+
+    this.repository.updateResultOutputFile(resultId, outputFile);
+
+    const representatives = (result.data?.representatives || {}) as Record<string, string | null>;
+    const statMappings = [
+      { sourceColumn: String(params.nee_col), outputColumn: representatives.nee },
+      { sourceColumn: params.h2o_col ? String(params.h2o_col) : "", outputColumn: representatives.h2o },
+      { sourceColumn: params.le_col ? String(params.le_col) : "", outputColumn: representatives.le },
+      { sourceColumn: params.h_col ? String(params.h_col) : "", outputColumn: representatives.h },
+    ].filter(mapping => mapping.sourceColumn && outputData[0] && targetColumns.includes(mapping.sourceColumn));
+
+    const missingRepresentative = statMappings.find(
+      mapping => !mapping.outputColumn || !(mapping.outputColumn in outputData[0])
+    );
+    if (missingRepresentative) {
+      throw new Error(`REddyProc 结果缺少代表输出列: ${missingRepresentative.sourceColumn}`);
+    }
+
+    const columnStats = statMappings.map(mapping =>
+      this.buildREddyProcColumnStat(resultId, data, outputData, mapping.sourceColumn, mapping.outputColumn!)
+    );
+
+    onProgress(100, "REddyProc 通量流程完成");
+    return { imputedData: outputData, columnStats };
+  }
+
+  /**
+   * 执行 BEON 原项目风格 REddyProc 插补
+   */
+  private async performBEONREddyProcImputation(
+    resultId: number,
+    data: Record<string, any>[],
+    targetColumns: string[],
+    params: Record<string, any>,
+    version: { file_path: string; dataset_id: number },
+    onProgress: (progress: number, message: string, currentColumn?: string) => void
+  ): Promise<{
+    imputedData: Record<string, any>[];
+    columnStats: Array<any>;
+  }> {
+    const pythonBridge = PythonBridgeService.getInstance();
+    let cleanupInputFilePath: string | null = null;
+
+    try {
+      onProgress(5, "正在检查 Python/R 环境...");
+      const pythonStatus = await pythonBridge.detectPython();
+      if (!pythonStatus.available) {
+        throw new Error("Python 环境未找到。BEON-REddyProc 方法需要: Python 3.8+, R 4.0+, rpy2==3.5.16, REddyProc R包");
+      }
+
+      const timeColumn = this.getDatasetTimeColumn(version.dataset_id);
+      const availableColumns = Object.keys(data[0] || {});
+      this.validateBEONREddyProcParams(version.dataset_id, availableColumns, params);
+
+      const preparedInput = await this.buildBEONExecutionInput(resultId, data, params, version, timeColumn, onProgress);
+      if (preparedInput.cleanupInputFile) {
+        cleanupInputFilePath = preparedInput.inputFile;
+      }
+
+      const thresholdColumns = [
+        String(params.co2_flux_col || ""),
+        String(params.h2o_flux_col || ""),
+        String(params.le_col || ""),
+        String(params.h_col || ""),
+        String(params.ppfd_col || ""),
+        String(params.rg_raw_col || ""),
+        String(params.tair_raw_col || ""),
+        String(params.rh_raw_col || ""),
+        String(params.vpd_raw_col || ""),
+        String(params.ustar_raw_col || ""),
+      ].filter(Boolean);
+      const thresholdsJson = JSON.stringify(this.getDatasetThresholdMap(version.dataset_id, thresholdColumns));
+
+      const versionDir = path.dirname(version.file_path);
+      const versionExt = path.extname(version.file_path) || ".csv";
+      const versionName = path.basename(version.file_path, versionExt);
+      const outputFile = path.join(versionDir, `${versionName}_beon_reddyproc_result_${resultId}.csv`);
+
+      onProgress(10, "正在执行 BEON 原项目风格 REddyProc 流程...");
+      const result = await pythonBridge.runBEONREddyProcImputation(
+        {
+          inputFile: preparedInput.inputFile,
+          outputFile,
+          timeColumn,
+          latDeg: Number(params.lat_deg),
+          longDeg: Number(params.long_deg),
+          timezoneHour: Number(params.timezone_hour),
+          siteCode: params.site_code ? String(params.site_code) : "",
+          allowedQcFlags: String(params.allowed_qc_flags ?? "0,1,2"),
+          useStrg: params.use_strg === true,
+          co2FluxCol: String(params.co2_flux_col),
+          h2oFluxCol: params.h2o_flux_col ? String(params.h2o_flux_col) : "",
+          leCol: params.le_col ? String(params.le_col) : "",
+          hCol: params.h_col ? String(params.h_col) : "",
+          qcCo2FluxCol: params.qc_co2_flux_col ? String(params.qc_co2_flux_col) : "",
+          qcH2oFluxCol: params.qc_h2o_flux_col ? String(params.qc_h2o_flux_col) : "",
+          qcLeCol: params.qc_le_col ? String(params.qc_le_col) : "",
+          qcHCol: params.qc_h_col ? String(params.qc_h_col) : "",
+          ppfdCol: String(params.ppfd_col),
+          rgRawCol: String(params.rg_raw_col),
+          tairRawCol: String(params.tair_raw_col),
+          rhRawCol: String(params.rh_raw_col),
+          vpdRawCol: params.vpd_raw_col ? String(params.vpd_raw_col) : "",
+          ustarRawCol: String(params.ustar_raw_col),
+          co2StrgCol: params.co2_strg_col ? String(params.co2_strg_col) : "",
+          h2oStrgCol: params.h2o_strg_col ? String(params.h2o_strg_col) : "",
+          leStrgCol: params.le_strg_col ? String(params.le_strg_col) : "",
+          hStrgCol: params.h_strg_col ? String(params.h_strg_col) : "",
+          shortUpCol: params.short_up_col ? String(params.short_up_col) : "",
+          rh12mCol: params.rh_12m_col ? String(params.rh_12m_col) : "",
+          rh10mCol: params.rh_10m_col ? String(params.rh_10m_col) : "",
+          ta12mCol: params.ta_12m_col ? String(params.ta_12m_col) : "",
+          despikingZ: Number(params.despiking_z ?? 4),
+          fillAll: params.fill_all !== false,
+          thresholdsJson,
+          localRulesJson: preparedInput.localRulesJson,
+        },
+        pythonProgress => {
+          onProgress(pythonProgress.progress, pythonProgress.message);
+        }
+      );
+
+      if (!result.success) {
+        throw new Error(`BEON-REddyProc 流程失败: ${result.error}`);
+      }
+
+      if (!fs.existsSync(outputFile)) {
+        throw new Error(`BEON-REddyProc 输出文件未生成: ${outputFile}`);
+      }
+
+      const outputData = await this.readDataFile(outputFile);
+      if (outputData.length !== data.length) {
+        throw new Error(`BEON-REddyProc 输出行数异常: 期望 ${data.length}，实际 ${outputData.length}`);
+      }
+
+      this.repository.updateResultOutputFile(resultId, outputFile);
+
+      const representatives = (result.data?.representatives || {}) as Record<string, string | null>;
+      const statMappings = [
+        { sourceColumn: String(params.co2_flux_col), outputColumn: representatives.nee },
+        { sourceColumn: params.h2o_flux_col ? String(params.h2o_flux_col) : "", outputColumn: representatives.h2o },
+        { sourceColumn: params.le_col ? String(params.le_col) : "", outputColumn: representatives.le },
+        { sourceColumn: params.h_col ? String(params.h_col) : "", outputColumn: representatives.h },
+      ].filter(mapping => mapping.sourceColumn && outputData[0] && targetColumns.includes(mapping.sourceColumn));
+
+      const missingRepresentative = statMappings.find(
+        mapping => !mapping.outputColumn || !(mapping.outputColumn in outputData[0])
+      );
+      if (missingRepresentative) {
+        throw new Error(`BEON-REddyProc 结果缺少代表输出列: ${missingRepresentative.sourceColumn}`);
+      }
+
+      const columnStats = statMappings.map(mapping =>
+        this.buildREddyProcColumnStat(resultId, data, outputData, mapping.sourceColumn, mapping.outputColumn!)
+      );
+
+      onProgress(100, "BEON-REddyProc 流程完成");
+      return { imputedData: outputData, columnStats };
+    } finally {
+      if (cleanupInputFilePath && fs.existsSync(cleanupInputFilePath)) {
+        try {
+          fs.unlinkSync(cleanupInputFilePath);
+        } catch (_) {}
+      }
+    }
+  }
+
+  /**
+   * 执行自定义模型插补
+   * 对 targetColumns 中的每一列独立调用推理脚本，逐列输出临时文件后合并回主数据。
+   * 底层通过 PythonBridgeService 调用推理脚本，后续可根据 model_params.inference_type 扩展。
+   */
+  private async performCustomModelImputation(
+    resultId: number,
+    data: Record<string, any>[],
+    targetColumns: string[],
+    methodId: ImputationMethodId,
+    params: Record<string, any>,
+    version: { file_path: string; dataset_id: number },
+    columnMapping: Record<string, string> | undefined,
+    onProgress: (progress: number, message: string, currentColumn?: string) => void
+  ): Promise<{
+    imputedData: Record<string, any>[];
+    columnStats: Array<any>;
+  }> {
+    const pythonBridge = PythonBridgeService.getInstance();
+    const columnStats: Array<any> = [];
+
+    // 检查 Python 环境
+    onProgress(5, "正在检查 Python 环境...");
+    const pythonStatus = await pythonBridge.detectPython();
+    if (!pythonStatus.available) {
+      throw new Error("Python 环境未找到，请先安装 Python 3.8+");
+    }
+
+    // 获取时间列
+    const userTimeColumn = this.getDatasetTimeColumn(version.dataset_id);
 
     // 为每个目标列执行插补
     for (let colIndex = 0; colIndex < targetColumns.length; colIndex++) {
       const columnName = targetColumns[colIndex];
-      const progress = 10 + (colIndex / targetColumns.length) * 80;
-      onProgress(progress, `正在插补列: ${columnName}`, columnName);
+      const baseProgress = 10 + (colIndex / targetColumns.length) * 80;
+      onProgress(baseProgress, `正在插补列: ${columnName}`, columnName);
 
       // 记录原始缺失值位置
       const missingIndices: number[] = [];
       const validValues: number[] = [];
       data.forEach((row, idx) => {
         const val = row[columnName];
-        if (val === null || val === undefined || val === '' || Number.isNaN(Number(val))) {
+        if (val === null || val === undefined || val === "" || Number.isNaN(Number(val))) {
           missingIndices.push(idx);
         } else {
           validValues.push(Number(val));
@@ -545,50 +1389,80 @@ export class ImputationService {
         continue;
       }
 
+      // 按 target_column 精确查找该列对应的预训练模型
+      const modelConfig = this.getModelForTargetColumn(version.dataset_id, methodId, columnName);
+
       // 计算插补前统计
       const meanBefore = this.calculateMean(validValues);
       const stdBefore = this.calculateStd(validValues, meanBefore);
 
-      // 创建临时输入输出文件
+      // 创建临时文件
       const tempDir = path.dirname(version.file_path);
-      const tempInputFile = path.join(tempDir, `temp_mds_input_${resultId}_${colIndex}.csv`);
-      const tempOutputFile = path.join(tempDir, `temp_mds_output_${resultId}_${colIndex}.csv`);
+      const tempInputFile = path.join(tempDir, `custom_input_${resultId}_${colIndex}.csv`);
+      const tempOutputFile = path.join(tempDir, `custom_output_${resultId}_${colIndex}.csv`);
 
       try {
         // 写入临时输入文件
         const csvContent = Papa.unparse(data);
-        fs.writeFileSync(tempInputFile, csvContent, 'utf-8');
+        fs.writeFileSync(tempInputFile, csvContent, "utf-8");
 
-        // 调用 REddyProc MDS Python 脚本
-        const result = await pythonBridge.runREddyProcImputation({
-          inputFile: tempInputFile,
-          outputFile: tempOutputFile,
-          targetColumn: columnName,
-          timeColumn: timeColumn,
-          latDeg: params.lat_deg,
-          longDeg: params.long_deg,
-          timezoneHour: params.timezone_hour,
-          rgCol: params.rg_col,
-          tairCol: params.tair_col,
-          vpdCol: params.vpd_col || '',
-          rhCol: params.rh_col || '',
-          ustarCol: params.ustar_col || '',
-          fillAll: params.fill_all || false,
-          ustarFiltering: params.ustar_filtering || false,
-        }, (pythonProgress) => {
-          const adjustedProgress = progress + (pythonProgress.progress / 100) * (80 / targetColumns.length);
-          onProgress(adjustedProgress, pythonProgress.message, columnName);
-        });
+        const bridgeProgress = (pythonProgress: { progress: number; message: string }) => {
+          const adjusted = baseProgress + (pythonProgress.progress / 100) * (80 / targetColumns.length);
+          onProgress(adjusted, pythonProgress.message, columnName);
+        };
+
+        let result: PythonTaskResult;
+
+        if (modelConfig?.modelPath) {
+          // ── 有预训练模型：使用 XGBoost / RandomForest 推理 ──
+          let modelPath = params.model_path || modelConfig.modelPath;
+          if (!path.isAbsolute(modelPath)) {
+            const pythonDir = pythonBridge.getPythonDir();
+            modelPath = path.join(pythonDir, modelPath);
+          }
+
+          const featureColumnsRaw = params.feature_columns || modelConfig.featureColumns?.join(",") || "";
+          const timeCol = params.time_col || modelConfig.timeColumn || userTimeColumn || "record_time";
+          const addTimeFeatures = params.add_time_features !== false && params.add_time_features !== "false";
+
+          const bridgeParams = {
+            modelPath,
+            inputFile: tempInputFile,
+            outputFile: tempOutputFile,
+            targetColumn: columnName,
+            featureColumns: featureColumnsRaw,
+            timeColumn: timeCol,
+            addTimeFeatures,
+            columnMapping:
+              columnMapping && Object.keys(columnMapping).length > 0 ? JSON.stringify(columnMapping) : undefined,
+          };
+
+          result =
+            methodId === "XGBOOST"
+              ? await pythonBridge.runXGBoostImputation(bridgeParams, bridgeProgress)
+              : await pythonBridge.runRandomForestImputation(bridgeParams, bridgeProgress);
+        } else {
+          // ── 无预训练模型：fallback 到 KNN 插补 ──
+          onProgress(baseProgress, `列 "${columnName}" 无专属模型，使用 KNN 插补`, columnName);
+          result = await pythonBridge.runKNNImputation(
+            {
+              inputFile: tempInputFile,
+              outputFile: tempOutputFile,
+              targetColumn: columnName,
+            },
+            bridgeProgress
+          );
+        }
 
         if (!result.success) {
-          throw new Error(`REddyProc MDS 插补失败: ${result.error}`);
+          throw new Error(`自定义模型插补失败 (列: ${columnName}): ${result.error}`);
+        }
+
+        if (!fs.existsSync(tempOutputFile)) {
+          throw new Error(`自定义模型输出文件未生成: ${tempOutputFile}`);
         }
 
         // 读取插补结果
-        if (!fs.existsSync(tempOutputFile)) {
-          throw new Error('插补结果文件未生成');
-        }
-
         const imputedDataRaw = await this.readDataFile(tempOutputFile);
         const imputedOnlyValues: number[] = [];
         const imputedRowIndices: number[] = [];
@@ -623,13 +1497,12 @@ export class ImputationService {
           imputedValues: imputedOnlyValues,
         });
       } finally {
-        // 清理临时文件
         if (fs.existsSync(tempInputFile)) fs.unlinkSync(tempInputFile);
         if (fs.existsSync(tempOutputFile)) fs.unlinkSync(tempOutputFile);
       }
     }
 
-    onProgress(100, 'MDS插补完成');
+    onProgress(100, "自定义模型插补完成");
     return { imputedData: data, columnStats };
   }
 
@@ -648,10 +1521,8 @@ export class ImputationService {
     imputedData: Record<string, any>[];
     columnStats: Array<any>;
   }> {
-    if (methodId === 'ITRANSFORMER' || methodId === 'SAITS' || methodId === 'BITS' || methodId === 'TIMEMIXER') {
-      return this.performTimeMixerPPImputation(
-        resultId, data, targetColumns, methodId, params, version, onProgress
-      );
+    if (methodId === "ITRANSFORMER" || methodId === "SAITS" || methodId === "BITS" || methodId === "TIMEMIXER") {
+      return this.performTimeMixerPPImputation(resultId, data, targetColumns, methodId, params, version, onProgress);
     }
 
     throw new Error(`深度学习方法 ${methodId} 暂未实现`);
@@ -676,10 +1547,10 @@ export class ImputationService {
     const columnStats: Array<any> = [];
 
     // 检查 Python 环境
-    onProgress(5, '正在检查 Python 环境...');
+    onProgress(5, "正在检查 Python 环境...");
     const pythonStatus = await pythonBridge.detectPython();
     if (!pythonStatus.available) {
-      throw new Error('Python 环境未找到，请先安装 Python 3.8+');
+      throw new Error("Python 环境未找到，请先安装 Python 3.8+");
     }
 
     // 获取模型配置
@@ -698,17 +1569,19 @@ export class ImputationService {
       if (modelConfig?.modelPath) {
         modelPath = modelConfig.modelPath;
       } else {
-        throw new Error('未指定模型文件路径，且数据集没有关联的深度学习模型');
+        throw new Error("未指定模型文件路径，且数据集没有关联的深度学习模型");
       }
     }
 
     // 获取数据集时间列配置
-    const dataset = this.db.prepare('SELECT time_column FROM sys_dataset WHERE id = ?').get(version.dataset_id) as { time_column?: string } | undefined;
-    const userTimeColumn = dataset?.time_column || 'record_time';
-    
+    const dataset = this.db.prepare("SELECT time_column FROM sys_dataset WHERE id = ?").get(version.dataset_id) as
+      | { time_column?: string }
+      | undefined;
+    const userTimeColumn = dataset?.time_column || "record_time";
+
     // 模型期望的时间列名（从模型配置或默认）
-    const modelTimeColumn = modelConfig?.timeColumn || 'record_time';
-    
+    const modelTimeColumn = modelConfig?.timeColumn || "record_time";
+
     // 如果用户数据时间列与模型期望不同，需要重命名
     let timeColumnRenamed = false;
     const originalTimeColumnName = userTimeColumn;
@@ -727,11 +1600,11 @@ export class ImputationService {
     const modelFeatureColumns = modelConfig?.featureColumns;
     if (modelFeatureColumns && modelFeatureColumns.length > 0 && data.length > 0) {
       const availableColumns = Object.keys(data[0]);
-      const missingFeatures = modelFeatureColumns.filter(col => 
-        col !== modelTimeColumn && !availableColumns.includes(col)
+      const missingFeatures = modelFeatureColumns.filter(
+        col => col !== modelTimeColumn && !availableColumns.includes(col)
       );
       if (missingFeatures.length > 0) {
-        throw new Error(`数据缺少模型所需的特征列: ${missingFeatures.join(', ')}`);
+        throw new Error(`数据缺少模型所需的特征列: ${missingFeatures.join(", ")}`);
       }
     }
 
@@ -746,7 +1619,7 @@ export class ImputationService {
       const validValues: number[] = [];
       data.forEach((row, idx) => {
         const val = row[columnName];
-        if (val === null || val === undefined || val === '' || Number.isNaN(Number(val))) {
+        if (val === null || val === undefined || val === "" || Number.isNaN(Number(val))) {
           missingIndices.push(idx);
         } else {
           validValues.push(Number(val));
@@ -778,30 +1651,33 @@ export class ImputationService {
       try {
         // 写入临时输入文件
         const csvContent = Papa.unparse(data);
-        fs.writeFileSync(tempInputFile, csvContent, 'utf-8');
+        fs.writeFileSync(tempInputFile, csvContent, "utf-8");
 
         // 调用 Python 脚本
-        const result = await pythonBridge.runTimeMixerPPImputation({
-          modelPath,
-          inputFile: tempInputFile,
-          outputFile: tempOutputFile,
-          targetColumn: columnName,
-          timeColumn: modelTimeColumn,
-          seqLen: params.seq_len || 96,
-          nLayers: params.n_layers,
-          dModel: params.d_model,
-          dFfn: params.d_ffn,
-          topK: params.top_k,
-          nHeads: params.n_heads,
-          nKernels: params.n_kernels,
-          dropout: params.dropout,
-          downLayers: params.down_layers,
-          downWindow: params.down_window,
-          useGpu: params.use_gpu !== false,
-        }, (pythonProgress) => {
-          const adjustedProgress = progress + (pythonProgress.progress / 100) * (80 / targetColumns.length);
-          onProgress(adjustedProgress, pythonProgress.message, columnName);
-        });
+        const result = await pythonBridge.runTimeMixerPPImputation(
+          {
+            modelPath,
+            inputFile: tempInputFile,
+            outputFile: tempOutputFile,
+            targetColumn: columnName,
+            timeColumn: modelTimeColumn,
+            seqLen: params.seq_len || 96,
+            nLayers: params.n_layers,
+            dModel: params.d_model,
+            dFfn: params.d_ffn,
+            topK: params.top_k,
+            nHeads: params.n_heads,
+            nKernels: params.n_kernels,
+            dropout: params.dropout,
+            downLayers: params.down_layers,
+            downWindow: params.down_window,
+            useGpu: params.use_gpu !== false,
+          },
+          pythonProgress => {
+            const adjustedProgress = progress + (pythonProgress.progress / 100) * (80 / targetColumns.length);
+            onProgress(adjustedProgress, pythonProgress.message, columnName);
+          }
+        );
 
         if (!result.success) {
           throw new Error(`TimeMixer++ 插补失败: ${result.error}`);
@@ -809,7 +1685,7 @@ export class ImputationService {
 
         // 读取插补结果
         if (!fs.existsSync(tempOutputFile)) {
-          throw new Error('插补结果文件未生成');
+          throw new Error("插补结果文件未生成");
         }
 
         const imputedDataRaw = await this.readDataFile(tempOutputFile);
@@ -852,22 +1728,29 @@ export class ImputationService {
       }
     }
 
-    onProgress(100, '插补完成');
+    onProgress(100, "插补完成");
     return { imputedData: data, columnStats };
   }
 
   /**
    * 获取数据集的活跃模型（基础信息）
    */
-  private getActiveModel(datasetId: number, methodId: string): {
+  private getActiveModel(
+    datasetId: number,
+    methodId: string
+  ): {
     modelPath?: string;
     modelParams?: Record<string, any>;
   } | null {
-    const row = this.db.prepare(`
+    const row = this.db
+      .prepare(
+        `
       SELECT model_path, model_params FROM biz_imputation_model
       WHERE dataset_id = ? AND method_id = ? AND is_active = 1 AND is_del = 0
       ORDER BY trained_at DESC LIMIT 1
-    `).get(datasetId, methodId) as { model_path?: string; model_params?: string } | undefined;
+    `
+      )
+      .get(datasetId, methodId) as { model_path?: string; model_params?: string } | undefined;
 
     if (!row) return null;
 
@@ -881,7 +1764,10 @@ export class ImputationService {
    * 获取数据集的活跃模型（完整配置）
    * 优先查找数据集专属模型，如果没有则查找通用模型（dataset_id 为 NULL）
    */
-  private getActiveModelFull(datasetId: number, methodId: string): {
+  private getActiveModelFull(
+    datasetId: number,
+    methodId: string
+  ): {
     modelPath?: string;
     modelParams?: Record<string, any>;
     targetColumn?: string;
@@ -889,27 +1775,37 @@ export class ImputationService {
     timeColumn?: string;
   } | null {
     // 优先查找数据集专属模型
-    let row = this.db.prepare(`
+    let row = this.db
+      .prepare(
+        `
       SELECT model_path, model_params, target_column, feature_columns, time_column 
       FROM biz_imputation_model
       WHERE dataset_id = ? AND method_id = ? AND is_active = 1 AND is_del = 0
       ORDER BY trained_at DESC LIMIT 1
-    `).get(datasetId, methodId) as { 
-      model_path?: string; 
-      model_params?: string;
-      target_column?: string;
-      feature_columns?: string;
-      time_column?: string;
-    } | undefined;
+    `
+      )
+      .get(datasetId, methodId) as
+      | {
+          model_path?: string;
+          model_params?: string;
+          target_column?: string;
+          feature_columns?: string;
+          time_column?: string;
+        }
+      | undefined;
 
     // 如果没有找到，查找通用模型（dataset_id 为 NULL）
     if (!row) {
-      row = this.db.prepare(`
+      row = this.db
+        .prepare(
+          `
         SELECT model_path, model_params, target_column, feature_columns, time_column 
         FROM biz_imputation_model
         WHERE dataset_id IS NULL AND method_id = ? AND is_active = 1 AND is_del = 0
         ORDER BY trained_at DESC LIMIT 1
-      `).get(methodId) as typeof row;
+      `
+        )
+        .get(methodId) as typeof row;
     }
 
     if (!row) return null;
@@ -919,7 +1815,64 @@ export class ImputationService {
       modelParams: row.model_params ? JSON.parse(row.model_params) : undefined,
       targetColumn: row.target_column || undefined,
       featureColumns: row.feature_columns ? JSON.parse(row.feature_columns) : undefined,
-      timeColumn: row.time_column || 'record_time',
+      timeColumn: row.time_column || "record_time",
+    };
+  }
+
+  /**
+   * 按 target_column 精确匹配模型配置。
+   * 用于 XGBoost / RANDOM_FOREST 等 ML 方法——每个目标指标有独立训练的模型。
+   * 若匹配不到，返回 null（由调用方 fallback 到 KNN）。
+   */
+  private getModelForTargetColumn(
+    datasetId: number,
+    methodId: string,
+    targetColumn: string
+  ): {
+    modelPath?: string;
+    modelParams?: Record<string, any>;
+    targetColumn?: string;
+    featureColumns?: string[];
+    timeColumn?: string;
+  } | null {
+    type Row = {
+      model_path?: string;
+      model_params?: string;
+      target_column?: string;
+      feature_columns?: string;
+      time_column?: string;
+    };
+
+    // 优先查找数据集专属模型（按 target_column 精确匹配）
+    let row = this.db
+      .prepare(
+        `SELECT model_path, model_params, target_column, feature_columns, time_column
+         FROM biz_imputation_model
+         WHERE dataset_id = ? AND method_id = ? AND target_column = ? AND is_active = 1 AND is_del = 0
+         ORDER BY trained_at DESC LIMIT 1`
+      )
+      .get(datasetId, methodId, targetColumn) as Row | undefined;
+
+    // 如果没有找到，查找通用模型（dataset_id 为 NULL）
+    if (!row) {
+      row = this.db
+        .prepare(
+          `SELECT model_path, model_params, target_column, feature_columns, time_column
+           FROM biz_imputation_model
+           WHERE dataset_id IS NULL AND method_id = ? AND target_column = ? AND is_active = 1 AND is_del = 0
+           ORDER BY trained_at DESC LIMIT 1`
+        )
+        .get(methodId, targetColumn) as Row | undefined;
+    }
+
+    if (!row) return null;
+
+    return {
+      modelPath: row.model_path || undefined,
+      modelParams: row.model_params ? JSON.parse(row.model_params) : undefined,
+      targetColumn: row.target_column || undefined,
+      featureColumns: row.feature_columns ? JSON.parse(row.feature_columns) : undefined,
+      timeColumn: row.time_column || "record_time",
     };
   }
 
@@ -930,7 +1883,7 @@ export class ImputationService {
    */
   private imputeMean(data: (number | null)[], validValues: number[]): (number | null)[] {
     const mean = this.calculateMean(validValues);
-    return data.map(v => v === null ? mean : v);
+    return data.map(v => (v === null ? mean : v));
   }
 
   /**
@@ -939,10 +1892,8 @@ export class ImputationService {
   private imputeMedian(data: (number | null)[], validValues: number[]): (number | null)[] {
     const sorted = [...validValues].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
-    const median = sorted.length % 2 === 0
-      ? (sorted[mid - 1] + sorted[mid]) / 2
-      : sorted[mid];
-    return data.map(v => v === null ? median : v);
+    const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+    return data.map(v => (v === null ? median : v));
   }
 
   /**
@@ -961,7 +1912,7 @@ export class ImputationService {
         mode = value;
       }
     }
-    return data.map(v => v === null ? mode : v);
+    return data.map(v => (v === null ? mode : v));
   }
 
   /**
@@ -1013,7 +1964,7 @@ export class ImputationService {
     if (validPoints.length < 2) {
       // 不足以进行线性插值，使用均值
       if (validPoints.length === 1) {
-        return data.map(v => v === null ? validPoints[0].value : v);
+        return data.map(v => (v === null ? validPoints[0].value : v));
       }
       return result;
     }
@@ -1057,7 +2008,7 @@ export class ImputationService {
    */
   private imputeSpline(data: (number | null)[], degree: number): (number | null)[] {
     const result = [...data];
-    
+
     // 提取有效数据点
     const validPoints: { index: number; value: number }[] = [];
     data.forEach((v, i) => {
@@ -1069,7 +2020,7 @@ export class ImputationService {
     // 至少需要2个点才能进行样条插值
     if (validPoints.length < 2) {
       if (validPoints.length === 1) {
-        return data.map(v => v === null ? validPoints[0].value : v);
+        return data.map(v => (v === null ? validPoints[0].value : v));
       }
       return result;
     }
@@ -1102,7 +2053,7 @@ export class ImputationService {
    */
   private computeCubicSplineCoefficients(x: number[], y: number[]): number[] {
     const n = x.length;
-    
+
     // h[i] = x[i+1] - x[i]
     const h: number[] = [];
     for (let i = 0; i < n - 1; i++) {
@@ -1139,12 +2090,7 @@ export class ImputationService {
   /**
    * 使用三次样条计算给定位置的插值
    */
-  private evaluateCubicSpline(
-    xi: number,
-    x: number[],
-    y: number[],
-    M: number[]
-  ): number {
+  private evaluateCubicSpline(xi: number, x: number[], y: number[], M: number[]): number {
     const n = x.length;
 
     // 找到 xi 所在的区间 [x[j], x[j+1]]
@@ -1167,10 +2113,10 @@ export class ImputationService {
     const t1 = x[j + 1] - xi;
 
     // 三次样条插值公式
-    const a = M[j] * Math.pow(t1, 3) / (6 * h);
-    const b = M[j + 1] * Math.pow(t, 3) / (6 * h);
-    const c = (y[j] / h - M[j] * h / 6) * t1;
-    const d = (y[j + 1] / h - M[j + 1] * h / 6) * t;
+    const a = (M[j] * Math.pow(t1, 3)) / (6 * h);
+    const b = (M[j + 1] * Math.pow(t, 3)) / (6 * h);
+    const c = (y[j] / h - (M[j] * h) / 6) * t1;
+    const d = (y[j + 1] / h - (M[j + 1] * h) / 6) * t;
 
     return a + b + c + d;
   }
@@ -1182,7 +2128,7 @@ export class ImputationService {
    */
   private imputePolynomial(data: (number | null)[], degree: number): (number | null)[] {
     const result = [...data];
-    
+
     // 提取有效数据点
     const validPoints: { index: number; value: number }[] = [];
     data.forEach((v, i) => {
@@ -1219,10 +2165,8 @@ export class ImputationService {
     n: number
   ): { index: number; value: number }[] {
     // 按距离排序
-    const sorted = [...validPoints].sort((a, b) => 
-      Math.abs(a.index - targetIndex) - Math.abs(b.index - targetIndex)
-    );
-    
+    const sorted = [...validPoints].sort((a, b) => Math.abs(a.index - targetIndex) - Math.abs(b.index - targetIndex));
+
     // 取最近的 n 个点，然后按索引排序以保持顺序
     return sorted.slice(0, n).sort((a, b) => a.index - b.index);
   }
@@ -1230,22 +2174,19 @@ export class ImputationService {
   /**
    * 拉格朗日多项式插值
    */
-  private lagrangeInterpolate(
-    xi: number,
-    points: { index: number; value: number }[]
-  ): number {
+  private lagrangeInterpolate(xi: number, points: { index: number; value: number }[]): number {
     let result = 0;
     const n = points.length;
 
     for (let i = 0; i < n; i++) {
       let term = points[i].value;
-      
+
       for (let j = 0; j < n; j++) {
         if (i !== j) {
           term *= (xi - points[j].index) / (points[i].index - points[j].index);
         }
       }
-      
+
       result += term;
     }
 
@@ -1259,15 +2200,15 @@ export class ImputationService {
    */
   private getDecimalPlaces(values: number[]): number {
     if (values.length === 0) return 2; // 默认2位小数
-    
+
     let maxDecimals = 0;
     // 采样前1000个值
     const sampleSize = Math.min(values.length, 1000);
     for (let i = 0; i < sampleSize; i++) {
       const val = values[i];
-      const strVal = val.toFixed(10).replace(/0+$/, '');
-      if (strVal.includes('.')) {
-        const decimals = strVal.split('.')[1]?.length || 0;
+      const strVal = val.toFixed(10).replace(/0+$/, "");
+      if (strVal.includes(".")) {
+        const decimals = strVal.split(".")[1]?.length || 0;
         maxDecimals = Math.max(maxDecimals, decimals);
       }
     }
@@ -1285,14 +2226,9 @@ export class ImputationService {
   /**
    * 将插补结果数组四舍五入到原始数据的小数位精度
    */
-  private roundImputedValues(
-    imputedData: (number | null)[],
-    originalValidValues: number[]
-  ): (number | null)[] {
+  private roundImputedValues(imputedData: (number | null)[], originalValidValues: number[]): (number | null)[] {
     const decimals = this.getDecimalPlaces(originalValidValues);
-    return imputedData.map(v => 
-      v === null ? null : this.roundToDecimalPlaces(v, decimals)
-    );
+    return imputedData.map(v => (v === null ? null : this.roundToDecimalPlaces(v, decimals)));
   }
 
   private calculateMean(values: number[]): number {
@@ -1322,14 +2258,14 @@ export class ImputationService {
 
     // 根据方法调整置信度
     const methodMultiplier: Record<string, number> = {
-      'MEAN': 0.6,
-      'MEDIAN': 0.65,
-      'MODE': 0.55,
-      'FORWARD_FILL': 0.7,
-      'BACKWARD_FILL': 0.7,
-      'LINEAR': 0.8,
-      'SPLINE': 0.85,
-      'POLYNOMIAL': 0.8,
+      MEAN: 0.6,
+      MEDIAN: 0.65,
+      MODE: 0.55,
+      FORWARD_FILL: 0.7,
+      BACKWARD_FILL: 0.7,
+      LINEAR: 0.8,
+      SPLINE: 0.85,
+      POLYNOMIAL: 0.8,
     };
 
     return Math.min(1.0, confidence * (methodMultiplier[methodId] || 0.75));
@@ -1340,9 +2276,9 @@ export class ImputationService {
       throw new Error(`文件不存在: ${filePath}`);
     }
 
-    const ext = filePath.toLowerCase().split('.').pop();
+    const ext = filePath.toLowerCase().split(".").pop();
 
-    if (ext === 'csv') {
+    if (ext === "csv") {
       return this.readCsvFile(filePath);
     } else {
       // 尝试作为 CSV 读取
@@ -1352,7 +2288,7 @@ export class ImputationService {
 
   private readCsvFile(filePath: string): Promise<Record<string, any>[]> {
     return new Promise((resolve, reject) => {
-      const fileContent = fs.readFileSync(filePath, 'utf-8');
+      const fileContent = fs.readFileSync(filePath, "utf-8");
       const result = Papa.parse(fileContent, {
         header: true,
         skipEmptyLines: true,
@@ -1360,7 +2296,7 @@ export class ImputationService {
       });
 
       if (result.errors.length > 0) {
-        console.warn('CSV 解析警告:', result.errors);
+        console.warn("CSV 解析警告:", result.errors);
       }
 
       resolve(result.data as Record<string, any>[]);
@@ -1448,9 +2384,18 @@ export class ImputationService {
     const result = this.getResult(resultId);
     if (!result) throw new Error(`Result not found: ${resultId}`);
 
+    if (result.outputFilePath) {
+      if (!fs.existsSync(result.outputFilePath)) {
+        throw new Error(`插补结果文件不存在: ${result.outputFilePath}`);
+      }
+      return this.readDataFile(result.outputFilePath);
+    }
+
     // 获取版本信息
-    const version = this.db.prepare('SELECT * FROM biz_dataset_version WHERE id = ?').get(result.versionId) as DatasetVersion;
-    if (!version) throw new Error('Original version not found');
+    const version = this.db
+      .prepare("SELECT * FROM biz_dataset_version WHERE id = ?")
+      .get(result.versionId) as DatasetVersion;
+    if (!version) throw new Error("Original version not found");
 
     // 读取原始数据
     const data = await this.readDataFile(version.file_path);
@@ -1476,14 +2421,16 @@ export class ImputationService {
    */
   async applyVersion(resultId: number, remark?: string): Promise<DatasetVersion> {
     const result = this.getResult(resultId);
-    if (!result) throw new Error('Result not found');
+    if (!result) throw new Error("Result not found");
 
     // 1. 重构数据
     const data = await this.reconstructData(resultId);
 
     // 2. 生成新文件路径
-    const version = this.db.prepare('SELECT * FROM biz_dataset_version WHERE id = ?').get(result.versionId) as DatasetVersion;
-    if (!version) throw new Error('Original version not found');
+    const version = this.db
+      .prepare("SELECT * FROM biz_dataset_version WHERE id = ?")
+      .get(result.versionId) as DatasetVersion;
+    if (!version) throw new Error("Original version not found");
 
     const dir = path.dirname(version.file_path);
     const ext = path.extname(version.file_path);
@@ -1494,7 +2441,7 @@ export class ImputationService {
 
     // 3. 写入文件
     const csv = Papa.unparse(data);
-    fs.writeFileSync(newFilePath, csv, 'utf-8');
+    fs.writeFileSync(newFilePath, csv, "utf-8");
 
     // 4. 创建新版本记录
     const stmt = this.db.prepare(`
@@ -1511,10 +2458,10 @@ export class ImputationService {
     const info = stmt.run({
       dataset_id: result.datasetId,
       parent_version_id: result.versionId,
-      stage_type: 'QC',
+      stage_type: "QC",
       file_path: newFilePath,
       created_at: now,
-      remark: remark || `插补处理 (${result.methodId})`
+      remark: remark || `插补处理 (${result.methodId})`,
     });
 
     const newVersionId = Number(info.lastInsertRowid);
@@ -1535,13 +2482,13 @@ export class ImputationService {
       version_id: newVersionId,
       total_rows: data.length,
       total_cols: totalCols,
-      created_at: now
+      created_at: now,
     });
 
     // 6. 更新结果关联
     this.repository.updateResultNewVersion(resultId, newVersionId);
 
-    return this.db.prepare('SELECT * FROM biz_dataset_version WHERE id = ?').get(newVersionId) as DatasetVersion;
+    return this.db.prepare("SELECT * FROM biz_dataset_version WHERE id = ?").get(newVersionId) as DatasetVersion;
   }
 
   /**
@@ -1557,7 +2504,7 @@ export class ImputationService {
     // 如果 targetPath 存在，则写入。
 
     if (targetPath) {
-      fs.writeFileSync(targetPath, csv, 'utf-8');
+      fs.writeFileSync(targetPath, csv, "utf-8");
       return targetPath;
     }
 
@@ -1611,15 +2558,19 @@ export class ImputationService {
   /**
    * 更新模型信息
    */
-  updateModel(modelId: number, params: {
-    modelName?: string;
-    modelPath?: string;
-    modelParams?: Record<string, any>;
-    targetColumn?: string;
-    featureColumns?: string[];
-    timeColumn?: string;
-    validationScore?: number;
-  }): void {
+  updateModel(
+    modelId: number,
+    params: {
+      modelName?: string;
+      modelPath?: string;
+      modelParams?: Record<string, any>;
+      targetColumn?: string;
+      featureColumns?: string[];
+      timeColumn?: string;
+      columnMapping?: Record<string, string>;
+      validationScore?: number;
+    }
+  ): void {
     this.repository.updateModel(modelId, params);
   }
 
@@ -1628,6 +2579,173 @@ export class ImputationService {
    */
   deleteModel(modelId: number): void {
     this.repository.deleteModel(modelId);
+  }
+
+  // ==================== 自定义模型管理 ====================
+
+  /**
+   * 注册自定义模型
+   * 1. 生成 CUSTOM_xxx methodId
+   * 2. 插入 conf_imputation_method（category='custom'）
+   * 3. 插入方法参数 conf_imputation_method_params
+   * 4. 插入模型记录 biz_imputation_model
+   */
+  registerCustomModel(config: CustomModelConfig): {
+    methodId: ImputationMethodId;
+    modelId: number;
+  } {
+    // 生成唯一 methodId
+    const timestamp = Date.now();
+    const methodId = `CUSTOM_${timestamp}` as ImputationMethodId;
+
+    // 1. 注册方法
+    this.repository.createMethod({
+      methodId,
+      methodName: config.modelName,
+      category: "custom",
+      description: config.description,
+      estimatedTime: config.estimatedTime || "medium",
+      accuracy: config.accuracy || "medium",
+      priority: 50,
+    });
+
+    // 2. 注册内置参数（model_path、inference_script、framework 等固定参数）
+    const builtinParams = [
+      {
+        paramKey: "model_path",
+        paramName: "模型文件路径",
+        paramType: "string",
+        defaultValue: config.modelFilePath,
+        isRequired: true,
+        isAdvanced: false,
+        paramOrder: 0,
+      },
+      {
+        paramKey: "inference_script",
+        paramName: "推理脚本路径",
+        paramType: "string",
+        defaultValue: config.inferenceScriptPath,
+        isRequired: true,
+        isAdvanced: false,
+        paramOrder: 1,
+      },
+      {
+        paramKey: "framework",
+        paramName: "模型框架",
+        paramType: "string",
+        defaultValue: config.framework,
+        isRequired: true,
+        isAdvanced: false,
+        paramOrder: 2,
+      },
+    ];
+
+    // 3. 注册用户自定义参数
+    const userParams = (config.params || []).map((p, idx) => ({
+      paramKey: p.paramKey,
+      paramName: p.paramName,
+      paramType: p.paramType,
+      defaultValue: p.defaultValue,
+      minValue: p.minValue,
+      maxValue: p.maxValue,
+      stepValue: p.stepValue,
+      options: p.options ? JSON.stringify(p.options) : undefined,
+      tooltip: p.tooltip,
+      isRequired: p.isRequired,
+      isAdvanced: p.isAdvanced,
+      paramOrder: idx + builtinParams.length,
+    }));
+
+    this.repository.createMethodParams(methodId, [...builtinParams, ...userParams] as any);
+
+    // 4. 创建模型记录（通用模型，dataset_id = null）
+    const modelId = this.repository.createModel({
+      methodId,
+      modelName: config.modelName,
+      modelPath: config.modelFilePath,
+      modelParams: {
+        inferenceScriptPath: config.inferenceScriptPath,
+        framework: config.framework,
+        seqLen: config.seqLen,
+      },
+      targetColumn: config.targetColumn,
+      featureColumns: config.featureColumns,
+      timeColumn: config.timeColumn,
+    });
+
+    // 设置为活跃模型
+    this.repository.setActiveModel(modelId);
+
+    return { methodId, modelId };
+  }
+
+  /**
+   * 获取所有自定义模型方法（及其参数和关联模型）
+   */
+  getCustomModels(): Array<{
+    method: ImputationMethod;
+    params: ImputationMethodParam[];
+    models: ImputationModel[];
+  }> {
+    const methodRows = this.repository.getCustomMethods();
+    return methodRows.map(row => {
+      const method = this.mapMethodRow(row);
+      const paramRows = this.repository.getMethodParams(row.method_id);
+      const params = paramRows.map(p => this.mapMethodParamRow(p));
+      const modelRows = this.repository.getModelsByMethodId(row.method_id);
+      const models = modelRows.map(m => this.mapModelRow(m));
+      return { method, params, models };
+    });
+  }
+
+  /**
+   * 删除自定义模型（软删除方法+参数+模型）
+   */
+  deleteCustomModel(methodId: string): void {
+    // 验证是自定义模型
+    if (!methodId.startsWith("CUSTOM_")) {
+      throw new Error("只能删除自定义模型");
+    }
+    this.repository.deleteCustomMethod(methodId);
+  }
+
+  /**
+   * 验证模型文件是否存在且可访问
+   */
+  validateModelFile(filePath: string): { valid: boolean; error?: string } {
+    try {
+      if (!fs.existsSync(filePath)) {
+        return { valid: false, error: "文件不存在" };
+      }
+      fs.accessSync(filePath, fs.constants.R_OK);
+      const ext = path.extname(filePath).toLowerCase();
+      const supportedExts = [".pt", ".pth", ".onnx", ".pkl", ".joblib", ".pypots", ".h5"];
+      if (!supportedExts.includes(ext)) {
+        return { valid: false, error: `不支持的文件格式: ${ext}，支持: ${supportedExts.join(", ")}` };
+      }
+      return { valid: true };
+    } catch (err: any) {
+      return { valid: false, error: err.message };
+    }
+  }
+
+  /**
+   * 验证推理脚本文件是否存在且可访问
+   */
+  validateScriptFile(filePath: string): { valid: boolean; error?: string } {
+    try {
+      if (!fs.existsSync(filePath)) {
+        return { valid: false, error: "文件不存在" };
+      }
+      fs.accessSync(filePath, fs.constants.R_OK);
+      const ext = path.extname(filePath).toLowerCase();
+      if (ext !== ".py") {
+        return { valid: false, error: `推理脚本必须是 .py 文件，当前: ${ext}` };
+      }
+      return { valid: true };
+    } catch (err: any) {
+      return { valid: false, error: err.message };
+    }
   }
 
   // ==================== 映射方法 ====================
@@ -1642,7 +2760,8 @@ export class ImputationService {
       modelParams: row.model_params ? JSON.parse(row.model_params) : undefined,
       targetColumn: row.target_column || undefined,
       featureColumns: row.feature_columns ? JSON.parse(row.feature_columns) : undefined,
-      timeColumn: row.time_column || 'record_time',
+      timeColumn: row.time_column || "record_time",
+      columnMapping: row.column_mapping ? JSON.parse(row.column_mapping) : undefined,
       trainingColumns: row.training_columns ? JSON.parse(row.training_columns) : undefined,
       trainingSamples: row.training_samples || undefined,
       validationScore: row.validation_score || undefined,
@@ -1659,7 +2778,7 @@ export class ImputationService {
       methodId: row.method_id as ImputationMethodId,
       methodName: row.method_name,
       category: row.category as ImputationCategory,
-      description: row.description || '',
+      description: row.description || "",
       requiresPython: row.requires_python === 1,
       isAvailable: row.is_available === 1,
       estimatedTime: row.estimated_time as any,
@@ -1703,6 +2822,7 @@ export class ImputationService {
       name: row.name || undefined,
       targetColumns: JSON.parse(row.target_columns),
       methodParams: row.method_params ? JSON.parse(row.method_params) : undefined,
+      outputFilePath: row.output_file_path || undefined,
       totalMissing: row.total_missing,
       imputedCount: row.imputed_count,
       imputationRate: row.imputation_rate,

@@ -5,7 +5,6 @@ import { CategoryController } from "../controller/CategoryController";
 import { DatasetController } from "../controller/DatasetController";
 import { FileController } from "../controller/FileController";
 import { OutlierDetectionController } from "../controller/OutlierDetectionController";
-import { CorrelationAnalysisController } from "../controller/CorrelationAnalysisController";
 import { SettingsController } from "../controller/SettingsController";
 import { ImputationController } from "../controller/ImputationController";
 import { FluxPartitioningController } from "../controller/FluxPartitioningController";
@@ -20,7 +19,6 @@ import {
   OutlierDetectionExecutor,
   ImputationExecutor,
   FluxPartitioningExecutor,
-  CorrelationAnalysisExecutor,
   ExportExecutor,
 } from "../service/workflow-executors";
 
@@ -58,7 +56,6 @@ export class ControllerRegistry {
   private datasetController!: DatasetController;
   private fileController!: FileController;
   private outlierController!: OutlierDetectionController;
-  private correlationController!: CorrelationAnalysisController;
   private settingsController!: SettingsController;
   private imputationController!: ImputationController;
   private fluxPartitioningController!: FluxPartitioningController;
@@ -128,9 +125,6 @@ export class ControllerRegistry {
       this.outlierController = new OutlierDetectionController(this.outlierService);
       console.log("✓ OutlierDetectionController 初始化完成");
 
-      this.correlationController = new CorrelationAnalysisController();
-      console.log("✓ CorrelationAnalysisController 初始化完成");
-
       this.settingsController = new SettingsController(this.settingsService);
       console.log("✓ SettingsController 初始化完成");
 
@@ -155,7 +149,6 @@ export class ControllerRegistry {
       this.workflowService.registerExecutor(new OutlierDetectionExecutor(this.outlierService));
       this.workflowService.registerExecutor(new ImputationExecutor(this.imputationController));
       this.workflowService.registerExecutor(new FluxPartitioningExecutor(this.fluxPartitioningController));
-      this.workflowService.registerExecutor(new CorrelationAnalysisExecutor(this.correlationController));
       this.workflowService.registerExecutor(new ExportExecutor(this.exportService));
       console.log("✓ WorkflowService 初始化完成（含节点执行器）");
 
@@ -184,7 +177,6 @@ export class ControllerRegistry {
       this.registerDatasetRoutes();
       this.registerFileRoutes();
       this.registerOutlierDetectionRoutes();
-      this.registerCorrelationRoutes();
       this.registerSettingsRoutes();
       this.registerImputationRoutes();
       this.registerFluxPartitioningRoutes();
@@ -524,51 +516,6 @@ export class ControllerRegistry {
   }
 
   /**
-   * 注册相关性分析路由
-   */
-  private registerCorrelationRoutes() {
-    const routes = [
-      {
-        path: "correlation/get-history",
-        handler: this.correlationController.getHistory.bind(this.correlationController),
-        description: "获取分析历史",
-      },
-      {
-        path: "correlation/analyze",
-        handler: this.correlationController.analyze.bind(this.correlationController),
-        description: "运行相关性分析",
-      },
-      {
-        path: "correlation/delete-result",
-        handler: this.correlationController.deleteResult.bind(this.correlationController),
-        description: "删除分析结果",
-      },
-      {
-        path: "correlation/batch-delete-results",
-        handler: this.correlationController.batchDeleteResults.bind(this.correlationController),
-        description: "批量删除分析结果",
-      },
-      {
-        path: "correlation/rename-result",
-        handler: this.correlationController.renameResult.bind(this.correlationController),
-        description: "重命名分析结果",
-      },
-      {
-        path: "correlation/reorder-results",
-        handler: this.correlationController.reorderResults.bind(this.correlationController),
-        description: "更新排序顺序",
-      },
-    ];
-
-    routes.forEach(route => {
-      IPCManager.registerRoute(route.path, route.handler);
-      console.log(`✓ 注册路由: ${route.path} - ${route.description}`);
-    });
-
-    console.log(`相关性分析路由注册完成，共 ${routes.length} 个路由`);
-  }
-
-  /**
    * 注册系统设置相关路由
    */
   private registerSettingsRoutes() {
@@ -746,6 +693,41 @@ export class ControllerRegistry {
         path: "mysql/import",
         handler: this.mysqlController.importTable.bind(this.mysqlController),
         description: "从 MySQL 表导入数据集",
+      },
+      {
+        path: "mysql/get-connection-profiles",
+        handler: this.mysqlController.getConnectionProfiles.bind(this.mysqlController),
+        description: "获取保存的数据库连接配置",
+      },
+      {
+        path: "mysql/save-connection-profile",
+        handler: this.mysqlController.saveConnectionProfile.bind(this.mysqlController),
+        description: "保存数据库连接配置",
+      },
+      {
+        path: "mysql/delete-connection-profile",
+        handler: this.mysqlController.deleteConnectionProfile.bind(this.mysqlController),
+        description: "删除数据库连接配置",
+      },
+      {
+        path: "mysql/get-beon-site-rules",
+        handler: this.mysqlController.getBEONSiteRules.bind(this.mysqlController),
+        description: "获取 BEON 站点规则",
+      },
+      {
+        path: "mysql/save-beon-site-rule",
+        handler: this.mysqlController.saveBEONSiteRule.bind(this.mysqlController),
+        description: "保存 BEON 站点规则",
+      },
+      {
+        path: "mysql/delete-beon-site-rule",
+        handler: this.mysqlController.deleteBEONSiteRule.bind(this.mysqlController),
+        description: "删除 BEON 站点规则",
+      },
+      {
+        path: "mysql/resolve-beon-site-context",
+        handler: this.mysqlController.resolveBEONSiteContext.bind(this.mysqlController),
+        description: "解析 BEON 站点规则上下文",
       },
     ];
 

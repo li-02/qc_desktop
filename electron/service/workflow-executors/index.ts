@@ -67,9 +67,12 @@ export class OutlierDetectionExecutor implements INodeExecutor {
         if (method === "THRESHOLD_STATIC" && isNoThresholdError) {
           console.warn(
             `[OutlierDetection] \u6a21\u677f\u5173\u952e\u5b57\u672a\u5339\u914d\u4efb\u4f55\u5217\u540d\uff0c\u8df3\u8fc7\u9608\u503c\u68c0\u6d4b\u3002` +
-            `\u60a8\u53ef\u5728\u6570\u636e\u96c6\u8bbe\u7f6e\u9875\u624b\u52a8\u914d\u7f6e\u5217\u9608\u503c\uff0c\u6216\u4f7f\u7528\u81ea\u5b9a\u4e49\u6a21\u677f\u3002`
+              `\u60a8\u53ef\u5728\u6570\u636e\u96c6\u8bbe\u7f6e\u9875\u624b\u52a8\u914d\u7f6e\u5217\u9608\u503c\uff0c\u6216\u4f7f\u7528\u81ea\u5b9a\u4e49\u6a21\u677f\u3002`
           );
-          ctx.onProgress(100, "\u9608\u503c\u68c0\u6d4b\u8df3\u8fc7\uff08\u6a21\u677f\u672a\u5339\u914d\u4efb\u4f55\u5217\uff0c\u8bf7\u68c0\u67e5\u5217\u540d\u914d\u7f6e\uff09");
+          ctx.onProgress(
+            100,
+            "\u9608\u503c\u68c0\u6d4b\u8df3\u8fc7\uff08\u6a21\u677f\u672a\u5339\u914d\u4efb\u4f55\u5217\uff0c\u8bf7\u68c0\u67e5\u5217\u540d\u914d\u7f6e\uff09"
+          );
           return {
             outputVersionId: null,
             resultData: {
@@ -192,53 +195,6 @@ export class FluxPartitioningExecutor implements INodeExecutor {
         businessResultTable: "biz_flux_partitioning_result",
         method: config.methodId,
         executionTimeMs: Date.now() - startTime,
-      },
-    };
-  }
-}
-
-// ==================== 相关性分析执行器 ====================
-
-export class CorrelationAnalysisExecutor implements INodeExecutor {
-  readonly nodeType: WorkflowNodeType = "CORRELATION_ANALYSIS";
-
-  constructor(private correlationService: any) {}
-
-  async execute(ctx: NodeExecutionContext): Promise<NodeExecutionResult> {
-    const config = ctx.config;
-
-    ctx.onProgress(10, "正在计算相关性...");
-
-    // 调用 CorrelationAnalysisService.calculateCorrelationMatrix(request)
-    // request: { datasetId, versionId?, filePath, columns, method, significanceLevel?, missingValueTypes }
-    // 注意: filePath 和 missingValueTypes 需要从上下文或数据集信息获取
-    let result: any;
-    try {
-      result = await this.correlationService.calculateCorrelationMatrix({
-        datasetId: ctx.datasetId,
-        versionId: ctx.inputVersionId,
-        filePath: config.filePath || "",
-        columns: config.columns || [],
-        method: config.method || "pearson",
-        significanceLevel: config.significanceLevel,
-        missingValueTypes: config.missingValueTypes || [],
-      });
-      if (!result.success) {
-        throw new Error(result.error || "相关性分析失败");
-      }
-    } catch (error: any) {
-      throw new Error(`相关性分析失败: ${error.message}`);
-    }
-
-    ctx.onProgress(100, "相关性分析完成");
-
-    // 不产生新版本
-    return {
-      outputVersionId: null,
-      resultData: {
-        method: config.method || "pearson",
-        columns: config.columns,
-        sampleSize: result.data?.sampleSize,
       },
     };
   }

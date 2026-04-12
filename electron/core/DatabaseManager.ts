@@ -42,13 +42,14 @@ export class DatabaseManager {
 
     this.initCoreTables();
     this.initSystemSettingsTables();
+    this.initExternalDataSourceTables();
     this.initOutlierDetectionTables();
-    this.initCorrelationAnalysisTables();
     this.initImputationTables();
     this.initFluxPartitioningTables();
     this.initWorkflowTables();
     this.migrateSchema();
     this.seedBuiltinTemplates();
+    this.seedBuiltinBEONSiteRules();
   }
 
   /**
@@ -326,36 +327,59 @@ export class DatabaseManager {
   }
 
   /**
-   * 初始化相关性分析相关表结构
+   * 初始化外部数据源相关表结构
    */
-  private initCorrelationAnalysisTables(): void {
+  private initExternalDataSourceTables(): void {
     if (!this.db) return;
 
-    // 相关性分析结果表 (biz_correlation_result)
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS biz_correlation_result (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 结果唯一标识
-        dataset_id INTEGER NOT NULL,           -- 数据集ID
-        version_id INTEGER,                    -- 数据版本ID
-        columns TEXT NOT NULL,                 -- 参与分析的列 (JSON数组)
-        method TEXT NOT NULL,                  -- 分析方法 (pearson/spearman/kendall)
-        result_matrix TEXT NOT NULL,           -- 结果矩阵 (JSON格式)
-        significance_level REAL,               -- 显著性水平
-        sample_size INTEGER,                   -- 样本大小
-        executed_at DATETIME DEFAULT CURRENT_TIMESTAMP,  -- 执行时间
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,   -- 创建时间
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,   -- 更新时间
-        deleted_at DATETIME,                   -- 删除时间
-        is_del BOOLEAN DEFAULT 0               -- 软删除标记
+      CREATE TABLE IF NOT EXISTS conf_db_connection_profile (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_name TEXT NOT NULL,
+        db_type TEXT NOT NULL CHECK(db_type IN ('MYSQL')),
+        host TEXT NOT NULL,
+        port INTEGER NOT NULL,
+        user_name TEXT NOT NULL,
+        password TEXT,
+        database_name TEXT NOT NULL,
+        is_default BOOLEAN DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        deleted_at DATETIME,
+        is_del BOOLEAN DEFAULT 0
       );
+
+      CREATE TABLE IF NOT EXISTS conf_beon_site_rule (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        site_code TEXT NOT NULL,
+        rule_name TEXT NOT NULL,
+        rule_type TEXT NOT NULL CHECK(rule_type IN ('fallback_query', 'local_override')),
+        connection_profile_id INTEGER,
+        source_table TEXT,
+        match_time_column TEXT DEFAULT 'record_time',
+        priority INTEGER DEFAULT 0,
+        rule_config TEXT NOT NULL,
+        is_active BOOLEAN DEFAULT 1,
+        is_builtin BOOLEAN DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        deleted_at DATETIME,
+        is_del BOOLEAN DEFAULT 0,
+        FOREIGN KEY (connection_profile_id) REFERENCES conf_db_connection_profile(id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_db_connection_profile_name
+        ON conf_db_connection_profile(profile_name, is_del);
+
+      CREATE INDEX IF NOT EXISTS idx_db_connection_profile_default
+        ON conf_db_connection_profile(is_default, is_del);
+
+      CREATE INDEX IF NOT EXISTS idx_beon_site_rule_site
+        ON conf_beon_site_rule(site_code, is_active, is_del);
+
+      CREATE INDEX IF NOT EXISTS idx_beon_site_rule_type
+        ON conf_beon_site_rule(rule_type, is_active, is_del);
     `);
-    // 为 biz_correlation_result 添加 name 和 sort_order 列
-    try {
-      this.db.exec(`ALTER TABLE biz_correlation_result ADD COLUMN name TEXT;`);
-    } catch (e) { /* 列已存在 */ }
-    try {
-      this.db.exec(`ALTER TABLE biz_correlation_result ADD COLUMN sort_order INTEGER DEFAULT 0;`);
-    } catch (e) { /* 列已存在 */ }
   }
 
   /**
@@ -422,6 +446,7 @@ export class DatabaseManager {
         method_id TEXT NOT NULL,               -- 使用的插补方法
         target_columns TEXT NOT NULL,          -- 目标列 (JSON数组)
         method_params TEXT,                    -- 实际使用的方法参数 (JSON)
+        output_file_path TEXT,                 -- 完整输出结果文件路径（用于保留新增列）
         total_missing INTEGER DEFAULT 0,       -- 缺失值总数
         imputed_count INTEGER DEFAULT 0,       -- 成功插补数量
         imputation_rate REAL DEFAULT 0,        -- 插补率 (0~1)
@@ -475,10 +500,19 @@ export class DatabaseManager {
     // 为 biz_imputation_result 添加 name 和 sort_order 列
     try {
       this.db.exec(`ALTER TABLE biz_imputation_result ADD COLUMN name TEXT;`);
-    } catch (e) { /* 列已存在 */ }
+    } catch (e) {
+      /* 列已存在 */
+    }
     try {
       this.db.exec(`ALTER TABLE biz_imputation_result ADD COLUMN sort_order INTEGER DEFAULT 0;`);
-    } catch (e) { /* 列已存在 */ }
+    } catch (e) {
+      /* 列已存在 */
+    }
+    try {
+      this.db.exec(`ALTER TABLE biz_imputation_result ADD COLUMN output_file_path TEXT;`);
+    } catch (e) {
+      /* 列已存在 */
+    }
 
     // 插补模型表 (biz_imputation_model)
     // 存储训练好的模型信息 (用于ML/DL方法)
@@ -493,6 +527,7 @@ export class DatabaseManager {
         target_column TEXT,                    -- 目标插补列名
         feature_columns TEXT,                  -- 模型需要的特征列 (JSON数组，包含目标列)
         time_column TEXT DEFAULT 'record_time', -- 模型期望的时间列名
+        column_mapping TEXT,                   -- 列名映射 (JSON对象: {用户列名: 模型期望列名})
         training_columns TEXT,                 -- 训练使用的列 (JSON数组，兼容旧字段)
         training_samples INTEGER,              -- 训练样本数
         validation_score REAL,                 -- 验证分数
@@ -521,9 +556,13 @@ export class DatabaseManager {
     } catch (e) {
       /* 字段已存在 */
     }
+    try {
+      this.db.exec(`ALTER TABLE biz_imputation_model ADD COLUMN column_mapping TEXT`);
+    } catch (e) {
+      /* 字段已存在 */
+    }
 
-    // 插入默认模型配置（如果不存在）
-    this.insertDefaultImputationModels();
+    // 默认模型配置已内置到 qc_metadata.db，无需运行时插入
 
     // 创建索引以提升查询性能
     this.db.exec(`
@@ -591,10 +630,14 @@ export class DatabaseManager {
     // 为 biz_flux_partitioning_result 添加 name 和 sort_order 列
     try {
       this.db.exec(`ALTER TABLE biz_flux_partitioning_result ADD COLUMN name TEXT;`);
-    } catch (e) { /* 列已存在 */ }
+    } catch (e) {
+      /* 列已存在 */
+    }
     try {
       this.db.exec(`ALTER TABLE biz_flux_partitioning_result ADD COLUMN sort_order INTEGER DEFAULT 0;`);
-    } catch (e) { /* 列已存在 */ }
+    } catch (e) {
+      /* 列已存在 */
+    }
   }
 
   /**
@@ -631,7 +674,6 @@ export class DatabaseManager {
                           'OUTLIER_DETECTION',
                           'IMPUTATION',
                           'FLUX_PARTITIONING',
-                          'CORRELATION_ANALYSIS',
                           'EXPORT'
                         )),
         node_name     TEXT    NOT NULL,
@@ -834,13 +876,26 @@ export class DatabaseManager {
         method_id: "MDS_REDDYPROC",
         method_name: "REddyProc MDS",
         category: "statistical",
-        description: "边际分布采样法，基于气象条件相似性的通量数据专业插补方法，适用于涡度协方差数据",
+        description: "按 REddyProc 通量处理链执行 PAR 预插补、despiking、u* 阈值处理、NEE gap filling 与分割的专业方法",
         requires_python: 1,
         estimated_time: "medium",
         accuracy: "high",
         priority: 85,
         applicable_data_types: JSON.stringify(["numeric"]),
         icon: "🌿",
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        method_name: "BEON-REddyProc",
+        category: "statistical",
+        description:
+          "按 BEON 原项目链路执行 QC flag、存储项、threshold_limit、PAR 预插补、despiking、u* 阈值处理、NEE gap filling 与分割",
+        requires_python: 1,
+        estimated_time: "medium",
+        accuracy: "high",
+        priority: 84,
+        applicable_data_types: JSON.stringify(["numeric"]),
+        icon: "🌲",
       },
       {
         method_id: "SPLINE",
@@ -867,18 +922,6 @@ export class DatabaseManager {
         icon: "📈",
       },
       // 机器学习方法
-      {
-        method_id: "RANDOM_FOREST",
-        method_name: "随机森林",
-        category: "ml",
-        description: "基于随机森林的插补",
-        requires_python: 1,
-        estimated_time: "slow",
-        accuracy: "high",
-        priority: 70,
-        applicable_data_types: JSON.stringify(["numeric"]),
-        icon: "🤖",
-      },
       {
         method_id: "XGBOOST",
         method_name: "XGBoost",
@@ -944,9 +987,20 @@ export class DatabaseManager {
 
     // 插入方法
     const insertMethodStmt = this.db.prepare(`
-      INSERT OR IGNORE INTO conf_imputation_method
+      INSERT INTO conf_imputation_method
         (method_id, method_name, category, description, requires_python, estimated_time, accuracy, priority, applicable_data_types, icon)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(method_id) DO UPDATE SET
+        method_name = excluded.method_name,
+        category = excluded.category,
+        description = excluded.description,
+        requires_python = excluded.requires_python,
+        estimated_time = excluded.estimated_time,
+        accuracy = excluded.accuracy,
+        priority = excluded.priority,
+        applicable_data_types = excluded.applicable_data_types,
+        icon = excluded.icon,
+        updated_at = CURRENT_TIMESTAMP
     `);
 
     for (const method of defaultMethods) {
@@ -975,36 +1029,6 @@ export class DatabaseManager {
     if (!this.db) return;
 
     const defaultParams = [
-      // 随机森林参数
-      {
-        method_id: "RANDOM_FOREST",
-        param_key: "n_estimators",
-        param_name: "树的数量",
-        param_type: "number",
-        default_value: "100",
-        min_value: 10,
-        max_value: 500,
-        step_value: 10,
-        tooltip: "随机森林中决策树的数量",
-        is_required: true,
-        is_advanced: false,
-        param_order: 1,
-      },
-      {
-        method_id: "RANDOM_FOREST",
-        param_key: "max_depth",
-        param_name: "最大深度",
-        param_type: "number",
-        default_value: "10",
-        min_value: 1,
-        max_value: 50,
-        step_value: 1,
-        tooltip: "决策树的最大深度，越大越容易过拟合",
-        is_required: false,
-        is_advanced: true,
-        param_order: 2,
-      },
-
       // XGBoost 参数
       {
         method_id: "XGBOOST",
@@ -1133,7 +1157,7 @@ export class DatabaseManager {
         param_name: "全球辐射列 (Rg)",
         param_type: "string",
         default_value: "Rg",
-        tooltip: "全球辐射列名，单位 W/m²",
+        tooltip: "原项目流程必需列。全球辐射列名，单位 W/m²",
         is_required: true,
         is_advanced: false,
         param_order: 4,
@@ -1144,32 +1168,43 @@ export class DatabaseManager {
         param_name: "气温列 (Tair)",
         param_type: "string",
         default_value: "Tair",
-        tooltip: "气温列名，单位 °C",
+        tooltip: "原项目流程必需列。气温列名，单位 °C",
         is_required: true,
         is_advanced: false,
         param_order: 5,
       },
       {
         method_id: "MDS_REDDYPROC",
-        param_key: "vpd_col",
-        param_name: "VPD列",
+        param_key: "rh_col",
+        param_name: "相对湿度列 (rH)",
         param_type: "string",
-        default_value: "VPD",
-        tooltip: "饱和水汽压差列名，单位 hPa。若无VPD列，可留空并提供相对湿度列",
-        is_required: false,
+        default_value: "rH",
+        tooltip: "原项目流程必需列。相对湿度列名，单位 %",
+        is_required: true,
         is_advanced: false,
         param_order: 6,
       },
       {
         method_id: "MDS_REDDYPROC",
-        param_key: "rh_col",
-        param_name: "相对湿度列 (rH)",
+        param_key: "par_col",
+        param_name: "PAR列",
         param_type: "string",
-        default_value: "",
-        tooltip: "相对湿度列名，单位 %。用于计算VPD（当VPD列为空时）",
-        is_required: false,
+        default_value: "Par",
+        tooltip: "原项目流程必需列。用于 PAR 预插补和 despiking 的光合有效辐射列",
+        is_required: true,
         is_advanced: false,
         param_order: 7,
+      },
+      {
+        method_id: "MDS_REDDYPROC",
+        param_key: "nee_col",
+        param_name: "NEE列",
+        param_type: "string",
+        default_value: "NEE",
+        tooltip: "原项目流程必需列。用于 u* 阈值处理、NEE gap filling 和分割",
+        is_required: true,
+        is_advanced: false,
+        param_order: 8,
       },
       // REddyProc MDS 参数 - 高级选项
       {
@@ -1177,33 +1212,458 @@ export class DatabaseManager {
         param_key: "ustar_col",
         param_name: "摩擦速度列 (Ustar)",
         param_type: "string",
+        default_value: "Ustar",
+        tooltip: "原项目流程必需列。用于 u* 阈值处理",
+        is_required: true,
+        is_advanced: false,
+        param_order: 9,
+      },
+      {
+        method_id: "MDS_REDDYPROC",
+        param_key: "vpd_col",
+        param_name: "VPD列",
+        param_type: "string",
         default_value: "",
-        tooltip: "摩擦速度列名，单位 m/s。用于u*过滤（可选）",
+        tooltip: "辅助列，可为空。为空时按原项目逻辑由 rH 和 Tair 重新计算 VPD",
+        is_required: false,
+        is_advanced: false,
+        param_order: 10,
+      },
+      {
+        method_id: "MDS_REDDYPROC",
+        param_key: "h2o_col",
+        param_name: "H2O列",
+        param_type: "string",
+        default_value: "",
+        tooltip: "可选 companion 通量列。填写后参与原项目同款 H2O gap filling",
+        is_required: false,
+        is_advanced: false,
+        param_order: 11,
+      },
+      {
+        method_id: "MDS_REDDYPROC",
+        param_key: "le_col",
+        param_name: "LE列",
+        param_type: "string",
+        default_value: "",
+        tooltip: "可选 companion 通量列。填写后参与原项目同款 LE gap filling",
+        is_required: false,
+        is_advanced: false,
+        param_order: 12,
+      },
+      {
+        method_id: "MDS_REDDYPROC",
+        param_key: "h_col",
+        param_name: "H列",
+        param_type: "string",
+        default_value: "",
+        tooltip: "可选 companion 通量列。填写后参与原项目同款 H gap filling",
+        is_required: false,
+        is_advanced: false,
+        param_order: 13,
+      },
+      {
+        method_id: "MDS_REDDYPROC",
+        param_key: "despiking_z",
+        param_name: "Despiking阈值",
+        param_type: "number",
+        default_value: "4",
+        min_value: 1,
+        max_value: 10,
+        step_value: 1,
+        tooltip: "原项目默认值为 4。用于 MAD despiking 阈值",
         is_required: false,
         is_advanced: true,
-        param_order: 8,
+        param_order: 14,
       },
       {
         method_id: "MDS_REDDYPROC",
         param_key: "fill_all",
         param_name: "填充所有值",
         param_type: "boolean",
-        default_value: "false",
-        tooltip: "是否为所有数据点（包括有效值）计算不确定性。默认仅填充缺失值",
+        default_value: "true",
+        tooltip: "保留为数据库参数。当前原项目链路默认在关键阶段执行 FillAll=TRUE",
         is_required: false,
         is_advanced: true,
-        param_order: 9,
+        param_order: 15,
       },
       {
         method_id: "MDS_REDDYPROC",
         param_key: "ustar_filtering",
         param_name: "启用u*过滤",
         param_type: "boolean",
-        default_value: "false",
-        tooltip: "是否在插补前进行u*过滤（需要提供Ustar列）",
+        default_value: "true",
+        tooltip: "保留为数据库参数。当前原项目链路默认启用 u* 阈值处理",
         is_required: false,
         is_advanced: true,
+        param_order: 16,
+      },
+
+      // BEON-REddyProc 参数 - 位置信息
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "lat_deg",
+        param_name: "纬度 (°)",
+        param_type: "number",
+        default_value: "39.0",
+        min_value: -90,
+        max_value: 90,
+        step_value: 0.01,
+        tooltip: "站点纬度，范围 -90 到 90",
+        is_required: true,
+        is_advanced: false,
+        param_order: 1,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "long_deg",
+        param_name: "经度 (°)",
+        param_type: "number",
+        default_value: "116.0",
+        min_value: -180,
+        max_value: 180,
+        step_value: 0.01,
+        tooltip: "站点经度，范围 -180 到 180",
+        is_required: true,
+        is_advanced: false,
+        param_order: 2,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "timezone_hour",
+        param_name: "时区 (小时)",
+        param_type: "number",
+        default_value: "8",
+        min_value: -12,
+        max_value: 14,
+        step_value: 1,
+        tooltip: "站点时区，相对于UTC的小时偏移",
+        is_required: true,
+        is_advanced: false,
+        param_order: 3,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "site_code",
+        param_name: "站点代码",
+        param_type: "string",
+        default_value: "",
+        tooltip: "可选。用于套用 BEON 站点特例逻辑，如 aosen、badaling",
+        is_required: false,
+        is_advanced: false,
+        param_order: 4,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "connection_profile_id",
+        param_name: "数据库连接",
+        param_type: "string",
+        default_value: "",
+        tooltip: "留空时按规则绑定连接或默认连接自动选择；如需固定某个 MySQL 连接，请在 BEON 数据源区域中选择",
+        is_required: false,
+        is_advanced: false,
+        param_order: 31,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "allowed_qc_flags",
+        param_name: "允许的QC标记",
+        param_type: "string",
+        default_value: "0,1,2",
+        tooltip: "按原项目口径设置保留的 QC flag，多个值用英文逗号分隔，如 0,1,2",
+        is_required: true,
+        is_advanced: false,
+        param_order: 5,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "use_strg",
+        param_name: "启用存储项修正",
+        param_type: "boolean",
+        default_value: "false",
+        tooltip: "按原项目链路决定是否将 flux 与 strg 列相加",
+        is_required: false,
+        is_advanced: false,
+        param_order: 6,
+      },
+
+      // BEON-REddyProc 参数 - 原始 flux 列
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "co2_flux_col",
+        param_name: "CO2通量列",
+        param_type: "string",
+        default_value: "co2_flux",
+        tooltip: "原项目原始列名，对应 co2_flux",
+        is_required: true,
+        is_advanced: false,
+        param_order: 7,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "h2o_flux_col",
+        param_name: "H2O通量列",
+        param_type: "string",
+        default_value: "h2o_flux",
+        tooltip: "原项目原始列名，对应 h2o_flux。Campbell 站点可留空并由 LE 反推",
+        is_required: false,
+        is_advanced: false,
+        param_order: 8,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "le_col",
+        param_name: "LE列",
+        param_type: "string",
+        default_value: "le",
+        tooltip: "原项目原始列名，对应 le",
+        is_required: false,
+        is_advanced: false,
+        param_order: 9,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "h_col",
+        param_name: "H列",
+        param_type: "string",
+        default_value: "h",
+        tooltip: "原项目原始列名，对应 h",
+        is_required: false,
+        is_advanced: false,
         param_order: 10,
+      },
+
+      // BEON-REddyProc 参数 - QC 标记列
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "qc_co2_flux_col",
+        param_name: "CO2 QC列",
+        param_type: "string",
+        default_value: "qc_co2_flux",
+        tooltip: "原项目 QC 标记列，对应 qc_co2_flux",
+        is_required: false,
+        is_advanced: false,
+        param_order: 11,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "qc_h2o_flux_col",
+        param_name: "H2O QC列",
+        param_type: "string",
+        default_value: "qc_h2o_flux",
+        tooltip: "原项目 QC 标记列，对应 qc_h2o_flux",
+        is_required: false,
+        is_advanced: false,
+        param_order: 12,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "qc_le_col",
+        param_name: "LE QC列",
+        param_type: "string",
+        default_value: "qc_le",
+        tooltip: "原项目 QC 标记列，对应 qc_le",
+        is_required: false,
+        is_advanced: false,
+        param_order: 13,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "qc_h_col",
+        param_name: "H QC列",
+        param_type: "string",
+        default_value: "qc_h",
+        tooltip: "原项目 QC 标记列，对应 qc_h",
+        is_required: false,
+        is_advanced: false,
+        param_order: 14,
+      },
+
+      // BEON-REddyProc 参数 - 原始气象与驱动列
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "ppfd_col",
+        param_name: "PPFD列",
+        param_type: "string",
+        default_value: "ppfd_1_1_1",
+        tooltip: "原项目原始列名，对应 ppfd_1_1_1，后续映射为 Par",
+        is_required: true,
+        is_advanced: false,
+        param_order: 15,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "rg_raw_col",
+        param_name: "Rg原始列",
+        param_type: "string",
+        default_value: "rg_1_1_2",
+        tooltip: "原项目原始列名，对应 rg_1_1_2",
+        is_required: true,
+        is_advanced: false,
+        param_order: 16,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "tair_raw_col",
+        param_name: "Tair原始列",
+        param_type: "string",
+        default_value: "ta_1_2_1",
+        tooltip: "原项目原始列名，对应 ta_1_2_1",
+        is_required: true,
+        is_advanced: false,
+        param_order: 17,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "rh_raw_col",
+        param_name: "rH原始列",
+        param_type: "string",
+        default_value: "rh",
+        tooltip: "原项目原始列名，对应 rh",
+        is_required: true,
+        is_advanced: false,
+        param_order: 18,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "vpd_raw_col",
+        param_name: "VPD原始列",
+        param_type: "string",
+        default_value: "vpd",
+        tooltip: "原项目原始列名，对应 vpd。可为空，缺失时将按 rH + Tair 重算",
+        is_required: false,
+        is_advanced: false,
+        param_order: 19,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "ustar_raw_col",
+        param_name: "u*原始列",
+        param_type: "string",
+        default_value: "u_",
+        tooltip: "原项目原始列名，对应 u_。threshold_limit 后会生成 u__threshold_limit",
+        is_required: true,
+        is_advanced: false,
+        param_order: 20,
+      },
+
+      // BEON-REddyProc 参数 - 存储项列
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "co2_strg_col",
+        param_name: "CO2存储项列",
+        param_type: "string",
+        default_value: "co2_flux_strg",
+        tooltip: "原项目存储项列，对应 co2_flux_strg",
+        is_required: false,
+        is_advanced: true,
+        param_order: 21,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "h2o_strg_col",
+        param_name: "H2O存储项列",
+        param_type: "string",
+        default_value: "h2o_flux_strg",
+        tooltip: "原项目存储项列，对应 h2o_flux_strg",
+        is_required: false,
+        is_advanced: true,
+        param_order: 22,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "le_strg_col",
+        param_name: "LE存储项列",
+        param_type: "string",
+        default_value: "le_strg",
+        tooltip: "原项目存储项列，对应 le_strg",
+        is_required: false,
+        is_advanced: true,
+        param_order: 23,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "h_strg_col",
+        param_name: "H存储项列",
+        param_type: "string",
+        default_value: "h_strg",
+        tooltip: "原项目存储项列，对应 h_strg",
+        is_required: false,
+        is_advanced: true,
+        param_order: 24,
+      },
+
+      // BEON-REddyProc 参数 - Campbell 站点辅助列
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "short_up_col",
+        param_name: "短波上行列",
+        param_type: "string",
+        default_value: "short_up_avg",
+        tooltip: "站点特例辅助列。aosen/badaling 可用它重建 rg_1_1_2",
+        is_required: false,
+        is_advanced: true,
+        param_order: 25,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "rh_12m_col",
+        param_name: "12m相对湿度列",
+        param_type: "string",
+        default_value: "rh_12m_avg",
+        tooltip: "站点特例辅助列。aosen 可用它重建 rh",
+        is_required: false,
+        is_advanced: true,
+        param_order: 26,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "rh_10m_col",
+        param_name: "10m相对湿度列",
+        param_type: "string",
+        default_value: "rh_10m_avg",
+        tooltip: "站点特例辅助列。badaling 可用它重建 rh",
+        is_required: false,
+        is_advanced: true,
+        param_order: 27,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "ta_12m_col",
+        param_name: "12m气温列",
+        param_type: "string",
+        default_value: "ta_12m_avg",
+        tooltip: "站点特例辅助列。aosen 可用它重建 tair/vpd",
+        is_required: false,
+        is_advanced: true,
+        param_order: 28,
+      },
+
+      // BEON-REddyProc 参数 - 流程参数
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "despiking_z",
+        param_name: "Despiking阈值",
+        param_type: "number",
+        default_value: "4",
+        min_value: 1,
+        max_value: 10,
+        step_value: 1,
+        tooltip: "原项目默认值为 4。用于 MAD despiking 阈值",
+        is_required: false,
+        is_advanced: true,
+        param_order: 29,
+      },
+      {
+        method_id: "BEON_REDDYPROC",
+        param_key: "fill_all",
+        param_name: "填充所有值",
+        param_type: "boolean",
+        default_value: "true",
+        tooltip: "传递给 REddyProc FillAll 参数",
+        is_required: false,
+        is_advanced: true,
+        param_order: 30,
       },
 
       // iTransformer 参数
@@ -1651,9 +2111,23 @@ export class DatabaseManager {
     `);
 
     const insertParamStmt = this.db.prepare(`
-      INSERT OR IGNORE INTO conf_imputation_method_params
+      INSERT INTO conf_imputation_method_params
         (method_id, param_key, param_name, param_type, default_value, min_value, max_value, step_value, options, tooltip, is_required, is_advanced, param_order)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(method_id, param_key) DO UPDATE SET
+        param_name = excluded.param_name,
+        param_type = excluded.param_type,
+        default_value = excluded.default_value,
+        min_value = excluded.min_value,
+        max_value = excluded.max_value,
+        step_value = excluded.step_value,
+        options = excluded.options,
+        tooltip = excluded.tooltip,
+        is_required = excluded.is_required,
+        is_advanced = excluded.is_advanced,
+        param_order = excluded.param_order,
+        is_del = 0,
+        updated_at = CURRENT_TIMESTAMP
     `);
 
     for (const param of defaultParams) {
@@ -1675,107 +2149,9 @@ export class DatabaseManager {
     }
   }
 
-  /**
-   * 插入预训练的插补模型配置
-   */
-  private insertDefaultImputationModels(): void {
-    if (!this.db) return;
-
-    const path = require("path");
-    const { app } = require("electron");
-
-    // 开发环境：项目根目录/python
-    // 生产环境：resources/python（通过 electron-builder extraResources 配置）
-    const pythonDir = app.isPackaged
-      ? path.join(process.resourcesPath, "python")
-      : path.join(__dirname, "..", "..", "..", "python");
-
-    const models = [
-      {
-        method_id: "TIMEMIXER",
-        model_name: "CO2通量插补模型",
-        model_path: path.join(pythonDir, "timemixerpp_co2_flux.pypots"),
-        target_column: "co2_flux",
-        feature_columns: JSON.stringify([
-          "record_time",
-          "co2_flux",
-          "rg_1_1_2",
-          "rn_1_1_1",
-          "ta_1_2_1",
-          "vpd",
-          "rh_1_1_1",
-          "swc_1_1_1",
-          "ts_1_1_1",
-        ]),
-        time_column: "record_time",
-        model_params: JSON.stringify({
-          seq_len: 96,
-          n_layers: 2,
-          d_model: 32,
-          d_ffn: 64,
-          top_k: 5,
-          n_heads: 4,
-          n_kernels: 3,
-          dropout: 0.1,
-          down_layers: 3,
-          down_window: 2,
-        }),
-        is_active: 1,
-      },
-      {
-        method_id: "TIMEMIXER",
-        model_name: "PM2.5插补模型",
-        model_path: path.join(pythonDir, "timermixerpp_pm2_5.pypots"),
-        target_column: "pm2_5",
-        feature_columns: JSON.stringify(["record_time", "pm2_5"]),
-        time_column: "record_time",
-        model_params: JSON.stringify({
-          seq_len: 96,
-          n_layers: 2,
-          d_model: 32,
-          d_ffn: 64,
-          top_k: 5,
-          n_heads: 4,
-          n_kernels: 3,
-          dropout: 0.1,
-          down_layers: 3,
-          down_window: 2,
-        }),
-        is_active: 1,
-      },
-    ];
-
-    const insertModelStmt = this.db.prepare(`
-      INSERT OR IGNORE INTO biz_imputation_model
-        (dataset_id, method_id, model_name, model_path, model_params, 
-         target_column, feature_columns, time_column, is_active, trained_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    `);
-
-    for (const model of models) {
-      const existing = this.db
-        .prepare(
-          `
-        SELECT id FROM biz_imputation_model WHERE model_name = ? AND is_del = 0
-      `
-        )
-        .get(model.model_name);
-
-      if (!existing) {
-        insertModelStmt.run(
-          null,
-          model.method_id,
-          model.model_name,
-          model.model_path,
-          model.model_params,
-          model.target_column,
-          model.feature_columns,
-          model.time_column,
-          model.is_active
-        );
-      }
-    }
-  }
+  // 预训练插补模型配置（TIMEMIXER、RANDOM_FOREST、XGBOOST）已直接内置到 qc_metadata.db 中，
+  // model_path 使用相对于 pythonDir 的路径（如 "models/XGBOOST/NEE/XGB_model_xxx.pkl"），
+  // ImputationService.performCustomModelImputation 会在运行时将相对路径解析为绝对路径。
 
   /**
    * 数据库迁移 - 为现有表添加新字段
@@ -2155,12 +2531,184 @@ export class DatabaseManager {
         `INSERT INTO conf_threshold_template (name, description, template_data, is_builtin)
          VALUES (?, ?, ?, 1)`
       )
-      .run(
-        "standard",
-        "系统内置标准物理范围模板，来源于 indicators_filtered.csv",
-        JSON.stringify(templateData)
-      );
+      .run("standard", "系统内置标准物理范围模板，来源于 indicators_filtered.csv", JSON.stringify(templateData));
 
     console.log("内置阈值模板 'standard' 已写入数据库");
+  }
+
+  /**
+   * 种入内置 BEON 站点规则
+   * 这些规则对应 qc_code_2 中原先写死在 main_step.py 的站点特例
+   */
+  private seedBuiltinBEONSiteRules(): void {
+    if (!this.db) return;
+
+    const builtinRules = [
+      {
+        site_code: "cuihu",
+        rule_name: "fallback-shisanling-rg-tair",
+        rule_type: "fallback_query",
+        source_table: "shisanling_fluxs",
+        match_time_column: "record_time",
+        priority: 100,
+        rule_config: JSON.stringify({
+          select_columns: ["record_time", "rg_1_1_2", "ta_1_2_1"],
+          drop_local_columns: ["rg_1_1_2", "ta_1_2_1"],
+          target_mapping: {
+            rg_1_1_2: "rg_1_1_2",
+            ta_1_2_1: "ta_1_2_1",
+          },
+          required_columns: ["rg_1_1_2", "ta_1_2_1"],
+          require_all: true,
+        }),
+      },
+      {
+        site_code: "yeyahu",
+        rule_name: "fallback-shisanling-rg-tair",
+        rule_type: "fallback_query",
+        source_table: "shisanling_fluxs",
+        match_time_column: "record_time",
+        priority: 100,
+        rule_config: JSON.stringify({
+          select_columns: ["record_time", "rg_1_1_2", "ta_1_2_1"],
+          drop_local_columns: ["rg_1_1_2", "ta_1_2_1"],
+          target_mapping: {
+            rg_1_1_2: "rg_1_1_2",
+            ta_1_2_1: "ta_1_2_1",
+          },
+          required_columns: ["rg_1_1_2", "ta_1_2_1"],
+          require_all: true,
+        }),
+      },
+      {
+        site_code: "yuankeyuan",
+        rule_name: "fallback-shisanling-rg",
+        rule_type: "fallback_query",
+        source_table: "shisanling_fluxs",
+        match_time_column: "record_time",
+        priority: 100,
+        rule_config: JSON.stringify({
+          select_columns: ["record_time", "rg_1_1_2"],
+          drop_local_columns: ["rg_1_1_2"],
+          target_mapping: {
+            rg_1_1_2: "rg_1_1_2",
+          },
+          required_columns: ["rg_1_1_2"],
+          require_all: true,
+        }),
+      },
+      {
+        site_code: "songshan",
+        rule_name: "fallback-shisanling-rg",
+        rule_type: "fallback_query",
+        source_table: "shisanling_fluxs",
+        match_time_column: "record_time",
+        priority: 100,
+        rule_config: JSON.stringify({
+          select_columns: ["record_time", "rg_1_1_2"],
+          drop_local_columns: ["rg_1_1_2"],
+          target_mapping: {
+            rg_1_1_2: "rg_1_1_2",
+          },
+          required_columns: ["rg_1_1_2"],
+          require_all: true,
+        }),
+      },
+      {
+        site_code: "aosen",
+        rule_name: "local-override-campbell",
+        rule_type: "local_override",
+        source_table: null,
+        match_time_column: "record_time",
+        priority: 100,
+        rule_config: JSON.stringify({
+          drop_columns: ["rg_1_1_2", "vpd", "rh"],
+          copy_columns: [
+            { target: "rg_1_1_2", source: "short_up_avg" },
+            { target: "rh", source: "rh_12m_avg" },
+          ],
+          numeric_columns: ["short_up_avg", "rh_12m_avg", "ta_12m_avg"],
+          vpd_formula: {
+            target: "vpd",
+            rh_column: "rh",
+            tair_column: "ta_12m_avg",
+            output_unit: "pa",
+          },
+          cleanup_columns: ["short_up_avg", "rh_12m_avg", "rh_10m_avg", "ta_12m_avg"],
+        }),
+      },
+      {
+        site_code: "badaling",
+        rule_name: "local-override-campbell",
+        rule_type: "local_override",
+        source_table: null,
+        match_time_column: "record_time",
+        priority: 100,
+        rule_config: JSON.stringify({
+          drop_columns: ["rg_1_1_2", "vpd", "rh"],
+          copy_columns: [
+            { target: "rg_1_1_2", source: "short_up_avg" },
+            { target: "rh", source: "rh_10m_avg" },
+            { target: "ta_1_2_1", source: "ta_1_2_1" },
+          ],
+          numeric_columns: ["short_up_avg", "rh_10m_avg", "ta_1_2_1"],
+          vpd_formula: {
+            target: "vpd",
+            rh_column: "rh",
+            tair_column: "ta_1_2_1",
+            output_unit: "pa",
+          },
+          cleanup_columns: ["short_up_avg", "rh_12m_avg", "rh_10m_avg", "ta_12m_avg"],
+        }),
+      },
+    ];
+
+    const findStmt = this.db.prepare(`
+      SELECT id FROM conf_beon_site_rule
+      WHERE site_code = ? AND rule_name = ? AND is_builtin = 1 AND is_del = 0
+    `);
+
+    const insertStmt = this.db.prepare(`
+      INSERT INTO conf_beon_site_rule
+        (site_code, rule_name, rule_type, connection_profile_id, source_table, match_time_column, priority, rule_config, is_active, is_builtin)
+      VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 1, 1)
+    `);
+
+    const updateStmt = this.db.prepare(`
+      UPDATE conf_beon_site_rule
+      SET rule_type = ?,
+          source_table = ?,
+          match_time_column = ?,
+          priority = ?,
+          rule_config = ?,
+          is_active = 1,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+
+    for (const rule of builtinRules) {
+      const existing = findStmt.get(rule.site_code, rule.rule_name) as { id: number } | undefined;
+      if (existing) {
+        updateStmt.run(
+          rule.rule_type,
+          rule.source_table,
+          rule.match_time_column,
+          rule.priority,
+          rule.rule_config,
+          existing.id
+        );
+        continue;
+      }
+
+      insertStmt.run(
+        rule.site_code,
+        rule.rule_name,
+        rule.rule_type,
+        rule.source_table,
+        rule.match_time_column,
+        rule.priority,
+        rule.rule_config
+      );
+    }
   }
 }

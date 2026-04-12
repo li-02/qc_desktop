@@ -1,7 +1,12 @@
 import { IpcMainInvokeEvent, BrowserWindow } from "electron";
 import { BaseController } from "./BaseController";
 import { MySQLService } from "../service/MySQLService";
-import { MySQLConnectionConfig, MySQLImportRequest } from "@shared/types/mysqlInterface";
+import {
+  MySQLConnectionConfig,
+  MySQLImportRequest,
+  SaveDatabaseConnectionProfileRequest,
+  SaveBEONSiteRuleRequest,
+} from "@shared/types/mysqlInterface";
 
 export class MySQLController extends BaseController {
   private mysqlService: MySQLService;
@@ -73,6 +78,95 @@ export class MySQLController extends BaseController {
       const result = await this.mysqlService.importTable(args, win);
       if (!result.success) throw new Error(result.error);
       return { success: true };
+    });
+  }
+
+  /**
+   * 获取保存的连接配置
+   */
+  async getConnectionProfiles(args: Record<string, never>, event: IpcMainInvokeEvent) {
+    return this.handleAsync(async () => {
+      const result = this.mysqlService.getConnectionProfiles();
+      if (!result.success) throw new Error(result.error);
+      return { profiles: result.data };
+    });
+  }
+
+  /**
+   * 保存连接配置
+   */
+  async saveConnectionProfile(args: SaveDatabaseConnectionProfileRequest, event: IpcMainInvokeEvent) {
+    return this.handleAsync(async () => {
+      if (!args?.profileName?.trim()) throw new Error("连接名称不能为空");
+      const validationError = this.validateConnectionConfig(args.connection);
+      if (validationError) throw new Error(validationError);
+
+      const result = this.mysqlService.saveConnectionProfile(args);
+      if (!result.success) throw new Error(result.error);
+      return result.data;
+    });
+  }
+
+  /**
+   * 删除连接配置
+   */
+  async deleteConnectionProfile(args: { id: number }, event: IpcMainInvokeEvent) {
+    return this.handleAsync(async () => {
+      if (!args?.id) throw new Error("连接配置ID不能为空");
+      const result = this.mysqlService.deleteConnectionProfile(args.id);
+      if (!result.success) throw new Error(result.error);
+      return { success: true };
+    });
+  }
+
+  /**
+   * 获取 BEON 站点规则
+   */
+  async getBEONSiteRules(args: { siteCode?: string }, event: IpcMainInvokeEvent) {
+    return this.handleAsync(async () => {
+      const result = this.mysqlService.getBEONSiteRules(args?.siteCode);
+      if (!result.success) throw new Error(result.error);
+      return { rules: result.data };
+    });
+  }
+
+  /**
+   * 保存 BEON 站点规则
+   */
+  async saveBEONSiteRule(args: SaveBEONSiteRuleRequest, event: IpcMainInvokeEvent) {
+    return this.handleAsync(async () => {
+      if (!args?.siteCode?.trim()) throw new Error("siteCode 不能为空");
+      if (!args?.ruleName?.trim()) throw new Error("ruleName 不能为空");
+      const result = this.mysqlService.saveBEONSiteRule(args);
+      if (!result.success) throw new Error(result.error);
+      return result.data;
+    });
+  }
+
+  /**
+   * 删除 BEON 站点规则
+   */
+  async deleteBEONSiteRule(args: { id: number }, event: IpcMainInvokeEvent) {
+    return this.handleAsync(async () => {
+      if (!args?.id) throw new Error("规则ID不能为空");
+      const result = this.mysqlService.deleteBEONSiteRule(args.id);
+      if (!result.success) throw new Error(result.error);
+      return { success: true };
+    });
+  }
+
+  /**
+   * 解析某个站点当前生效的规则上下文
+   */
+  async resolveBEONSiteContext(
+    args: { siteCode: string; connectionProfileId?: number },
+    event: IpcMainInvokeEvent
+  ) {
+    return this.handleAsync(async () => {
+      if (!args?.siteCode?.trim()) throw new Error("siteCode 不能为空");
+      const result = this.mysqlService.resolveBEONSiteContext(args.siteCode, args.connectionProfileId);
+      if (!result.success) throw new Error(result.error);
+      return result.data;
     });
   }
 

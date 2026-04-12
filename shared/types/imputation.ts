@@ -5,27 +5,39 @@
 // ==================== 基础类型 ====================
 
 /** 插补方法ID */
-export type ImputationMethodId = 
-  | 'MEAN' | 'MEDIAN' | 'MODE' | 'FORWARD_FILL' | 'BACKWARD_FILL'
-  | 'LINEAR' | 'SPLINE' | 'POLYNOMIAL' | 'SEASONAL' | 'MDS_REDDYPROC'
-  | 'RANDOM_FOREST' | 'XGBOOST'
-  | 'ITRANSFORMER' | 'SAITS' | 'BITS' | 'TIMEMIXER'
+export type ImputationMethodId =
+  | "MEAN"
+  | "MEDIAN"
+  | "MODE"
+  | "FORWARD_FILL"
+  | "BACKWARD_FILL"
+  | "LINEAR"
+  | "SPLINE"
+  | "POLYNOMIAL"
+  | "SEASONAL"
+  | "MDS_REDDYPROC"
+  | "BEON_REDDYPROC"
+  | "XGBOOST"
+  | "ITRANSFORMER"
+  | "SAITS"
+  | "BITS"
+  | "TIMEMIXER"
   | `CUSTOM_${string}`;
 
 /** 插补方法分类 */
-export type ImputationCategory = 'basic' | 'statistical' | 'ml' | 'dl' | 'custom';
+export type ImputationCategory = "basic" | "statistical" | "ml" | "dl" | "custom";
 
 /** 插补结果状态 */
-export type ImputationResultStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'APPLIED' | 'REVERTED';
+export type ImputationResultStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "APPLIED" | "REVERTED";
 
 /** 预估耗时 */
-export type EstimatedTime = 'fast' | 'medium' | 'slow';
+export type EstimatedTime = "fast" | "medium" | "slow";
 
 /** 准确度等级 */
-export type AccuracyLevel = 'low' | 'medium' | 'high';
+export type AccuracyLevel = "low" | "medium" | "high";
 
 /** 执行阶段 */
-export type ImputationStage = 'preparing' | 'training' | 'imputing' | 'validating' | 'saving' | 'completed';
+export type ImputationStage = "preparing" | "training" | "imputing" | "validating" | "saving" | "completed";
 
 // ==================== 配置接口 ====================
 
@@ -53,7 +65,7 @@ export interface ImputationMethodParam {
   methodId: ImputationMethodId;
   paramKey: string;
   paramName: string;
-  paramType: 'number' | 'select' | 'boolean' | 'range' | 'string';
+  paramType: "number" | "select" | "boolean" | "range" | "string";
   defaultValue: string | null;
   minValue?: number;
   maxValue?: number;
@@ -77,7 +89,7 @@ export interface ImputationMethodParamOption {
 export interface ImputationMethodParamConfig {
   key: string;
   label: string;
-  type: 'number' | 'select' | 'boolean' | 'range';
+  type: "number" | "select" | "boolean" | "range";
   default: number | string | boolean;
   options?: ImputationMethodParamOption[];
   min?: number;
@@ -99,6 +111,7 @@ export interface ImputationResult {
   name?: string;
   targetColumns: string[];
   methodParams?: Record<string, any>;
+  outputFilePath?: string;
   totalMissing: number;
   imputedCount: number;
   imputationRate: number;
@@ -134,15 +147,16 @@ export interface ImputationColumnStat {
 /** 插补模型 */
 export interface ImputationModel {
   id: number;
-  datasetId?: number;                    // 数据集ID（可为空表示通用模型）
+  datasetId?: number; // 数据集ID（可为空表示通用模型）
   methodId: ImputationMethodId;
   modelName?: string;
   modelPath?: string;
-  modelParams?: Record<string, any>;     // 模型超参数
-  targetColumn?: string;                 // 目标插补列名
-  featureColumns?: string[];             // 模型需要的特征列（包含目标列）
-  timeColumn?: string;                   // 模型期望的时间列名（默认 record_time）
-  trainingColumns?: string[];            // 训练使用的列（兼容旧字段）
+  modelParams?: Record<string, any>; // 模型超参数
+  targetColumn?: string; // 目标插补列名
+  featureColumns?: string[]; // 模型需要的特征列（包含目标列）
+  timeColumn?: string; // 模型期望的时间列名（默认 record_time）
+  columnMapping?: Record<string, string>; // 列名映射（用户文件列名 → 模型期望列名）
+  trainingColumns?: string[]; // 训练使用的列（兼容旧字段）
   trainingSamples?: number;
   validationScore?: number;
   isActive: boolean;
@@ -161,6 +175,7 @@ export interface ExecuteImputationRequest {
   targetColumns: string[] | null; // null表示全部列
   params?: Record<string, any>;
   validateSplit?: number; // 验证集比例（0-0.3）
+  columnMapping?: Record<string, string>; // 列名映射（用户文件列名 → 模型期望列名）
 }
 
 /** 执行插补响应 */
@@ -175,7 +190,7 @@ export interface ExecuteImputationResponse {
 export interface ImputationProgressEvent {
   resultId: number;
   stage: ImputationStage;
-  progress: number;  // 0-100
+  progress: number; // 0-100
   message: string;
   currentColumn?: string;
   processedColumns?: number;
@@ -306,6 +321,7 @@ export interface ImputationResultRow {
   name: string | null;
   target_columns: string;
   method_params: string | null;
+  output_file_path: string | null;
   total_missing: number;
   imputed_count: number;
   imputation_rate: number;
@@ -352,6 +368,7 @@ export interface ImputationModelRow {
   target_column: string | null;
   feature_columns: string | null;
   time_column: string | null;
+  column_mapping: string | null; // JSON对象: {用户列名: 模型期望列名}
   training_columns: string | null;
   training_samples: number | null;
   validation_score: number | null;
@@ -369,7 +386,7 @@ export interface ImputationModelRow {
 export interface CustomModelParamDef {
   paramKey: string;
   paramName: string;
-  paramType: 'number' | 'select' | 'boolean' | 'string';
+  paramType: "number" | "select" | "boolean" | "string";
   defaultValue: string;
   minValue?: number;
   maxValue?: number;
@@ -393,7 +410,7 @@ export interface CustomModelConfig {
   /** 推理脚本路径（Python 脚本） */
   inferenceScriptPath: string;
   /** 模型框架 */
-  framework: 'pypots' | 'pytorch' | 'onnx' | 'other';
+  framework: "pypots" | "pytorch" | "onnx" | "other";
   /** 模型需要的输入列 */
   featureColumns: string[];
   /** 目标插补列 */
@@ -411,4 +428,4 @@ export interface CustomModelConfig {
 }
 
 /** 自定义模型导入方式 */
-export type CustomModelImportMode = 'file' | 'yaml';
+export type CustomModelImportMode = "file" | "yaml";

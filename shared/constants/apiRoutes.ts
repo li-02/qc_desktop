@@ -115,6 +115,10 @@ export const API_ROUTES = {
     IMPORT_MODEL_FROM_YAML: "imputation:importModelFromYaml",
     VALIDATE_MODEL_FILE: "imputation:validateModelFile",
     VALIDATE_SCRIPT_FILE: "imputation:validateScriptFile",
+    GET_MODELS_BY_DATASET: "imputation:getModelsByDataset",
+    GET_MODEL: "imputation:getModel",
+    UPDATE_MODEL: "imputation:updateModel",
+    SET_ACTIVE_MODEL: "imputation:setActiveModel",
   },
 
   // 通量分割
@@ -164,6 +168,13 @@ export const API_ROUTES = {
     GET_TABLE_PREVIEW: "mysql/get-table-preview",
     IMPORT: "mysql/import",
     IMPORT_PROGRESS: "mysql/import-progress",
+    GET_CONNECTION_PROFILES: "mysql/get-connection-profiles",
+    SAVE_CONNECTION_PROFILE: "mysql/save-connection-profile",
+    DELETE_CONNECTION_PROFILE: "mysql/delete-connection-profile",
+    GET_BEON_SITE_RULES: "mysql/get-beon-site-rules",
+    SAVE_BEON_SITE_RULE: "mysql/save-beon-site-rule",
+    DELETE_BEON_SITE_RULE: "mysql/delete-beon-site-rule",
+    RESOLVE_BEON_SITE_CONTEXT: "mysql/resolve-beon-site-context",
   },
 
   // 菜单事件

@@ -38,3 +38,65 @@ export interface MySQLImportProgress {
   datasetName: string;
   error?: string;
 }
+
+export type DatabaseType = "MYSQL";
+
+export interface DatabaseConnectionProfile {
+  id: number;
+  profileName: string;
+  dbType: DatabaseType;
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  database: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveDatabaseConnectionProfileRequest {
+  id?: number;
+  profileName: string;
+  dbType?: DatabaseType;
+  connection: MySQLConnectionConfig;
+  isDefault?: boolean;
+}
+
+export type BEONSiteRuleType = "fallback_query" | "local_override";
+
+export interface BEONSiteRule {
+  id: number;
+  siteCode: string;
+  ruleName: string;
+  ruleType: BEONSiteRuleType;
+  connectionProfileId?: number;
+  sourceTable?: string;
+  matchTimeColumn: string;
+  priority: number;
+  isActive: boolean;
+  isBuiltin: boolean;
+  ruleConfig: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveBEONSiteRuleRequest {
+  id?: number;
+  siteCode: string;
+  ruleName: string;
+  ruleType: BEONSiteRuleType;
+  connectionProfileId?: number;
+  sourceTable?: string;
+  matchTimeColumn?: string;
+  priority?: number;
+  isActive?: boolean;
+  ruleConfig: Record<string, any>;
+}
+
+export interface BEONResolvedSiteContext {
+  siteCode: string;
+  connectionProfile?: DatabaseConnectionProfile;
+  fallbackRules: BEONSiteRule[];
+  localOverrideRules: BEONSiteRule[];
+}

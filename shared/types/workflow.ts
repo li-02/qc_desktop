@@ -5,12 +5,7 @@
 // ==================== 枚举类型 ====================
 
 /** 工作流节点类型 */
-export type WorkflowNodeType =
-  | "OUTLIER_DETECTION"
-  | "IMPUTATION"
-  | "FLUX_PARTITIONING"
-  | "CORRELATION_ANALYSIS"
-  | "EXPORT";
+export type WorkflowNodeType = "OUTLIER_DETECTION" | "IMPUTATION" | "FLUX_PARTITIONING" | "EXPORT";
 
 /** 工作流状态 */
 export type WorkflowStatus = "DRAFT" | "READY" | "RUNNING" | "COMPLETED" | "FAILED";
@@ -185,12 +180,6 @@ export interface FluxPartitioningNodeConfig {
   options?: Record<string, any>;
 }
 
-/** 相关性分析节点配置 */
-export interface CorrelationAnalysisNodeConfig {
-  columns: string[];
-  method: "pearson" | "spearman" | "kendall";
-}
-
 /** 数据导出节点配置 */
 export interface ExportNodeConfig {
   format: "csv" | "xlsx";
@@ -228,12 +217,6 @@ export const NODE_TYPE_META: Record<WorkflowNodeType, NodeTypeMeta> = {
     icon: "📊",
     producesVersion: true,
     description: "将 NEE 分割为 GPP 和 Reco",
-  },
-  CORRELATION_ANALYSIS: {
-    label: "相关性分析",
-    icon: "🔗",
-    producesVersion: false,
-    description: "分析变量间的相关关系",
   },
   EXPORT: {
     label: "数据导出",

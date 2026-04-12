@@ -1,0 +1,1383 @@
+/* ============================================================
+   QC Desktop — 多源生态监测时序数据质控系统
+   Design System v1.0
+   
+   目录：
+   1.  色彩系统 (Color System)
+   2.  语义色彩 (Semantic Colors)
+   3.  字体排版 (Typography)
+   4.  间距系统 (Spacing)
+   5.  圆角系统 (Border Radius)
+   6.  阴影系统 (Shadow)
+   7.  层级系统 (Z-Index)
+   8.  过渡动画 (Transitions)
+   9.  布局规范 (Layout)
+   10. 组件规范 — 按钮 (Button)
+   11. 组件规范 — 卡片 (Card)
+   12. 组件规范 — 表单控件 (Form)
+   13. 组件规范 — 标签/徽章 (Badge/Tag)
+   14. 组件规范 — 表格 (Table)
+   15. 组件规范 — 对话框 (Dialog)
+   16. 组件规范 — 侧边栏 (Sidebar)
+   17. 组件规范 — 导航页签 (Tabs)
+   18. Element Plus 主题覆盖
+   19. 深色模式 (Dark Mode)
+   20. 滚动条规范
+   21. 全局工具类
+   ============================================================ */
+
+/* ============================================================
+   1. 色彩系统 (Color System)
+   主色：森林深绿 (Forest Deep Green) + 自然土棕中性色
+   ============================================================ */
+:root {
+  /* --- 主色阶：森林深绿 --- */
+  --color-primary-50: #d8f3dc;
+  --color-primary-100: #b7e4c7;
+  --color-primary-200: #95d5b2;
+  --color-primary-300: #74c69d;
+  --color-primary-400: #52b788;
+  --color-primary-500: #2d6a4f; /* ★ 主品牌色 */
+  --color-primary-600: #1b4332; /* 悬停/深色 */
+  --color-primary-700: #0f2d20;
+  --color-primary-800: #081c15;
+  --color-primary-900: #052010;
+
+  /* --- 中性色阶：自然土棕 (Warm Stone) --- */
+  --color-neutral-0: #ffffff;
+  --color-neutral-50: #fafaf9;
+  --color-neutral-100: #f5f5f4;
+  --color-neutral-200: #e7e5e0;
+  --color-neutral-300: #d6d3d1;
+  --color-neutral-400: #a8a29e;
+  --color-neutral-500: #78716c;
+  --color-neutral-600: #57534e;
+  --color-neutral-700: #44403c;
+  --color-neutral-800: #292524;
+  --color-neutral-900: #1c1917;
+
+  /* --- 辅助色：信息蓝 --- */
+  --color-blue-50: #eff6ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
+
+  /* --- 辅助色：警告琥珀 --- */
+  --color-amber-50: #fffbeb;
+  --color-amber-100: #fef3c7;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+
+  /* --- 辅助色：错误红 --- */
+  --color-red-50: #fef2f2;
+  --color-red-100: #fee2e2;
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+
+  /* --- 辅助色：成功绿 (与主色共享，浅色版独立) --- */
+  --color-green-50: #f0fdf4;
+  --color-green-100: #dcfce7;
+  --color-green-500: #22c55e;
+  --color-green-600: #16a34a;
+
+  /* --- 辅助色：紫色 (通量分割/相关分析) --- */
+  --color-purple-50: #faf5ff;
+  --color-purple-100: #f3e8ff;
+  --color-purple-500: #a855f7;
+  --color-purple-600: #9333ea;
+}
+
+/* ============================================================
+   2. 语义色彩 (Semantic Colors)
+   用途驱动的颜色别名
+   ============================================================ */
+:root {
+  /* 品牌 / 主要交互 */
+  --c-brand: var(--color-primary-500);
+  --c-brand-hover: var(--color-primary-600);
+  --c-brand-active: var(--color-primary-700);
+  --c-brand-soft: var(--color-primary-50);
+  --c-brand-muted: var(--color-primary-100);
+  --c-brand-border: var(--color-primary-200);
+
+  /* 页面背景层次 */
+  --c-bg-app: #e8f4ed; /* 应用最底层背景 — 浅绿，与侧边栏同色系 */
+  --c-bg-page: #f0f8f3; /* 页面内容背景 — 近白带绿调 */
+  --c-bg-surface: #f8fdfb; /* 卡片/面板背景 — 极浅绿白，替代纯白 */
+  --c-bg-elevated: #f8fdfb; /* 浮层/弹出背景 */
+  --c-bg-muted: #f0f8f3; /* 次要区域背景 */
+  --c-bg-subtle: #e8f4ed; /* 最淡背景 */
+
+  /* 边框层次 */
+  --c-border: #d4e8db; /* 默认边框 — 带绿调，比纯灰更协调 */
+  --c-border-strong: #b8d9c4; /* 强调边框 */
+  --c-border-subtle: #eef6f1; /* 极淡边框 */
+
+  /* 文字层次 */
+  --c-text-primary: var(--color-neutral-900); /* 主标题 */
+  --c-text-base: var(--color-neutral-800); /* 正文 */
+  --c-text-secondary: var(--color-neutral-600); /* 次要文字 */
+  --c-text-muted: var(--color-neutral-500); /* 辅助/提示 */
+  --c-text-disabled: var(--color-neutral-400); /* 禁用 */
+  --c-text-inverse: var(--color-neutral-0); /* 反色（在深色背景上） */
+
+  /* 语义状态色 */
+  --c-success: var(--color-green-500);
+  --c-success-bg: var(--color-green-50);
+  --c-success-border: var(--color-green-100);
+  --c-success-text: var(--color-green-600);
+
+  --c-warning: var(--color-amber-500);
+  --c-warning-bg: var(--color-amber-50);
+  --c-warning-border: var(--color-amber-100);
+  --c-warning-text: var(--color-amber-600);
+
+  --c-danger: var(--color-red-500);
+  --c-danger-hover: var(--color-red-600);
+  --c-danger-bg: var(--color-red-50);
+  --c-danger-border: var(--color-red-100);
+  --c-danger-text: var(--color-red-600);
+
+  --c-info: var(--color-blue-500);
+  --c-info-bg: var(--color-blue-50);
+  --c-info-border: var(--color-blue-100);
+  --c-info-text: var(--color-blue-600);
+
+  /* 数据可视化色序 (ECharts 配色建议) — 生态监测系列 */
+  --c-chart-1: #2d6a4f; /* 森林绿 — 主系列 */
+  --c-chart-2: #4895ef; /* 天空蓝 — 大气 */
+  --c-chart-3: #e9c46a; /* 金麦黄 — 辐射/光照 */
+  --c-chart-4: #e76f51; /* 赤陶橙 — 土壤/热量 */
+  --c-chart-5: #ef4444; /* 红色 — 离群值/错误 */
+  --c-chart-6: #52b788; /* 鼠尾草绿 */
+  --c-chart-7: #8ecae6; /* 浅蓝 */
+  --c-chart-8: #f4a261; /* 暖橙 */
+}
+
+/* ============================================================
+   3. 字体排版 (Typography)
+   ============================================================ */
+:root {
+  /* 字体族 */
+  --font-sans:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", "Source Code Pro", Consolas, "Courier New", monospace;
+
+  /* 字号阶梯 — UI 正文 */
+  --text-3xs: 9px; /* 超紧凑侧边栏标签、版本角标 */
+  --text-2xs: 10px; /* 极小标注 */
+  --text-xs: 11px; /* 数据标签、表格辅助信息 */
+  --text-sm: 12px; /* 次要说明、meta 信息 */
+  --text-base: 13px; /* ★ 界面默认正文 */
+  --text-md: 14px; /* 表单标签、列表项 */
+  --text-lg: 15px; /* 卡片标题 */
+  --text-xl: 16px; /* 区块标题 */
+  --text-2xl: 18px; /* 页面副标题 */
+  --text-3xl: 20px; /* 页面主标题 */
+  --text-4xl: 24px; /* 展示性大数字 */
+  --text-5xl: 30px; /* KPI 数字 */
+
+  /* 字号阶梯 — 展示 / 空状态图标 */
+  --text-display-sm: 32px; /* 版本号、统计大数字 */
+  --text-display-md: 36px; /* 中型空状态图标 */
+  --text-display-lg: 48px; /* 标准空状态图标 */
+  --text-display-xl: 56px; /* 大型空状态图标 */
+  --text-display-2xl: 64px; /* 超大空状态图标 */
+
+  /* 行高 */
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  --leading-loose: 2;
+
+  /* 字重 */
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  /* 字符间距 */
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.04em;
+  --tracking-wider: 0.08em;
+
+  /* 代码高亮色 */
+  --c-code-text: #2d6a4f; /* 内联代码文字（森林绿） */
+}
+
+/* ============================================================
+   3b. 字体使用规范 (Typography Usage Standards)
+   ============================================================
+   字体族规范：
+     正文 / UI 文字 → font-family: var(--font-sans)
+     代码 / 等宽内容 → font-family: var(--font-mono)
+     禁止直接写 "Courier New"、"Consolas"、"Inter" 等具体字体名
+
+   字号使用场景（严禁在组件中硬编码 px 值）：
+     --text-3xs  (9px)  超紧凑侧边栏标签、版本角标
+     --text-2xs  (10px) 极小标注、数据标签角标
+     --text-xs   (11px) 数据标签、表格辅助信息、徽章
+     --text-sm   (12px) 次要说明、meta 信息、提示文字
+     --text-base (13px) ★ 界面默认正文（body 基础值）
+     --text-md   (14px) 表单标签、列表项、普通正文
+     --text-lg   (15px) 卡片标题、弹窗内标题
+     --text-xl   (16px) 区块标题、侧边栏一级标题
+     --text-2xl  (18px) 页面副标题
+     --text-3xl  (20px) 页面主标题
+     --text-4xl  (24px) 展示性大数字
+     --text-5xl  (30px) KPI 数字
+
+     --text-display-sm  (32px) 版本号、统计展示数字
+     --text-display-md  (36px) 中型空状态图标
+     --text-display-lg  (48px) 标准空状态图标
+     --text-display-xl  (56px) 大型空状态图标
+     --text-display-2xl (64px) 超大空状态图标
+
+   字重规范：
+     --font-normal   (400) 正文
+     --font-medium   (500) 标签、辅助强调
+     --font-semibold (600) 标题、卡片头
+     --font-bold     (700) KPI 数字、主标题
+   ============================================================ */
+
+/* ============================================================
+   4. 间距系统 (Spacing)
+   基准单位: 4px
+   ============================================================ */
+:root {
+  --space-0: 0px;
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-2-5: 10px;
+  --space-3: 12px;
+  --space-3-5: 14px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-9: 36px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-14: 56px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+}
+
+/* ============================================================
+   5. 圆角系统 (Border Radius)
+   ============================================================ */
+:root {
+  --radius-none: 0px;
+  --radius-xs: 2px; /* 极小控件 tag内角 */
+  --radius-sm: 4px; /* 小按钮、输入框 */
+  --radius-md: 6px; /* 默认按钮、标签 ★ */
+  --radius-lg: 8px; /* 卡片、面板 ★ */
+  --radius-xl: 12px; /* 大卡片、弹窗 */
+  --radius-2xl: 16px; /* 特大容器 */
+  --radius-3xl: 20px; /* 消息框/glassmorphism */
+  --radius-full: 9999px; /* 圆形/胶囊 */
+
+  /* 语义圆角别名 */
+  --radius-control: var(--radius-md); /* 6px — 按钮、输入框、标签、侧边栏项、Tab */
+  --radius-panel: var(--radius-lg); /* 8px — 卡片、面板、列表容器、表格 */
+  --radius-overlay: var(--radius-xl); /* 12px — 对话框、下拉菜单、浮层 */
+  --radius-btn: var(--radius-md); /* 6px — 按钮（别名，同 radius-control） */
+  --radius-card: var(--radius-lg); /* 8px — 卡片容器（别名，同 radius-panel） */
+}
+
+/* ============================================================
+   6. 阴影系统 (Shadow)
+   ============================================================ */
+:root {
+  --shadow-none: none;
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.04);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.04);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.09), 0 8px 10px -6px rgb(0 0 0 / 0.04);
+  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.15);
+  --shadow-inner: inset 0 2px 4px 0 rgb(0 0 0 / 0.06);
+
+  /* 品牌色光晕阴影 */
+  --shadow-brand-sm: 0 2px 8px rgb(45 106 79 / 0.25);
+  --shadow-brand-md: 0 4px 14px rgb(45 106 79 / 0.3);
+  --shadow-brand-lg: 0 6px 20px rgb(45 106 79 / 0.38);
+
+  /* 危险色光晕阴影 */
+  --shadow-danger-sm: 0 2px 8px rgb(239 68 68 / 0.2);
+}
+
+/* ============================================================
+   7. 层级系统 (Z-Index)
+   ============================================================ */
+:root {
+  --z-base: 0;
+  --z-raised: 10; /* 悬浮元素 */
+  --z-dropdown: 100; /* 下拉菜单 */
+  --z-sticky: 200; /* 吸顶元素 */
+  --z-overlay: 300; /* 遮罩层 */
+  --z-modal: 400; /* 对话框 */
+  --z-toast: 500; /* 消息提示 */
+  --z-tooltip: 600; /* 气泡提示 */
+  --z-top: 9999; /* 最顶层 */
+}
+
+/* ============================================================
+   8. 过渡动画 (Transitions)
+   ============================================================ */
+:root {
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --duration-fast: 100ms;
+  --duration-base: 150ms;
+  --duration-slow: 200ms;
+  --duration-slower: 300ms;
+  --duration-slowest: 500ms;
+
+  /* 常用过渡组合 */
+  --transition-base: all var(--duration-base) var(--ease-inout);
+  --transition-colors:
+    color var(--duration-base) var(--ease-inout), background-color var(--duration-base) var(--ease-inout),
+    border-color var(--duration-base) var(--ease-inout);
+  --transition-shadow: box-shadow var(--duration-slow) var(--ease-inout);
+  --transition-transform: transform var(--duration-slow) var(--ease-inout);
+  --transition-opacity: opacity var(--duration-slow) var(--ease-inout);
+}
+
+/* ============================================================
+   9. 布局规范 (Layout)
+   ============================================================ */
+:root {
+  /* 侧边栏 */
+  --sidebar-width: 320px;
+  --sidebar-width-collapsed: 0px;
+  --sidebar-bg: var(--c-bg-surface);
+  --sidebar-border: var(--c-border);
+
+  /* 页面内边距 */
+  --page-padding-x: var(--space-6); /* 24px — 页面左右留白 */
+  --page-padding-y: var(--space-5); /* 20px — 页面上下留白 */
+  --page-padding: var(--page-padding-y) var(--page-padding-x);
+
+  /* 内容区间距 */
+  --section-gap: var(--space-6); /* 24px — 主要区块间距 */
+  --content-gap: var(--space-4); /* 16px — 内容元素间距 */
+  --item-gap: var(--space-3); /* 12px — 列表/网格项间距 */
+  --tight-gap: var(--space-2); /* 8px  — 紧凑元素间距 */
+
+  /* 最大内容宽度 */
+  --max-content-sm: 640px;
+  --max-content-md: 960px;
+  --max-content-lg: 1280px;
+  --max-content-xl: 1600px;
+
+  /* 顶栏高度（如有） */
+  --topbar-height: 0px;
+}
+
+/* ============================================================
+   10. 组件规范 — 按钮 (Button)
+   ============================================================ */
+:root {
+  /* 尺寸规格 */
+  --btn-height-xs: 24px; /* 超小：图标按钮、行内操作 */
+  --btn-height-sm: 28px; /* 小：工具栏辅助操作 */
+  --btn-height-md: 32px; /* 中（默认）：主要操作 ★ */
+  --btn-height-lg: 36px; /* 大：突出操作 */
+  --btn-height-xl: 40px; /* 超大：引导性操作 */
+
+  --btn-padding-xs: 0 var(--space-2); /* 0 8px */
+  --btn-padding-sm: 0 var(--space-3); /* 0 12px */
+  --btn-padding-md: 0 var(--space-4); /* 0 16px ★ */
+  --btn-padding-lg: 0 var(--space-5); /* 0 20px */
+  --btn-padding-xl: 0 var(--space-6); /* 0 24px */
+
+  --btn-font-xs: var(--text-xs);
+  --btn-font-sm: var(--text-sm);
+  --btn-font-md: var(--text-base); /* 13px ★ */
+  --btn-font-lg: var(--text-md);
+  --btn-font-xl: var(--text-md);
+
+  --btn-radius: var(--radius-md); /* 6px */
+  --btn-font-weight: var(--font-medium); /* 500 */
+
+  /* Primary 按钮 */
+  --btn-primary-bg: var(--c-brand);
+  --btn-primary-bg-hover: var(--c-brand-hover);
+  --btn-primary-text: var(--c-text-inverse);
+  --btn-primary-shadow: var(--shadow-brand-sm);
+
+  /* Default/Secondary 按钮 */
+  --btn-default-bg: var(--c-bg-surface);
+  --btn-default-bg-hover: var(--color-neutral-50);
+  --btn-default-border: var(--c-border-strong);
+  --btn-default-text: var(--c-text-base);
+
+  /* Ghost 按钮 */
+  --btn-ghost-bg: transparent;
+  --btn-ghost-bg-hover: var(--c-brand-soft);
+  --btn-ghost-text: var(--c-brand);
+
+  /* Danger 按钮 */
+  --btn-danger-bg: var(--c-danger);
+  --btn-danger-bg-hover: var(--c-danger-hover);
+  --btn-danger-text: var(--c-text-inverse);
+  --btn-danger-shadow: var(--shadow-danger-sm);
+}
+
+/* ============================================================
+   11. 组件规范 — 卡片 (Card)
+   ============================================================ */
+:root {
+  /* 标准卡片 */
+  --card-bg: var(--c-bg-surface);
+  --card-border: var(--c-border);
+  --card-radius: var(--radius-lg); /* 8px */
+  --card-shadow: var(--shadow-sm);
+  --card-padding: var(--space-5); /* 20px */
+  --card-padding-sm: var(--space-4); /* 16px */
+  --card-padding-lg: var(--space-6); /* 24px */
+
+  /* 卡片头部 */
+  --card-header-padding: var(--space-4) var(--space-5); /* 16px 20px */
+  --card-header-bg: var(--c-bg-surface);
+  --card-header-border: var(--c-border-subtle);
+  --card-header-font: var(--text-md); /* 14px */
+  --card-header-weight: var(--font-semibold); /* 600 */
+  --card-header-color: var(--c-text-primary);
+
+  /* 统计数据卡片 */
+  --stat-card-bg: var(--c-bg-surface);
+  --stat-card-radius: var(--radius-lg);
+  --stat-card-padding: var(--space-5);
+  --stat-number-size: var(--text-4xl); /* 24px */
+  --stat-number-weight: var(--font-bold);
+  --stat-label-size: var(--text-sm);
+  --stat-label-color: var(--c-text-muted);
+}
+
+/* ============================================================
+   12. 组件规范 — 表单控件 (Form)
+   ============================================================ */
+:root {
+  /* 输入框/选择框高度 */
+  --input-height-sm: 28px;
+  --input-height-md: 32px; /* 默认 ★ */
+  --input-height-lg: 36px;
+
+  /* 输入框圆角 */
+  --input-radius: var(--radius-md); /* 6px */
+
+  /* 输入框边框 */
+  --input-border: var(--c-border-strong);
+  --input-border-focus: var(--c-brand);
+  --input-border-error: var(--c-danger);
+
+  /* 输入框背景 */
+  --input-bg: var(--c-bg-surface);
+  --input-bg-disabled: var(--c-bg-subtle);
+
+  /* 输入框文字 */
+  --input-text: var(--c-text-base);
+  --input-placeholder: var(--c-text-disabled);
+  --input-font: var(--text-base); /* 13px */
+
+  /* Focus ring */
+  --input-focus-ring: 0 0 0 3px var(--color-primary-100);
+
+  /* 表单标签 */
+  --form-label-font: var(--text-md); /* 14px */
+  --form-label-weight: var(--font-medium);
+  --form-label-color: var(--c-text-base);
+
+  /* 表单项间距 */
+  --form-item-gap: var(--space-4); /* 16px */
+  --form-section-gap: var(--space-6); /* 24px */
+}
+
+/* ============================================================
+   13. 组件规范 — 标签/徽章 (Badge/Tag)
+   ============================================================ */
+:root {
+  /* Tag 高度 */
+  --tag-height-sm: 18px;
+  --tag-height-md: 22px; /* 默认 ★ */
+  --tag-height-lg: 26px;
+
+  /* Tag 内边距 */
+  --tag-padding-sm: 0 var(--space-1-5); /* 0 6px */
+  --tag-padding-md: 0 var(--space-2); /* 0 8px ★ */
+  --tag-padding-lg: 0 var(--space-3); /* 0 12px */
+
+  /* Tag 字号 */
+  --tag-font-sm: var(--text-2xs); /* 10px */
+  --tag-font-md: var(--text-xs); /* 11px ★ */
+  --tag-font-lg: var(--text-sm); /* 12px */
+
+  --tag-radius: var(--radius-sm); /* 4px */
+  --tag-font-weight: var(--font-medium);
+
+  /* 数字徽章 (Dot badge) */
+  --badge-size: 18px;
+  --badge-font: var(--text-xs);
+  --badge-bg: var(--c-danger);
+  --badge-text: var(--c-text-inverse);
+}
+
+/* ============================================================
+   14. 组件规范 — 表格 (Table)
+   ============================================================ */
+:root {
+  /* 表头 */
+  --table-header-bg: var(--c-bg-muted);
+  --table-header-text: var(--c-text-secondary);
+  --table-header-font: var(--text-sm); /* 12px */
+  --table-header-weight: var(--font-semibold);
+  --table-header-height: 36px;
+
+  /* 表格行 */
+  --table-row-height: 40px;
+  --table-row-height-sm: 32px;
+  --table-row-height-lg: 48px;
+  --table-row-font: var(--text-base); /* 13px */
+  --table-row-color: var(--c-text-base);
+  --table-row-hover-bg: var(--c-brand-soft);
+  --table-row-stripe-bg: var(--color-neutral-50);
+
+  /* 表格边框 */
+  --table-border: var(--c-border);
+  --table-cell-padding: 0 var(--space-3); /* 0 12px */
+
+  /* 表格圆角 (容器) */
+  --table-radius: var(--radius-lg);
+}
+
+/* ============================================================
+   15. 组件规范 — 对话框 (Dialog)
+   ============================================================ */
+:root {
+  /* 尺寸 */
+  --dialog-width-sm: 480px;
+  --dialog-width-md: 600px; /* 默认 ★ */
+  --dialog-width-lg: 800px;
+  --dialog-width-xl: 1000px;
+  --dialog-width-full: 90vw;
+
+  /* 结构 */
+  --dialog-radius: var(--radius-xl); /* 12px */
+  --dialog-shadow: var(--shadow-2xl);
+  --dialog-bg: var(--c-bg-elevated);
+  --dialog-border: var(--c-border-subtle);
+
+  /* 头部 */
+  --dialog-header-padding: var(--space-5) var(--space-6); /* 20px 24px */
+  --dialog-header-bg: var(--c-bg-muted);
+  --dialog-header-border: var(--c-border-subtle);
+  --dialog-header-font: var(--text-lg); /* 15px */
+  --dialog-header-weight: var(--font-semibold);
+
+  /* 主体 */
+  --dialog-body-padding: var(--space-6); /* 24px */
+
+  /* 底部 */
+  --dialog-footer-padding: var(--space-4) var(--space-6); /* 16px 24px */
+  --dialog-footer-bg: var(--c-bg-muted);
+  --dialog-footer-border: var(--c-border-subtle);
+  --dialog-footer-gap: var(--space-3); /* 12px */
+}
+
+/* ============================================================
+   16. 组件规范 — 侧边栏 (Sidebar)
+   ============================================================ */
+:root {
+  --sb-width: 320px;
+  --sb-bg: #d4ecdc; /* 浅绿 — 比页面底色深一档，同色系 */
+  --sb-border: rgba(45, 106, 79, 0.15);
+
+  /* 侧边栏文字色 — 直接复用全局 token，无需独立维护 */
+  --sb-text-primary: var(--c-text-primary);
+  --sb-text-secondary: var(--c-text-secondary);
+  --sb-text-muted: var(--c-text-muted);
+  --sb-border-subtle: var(--c-border);
+
+  /* 侧边栏分组标题 */
+  --sb-section-padding: var(--space-2) var(--space-3);
+  --sb-section-font: var(--text-xs); /* 11px */
+  --sb-section-weight: var(--font-semibold);
+  --sb-section-color: var(--c-text-muted);
+  --sb-section-tracking: var(--tracking-wider);
+
+  /* 导航项 */
+  --sb-item-height: 32px;
+  --sb-item-padding: 0 var(--space-3);
+  --sb-item-radius: var(--radius-md);
+  --sb-item-font: var(--text-base); /* 13px */
+  --sb-item-color: var(--c-text-secondary);
+  --sb-item-color-hover: var(--c-text-primary);
+  --sb-item-bg-hover: rgba(45, 106, 79, 0.1);
+  --sb-item-color-active: var(--c-brand);
+  --sb-item-bg-active: rgba(45, 106, 79, 0.15);
+
+  /* 侧边栏 Logo/顶部区域 */
+  --sb-header-height: 52px;
+  --sb-header-padding: 0 var(--space-4);
+  --sb-header-border: var(--c-border);
+}
+
+/* ============================================================
+   17. 组件规范 — 导航页签 (Tabs)
+   ============================================================ */
+:root {
+  --tab-height: 36px;
+  --tab-padding: 0 var(--space-4);
+  --tab-font: var(--text-base); /* 13px */
+  --tab-font-active: var(--text-base);
+  --tab-weight: var(--font-normal);
+  --tab-weight-active: var(--font-semibold);
+  --tab-color: var(--c-text-secondary);
+  --tab-color-active: var(--c-brand);
+  --tab-border-active: var(--c-brand);
+  --tab-bg-active: var(--c-brand-soft);
+  --tab-radius: var(--radius-md);
+  --tab-gap: var(--space-1);
+}
+
+/* ============================================================
+   18. Element Plus 主题覆盖
+   统一将 Element Plus 主色改为生态绿
+   ============================================================ */
+:root {
+  /* Element Plus 主色 — 覆盖默认蓝色为品牌绿 */
+  --el-color-primary: var(--color-primary-500); /* #10b981 */
+  --el-color-primary-light-3: var(--color-primary-400); /* #34d399 */
+  --el-color-primary-light-5: var(--color-primary-300); /* #6ee7b7 */
+  --el-color-primary-light-7: var(--color-primary-200); /* #a7f3d0 */
+  --el-color-primary-light-9: var(--color-primary-50); /* #ecfdf5 */
+  --el-color-primary-dark-2: var(--color-primary-600); /* #059669 */
+
+  /* Element Plus 字体 */
+  --el-font-family: var(--font-sans);
+  --el-font-size-base: var(--text-base);
+  --el-font-size-small: var(--text-sm);
+  --el-font-size-extra-small: var(--text-xs);
+
+  /* Element Plus 边框 */
+  --el-border-color: var(--c-border-strong);
+  --el-border-color-light: var(--c-border);
+  --el-border-color-extra-light: var(--c-border-subtle);
+  --el-border-radius-base: var(--radius-md);
+  --el-border-radius-small: var(--radius-sm);
+
+  /* Element Plus 背景 */
+  --el-bg-color: var(--c-bg-surface);
+  --el-bg-color-page: var(--c-bg-page);
+  --el-bg-color-overlay: var(--c-bg-elevated);
+
+  /* Element Plus 文字颜色 */
+  --el-text-color-primary: var(--c-text-primary);
+  --el-text-color-regular: var(--c-text-base);
+  --el-text-color-secondary: var(--c-text-secondary);
+  --el-text-color-placeholder: var(--c-text-disabled);
+  --el-text-color-disabled: var(--c-text-disabled);
+
+  /* Element Plus 填充色 */
+  --el-fill-color: var(--color-neutral-100);
+  --el-fill-color-light: var(--color-neutral-50);
+  --el-fill-color-blank: var(--c-bg-surface);
+
+  /* Element Plus 组件高度 */
+  --el-component-size: var(--input-height-md); /* 32px */
+  --el-component-size-small: var(--input-height-sm); /* 28px */
+  --el-component-size-large: var(--input-height-lg); /* 36px */
+
+  /* Element Plus 阴影 */
+  --el-box-shadow: var(--shadow-md);
+  --el-box-shadow-light: var(--shadow-sm);
+  --el-box-shadow-lighter: var(--shadow-xs);
+  --el-box-shadow-dark: var(--shadow-lg);
+}
+
+/* ============================================================
+   19. 深色模式 (Dark Mode)
+   [data-theme="dark"] 覆盖语义色彩令牌
+   ============================================================ */
+[data-theme="dark"] {
+  /* 品牌色 — 深色背景上使用较亮的绿 */
+  --c-brand: var(--color-primary-400); /* #52b788 */
+  --c-brand-hover: var(--color-primary-300); /* #74c69d */
+  --c-brand-active: var(--color-primary-200); /* #95d5b2 */
+  --c-brand-soft: rgba(45, 106, 79, 0.2);
+  --c-brand-muted: rgba(45, 106, 79, 0.3);
+  --c-brand-border: rgba(45, 106, 79, 0.5);
+
+  /* 页面背景层次 */
+  --c-bg-app: #0f1f12;
+  --c-bg-page: #141f17;
+  --c-bg-surface: #1a2d1f;
+  --c-bg-elevated: #1e3324;
+  --c-bg-muted: #162419;
+  --c-bg-subtle: #192218;
+
+  /* 边框层次 */
+  --c-border: #2d4a35;
+  --c-border-strong: #3a5c42;
+  --c-border-subtle: #243b2a;
+
+  /* 文字层次 */
+  --c-text-primary: #e8f5ed;
+  --c-text-base: #d0e8d8;
+  --c-text-secondary: #8ab89a;
+  --c-text-muted: #5a8a6a;
+  --c-text-disabled: #3d6a4a;
+  --c-text-inverse: #0f1f12;
+
+  /* Element Plus 深色模式覆盖 */
+  --el-color-primary: var(--color-primary-400);
+  --el-bg-color: var(--c-bg-surface);
+  --el-bg-color-page: var(--c-bg-page);
+  --el-bg-color-overlay: var(--c-bg-elevated);
+  --el-text-color-primary: var(--c-text-primary);
+  --el-text-color-regular: var(--c-text-base);
+  --el-text-color-secondary: var(--c-text-secondary);
+  --el-border-color: var(--c-border-strong);
+  --el-border-color-light: var(--c-border);
+  --el-fill-color: var(--c-bg-muted);
+  --el-fill-color-light: var(--c-bg-subtle);
+}
+
+/* ============================================================
+   20. 滚动条规范 (Scrollbar)
+   ============================================================ */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-neutral-300);
+  border-radius: var(--radius-full);
+  transition: background-color var(--duration-base) var(--ease-inout);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-neutral-400);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ============================================================
+   21. 全局工具类 (Utility Classes)
+   遵循规范的快捷样式
+   ============================================================ */
+
+/* --- 页面容器 --- */
+.qc-page {
+  padding: var(--page-padding);
+  background: var(--c-bg-page);
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap);
+}
+
+.qc-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--content-gap);
+  flex-shrink: 0;
+}
+
+.qc-page-title {
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
+  color: var(--c-text-primary);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+}
+
+.qc-page-subtitle {
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
+  margin-top: var(--space-1);
+  line-height: var(--leading-normal);
+}
+
+/* --- 卡片 --- */
+.qc-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  padding: var(--card-padding);
+  transition: var(--transition-shadow);
+}
+
+.qc-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.qc-card--sm {
+  padding: var(--card-padding-sm);
+}
+
+.qc-card--lg {
+  padding: var(--card-padding-lg);
+  border-radius: var(--radius-xl);
+}
+
+.qc-card--flat {
+  box-shadow: none;
+}
+
+.qc-card--interactive {
+  cursor: pointer;
+  transition: var(--transition-base);
+}
+
+.qc-card--interactive:hover {
+  box-shadow: var(--shadow-lg);
+  border-color: var(--c-brand-border);
+  transform: translateY(-1px);
+}
+
+/* 卡片头部 */
+.qc-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--card-header-padding);
+  border-bottom: 1px solid var(--card-header-border);
+  margin: calc(-1 * var(--card-padding)) calc(-1 * var(--card-padding)) var(--card-padding);
+  background: var(--card-header-bg);
+  border-radius: var(--card-radius) var(--card-radius) 0 0;
+}
+
+.qc-card-title {
+  font-size: var(--card-header-font);
+  font-weight: var(--card-header-weight);
+  color: var(--card-header-color);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.qc-card-title .qc-card-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--c-brand);
+  flex-shrink: 0;
+}
+
+/* --- 分割线 --- */
+.qc-divider {
+  height: 1px;
+  background: var(--c-border);
+  margin: var(--space-4) 0;
+  border: none;
+}
+
+.qc-divider--vertical {
+  width: 1px;
+  height: auto;
+  margin: 0 var(--space-4);
+}
+
+/* --- 统计卡片 --- */
+.qc-stat-card {
+  background: var(--stat-card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--stat-card-radius);
+  padding: var(--stat-card-padding);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  transition: var(--transition-shadow);
+}
+
+.qc-stat-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.qc-stat-label {
+  font-size: var(--stat-label-size);
+  color: var(--stat-label-color);
+  font-weight: var(--font-medium);
+}
+
+.qc-stat-value {
+  font-size: var(--stat-number-size);
+  font-weight: var(--stat-number-weight);
+  color: var(--c-text-primary);
+  line-height: var(--leading-tight);
+}
+
+.qc-stat-value--brand {
+  color: var(--c-brand);
+}
+.qc-stat-value--success {
+  color: var(--c-success-text);
+}
+.qc-stat-value--warning {
+  color: var(--c-warning-text);
+}
+.qc-stat-value--danger {
+  color: var(--c-danger-text);
+}
+
+/* --- 按钮 --- */
+.qc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1-5);
+  height: var(--btn-height-md);
+  padding: var(--btn-padding-md);
+  font-size: var(--btn-font-md);
+  font-weight: var(--btn-font-weight);
+  font-family: var(--font-sans);
+  border-radius: var(--btn-radius);
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    var(--transition-colors),
+    var(--transition-shadow),
+    transform var(--duration-base) var(--ease-inout);
+  user-select: none;
+  line-height: 1;
+  outline: none;
+  text-decoration: none;
+}
+
+.qc-btn:focus-visible {
+  outline: 2px solid var(--c-brand);
+  outline-offset: 2px;
+}
+
+.qc-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* 按钮尺寸 */
+.qc-btn--xs {
+  height: var(--btn-height-xs);
+  padding: var(--btn-padding-xs);
+  font-size: var(--btn-font-xs);
+}
+.qc-btn--sm {
+  height: var(--btn-height-sm);
+  padding: var(--btn-padding-sm);
+  font-size: var(--btn-font-sm);
+}
+.qc-btn--lg {
+  height: var(--btn-height-lg);
+  padding: var(--btn-padding-lg);
+  font-size: var(--btn-font-lg);
+}
+.qc-btn--xl {
+  height: var(--btn-height-xl);
+  padding: var(--btn-padding-xl);
+  font-size: var(--btn-font-xl);
+}
+
+/* 按钮变体 */
+.qc-btn--primary {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border-color: transparent;
+  box-shadow: var(--btn-primary-shadow);
+}
+.qc-btn--primary:hover {
+  background: var(--btn-primary-bg-hover);
+  box-shadow: var(--shadow-brand-md);
+  transform: translateY(-1px);
+}
+.qc-btn--primary:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-brand-sm);
+}
+
+.qc-btn--default {
+  background: var(--btn-default-bg);
+  color: var(--btn-default-text);
+  border-color: var(--btn-default-border);
+}
+.qc-btn--default:hover {
+  background: var(--btn-default-bg-hover);
+  border-color: var(--c-brand);
+  color: var(--c-brand);
+}
+
+.qc-btn--ghost {
+  background: var(--btn-ghost-bg);
+  color: var(--btn-ghost-text);
+  border-color: var(--c-brand-border);
+}
+.qc-btn--ghost:hover {
+  background: var(--btn-ghost-bg-hover);
+  border-color: var(--c-brand);
+}
+
+.qc-btn--danger {
+  background: var(--btn-danger-bg);
+  color: var(--btn-danger-text);
+  border-color: transparent;
+  box-shadow: var(--btn-danger-shadow);
+}
+.qc-btn--danger:hover {
+  background: var(--btn-danger-bg-hover);
+  transform: translateY(-1px);
+}
+
+.qc-btn--text {
+  background: transparent;
+  color: var(--c-brand);
+  border-color: transparent;
+  padding-left: var(--space-1);
+  padding-right: var(--space-1);
+}
+.qc-btn--text:hover {
+  color: var(--c-brand-hover);
+  background: var(--c-brand-soft);
+}
+
+/* 图标按钮 */
+.qc-btn--icon {
+  width: var(--btn-height-md);
+  padding: 0;
+  border-radius: var(--radius-md);
+}
+.qc-btn--icon.qc-btn--sm {
+  width: var(--btn-height-sm);
+}
+.qc-btn--icon.qc-btn--lg {
+  width: var(--btn-height-lg);
+}
+
+/* --- 标签/徽章 --- */
+.qc-tag {
+  display: inline-flex;
+  align-items: center;
+  height: var(--tag-height-md);
+  padding: var(--tag-padding-md);
+  font-size: var(--tag-font-md);
+  font-weight: var(--tag-font-weight);
+  border-radius: var(--tag-radius);
+  line-height: 1;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.qc-tag--sm {
+  height: var(--tag-height-sm);
+  padding: var(--tag-padding-sm);
+  font-size: var(--tag-font-sm);
+}
+.qc-tag--lg {
+  height: var(--tag-height-lg);
+  padding: var(--tag-padding-lg);
+  font-size: var(--tag-font-lg);
+}
+
+.qc-tag--brand {
+  background: var(--c-brand-soft);
+  color: var(--c-brand);
+  border-color: var(--c-brand-border);
+}
+.qc-tag--success {
+  background: var(--c-success-bg);
+  color: var(--c-success-text);
+  border-color: var(--c-success-border);
+}
+.qc-tag--warning {
+  background: var(--c-warning-bg);
+  color: var(--c-warning-text);
+  border-color: var(--c-warning-border);
+}
+.qc-tag--danger {
+  background: var(--c-danger-bg);
+  color: var(--c-danger-text);
+  border-color: var(--c-danger-border);
+}
+.qc-tag--info {
+  background: var(--c-info-bg);
+  color: var(--c-info-text);
+  border-color: var(--c-info-border);
+}
+.qc-tag--neutral {
+  background: var(--c-bg-subtle);
+  color: var(--c-text-secondary);
+  border-color: var(--c-border);
+}
+
+/* --- 区块标题 --- */
+.qc-section-title {
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--c-text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.qc-section-title::before {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 16px;
+  background: var(--c-brand);
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+/* --- 表单工具 --- */
+.qc-form-row {
+  display: flex;
+  gap: var(--content-gap);
+  align-items: flex-start;
+}
+
+.qc-form-col {
+  flex: 1;
+  min-width: 0;
+}
+
+/* --- 状态指示 --- */
+.qc-status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+.qc-status-dot--success {
+  background: var(--c-success);
+}
+.qc-status-dot--warning {
+  background: var(--c-warning);
+}
+.qc-status-dot--danger {
+  background: var(--c-danger);
+}
+.qc-status-dot--info {
+  background: var(--c-info);
+}
+.qc-status-dot--neutral {
+  background: var(--c-text-disabled);
+}
+
+/* --- 空状态 --- */
+.qc-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-16) var(--space-6);
+  color: var(--c-text-muted);
+  gap: var(--space-3);
+}
+
+.qc-empty-icon {
+  font-size: var(--text-display-lg);
+  opacity: 0.35;
+}
+
+.qc-empty-text {
+  font-size: var(--text-md);
+  font-weight: var(--font-medium);
+  color: var(--c-text-secondary);
+}
+
+.qc-empty-desc {
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
+  text-align: center;
+  max-width: 280px;
+}
+
+/* --- 加载状态 --- */
+.qc-loading-spin {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--c-border);
+  border-top-color: var(--c-brand);
+  border-radius: 50%;
+  animation: qc-spin 0.6s linear infinite;
+}
+
+@keyframes qc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- 文字工具 --- */
+.qc-text-primary {
+  color: var(--c-text-primary) !important;
+}
+.qc-text-base {
+  color: var(--c-text-base) !important;
+}
+.qc-text-secondary {
+  color: var(--c-text-secondary) !important;
+}
+.qc-text-muted {
+  color: var(--c-text-muted) !important;
+}
+.qc-text-brand {
+  color: var(--c-brand) !important;
+}
+.qc-text-success {
+  color: var(--c-success-text) !important;
+}
+.qc-text-warning {
+  color: var(--c-warning-text) !important;
+}
+.qc-text-danger {
+  color: var(--c-danger-text) !important;
+}
+
+/* --- 背景工具 --- */
+.qc-bg-surface {
+  background: var(--c-bg-surface) !important;
+}
+.qc-bg-muted {
+  background: var(--c-bg-muted) !important;
+}
+.qc-bg-brand {
+  background: var(--c-brand-soft) !important;
+}
+
+/* --- 截断 --- */
+.qc-truncate {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* --- 间距工具 --- */
+.qc-mt-auto {
+  margin-top: auto !important;
+}
+.qc-ml-auto {
+  margin-left: auto !important;
+}
+.qc-flex {
+  display: flex;
+}
+.qc-flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qc-flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.qc-gap-1 {
+  gap: var(--space-1);
+}
+.qc-gap-2 {
+  gap: var(--space-2);
+}
+.qc-gap-3 {
+  gap: var(--space-3);
+}
+.qc-gap-4 {
+  gap: var(--space-4);
+}
+
+/* --- 预设文字样式 (Text Style Utilities) --- */
+.qc-type-heading {
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
+  color: var(--c-text-primary);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+}
+
+.qc-type-subheading {
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--c-text-primary);
+  line-height: var(--leading-snug);
+}
+
+.qc-type-card-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--c-text-base);
+  line-height: var(--leading-snug);
+}
+
+.qc-type-label {
+  font-size: var(--text-md);
+  font-weight: var(--font-medium);
+  color: var(--c-text-base);
+  line-height: var(--leading-normal);
+}
+
+.qc-type-body {
+  font-size: var(--text-base);
+  font-weight: var(--font-normal);
+  color: var(--c-text-base);
+  line-height: var(--leading-normal);
+}
+
+.qc-type-secondary {
+  font-size: var(--text-base);
+  font-weight: var(--font-normal);
+  color: var(--c-text-secondary);
+  line-height: var(--leading-normal);
+}
+
+.qc-type-caption {
+  font-size: var(--text-sm);
+  font-weight: var(--font-normal);
+  color: var(--c-text-muted);
+  line-height: var(--leading-normal);
+}
+
+.qc-type-mini {
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  color: var(--c-text-secondary);
+  line-height: var(--leading-tight);
+}
+
+.qc-type-code {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--c-code-text);
+  background: var(--c-bg-subtle);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}

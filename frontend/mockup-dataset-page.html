@@ -1,0 +1,839 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>数据集总览 - 负氧离子</title>
+    <style>
+      :root {
+        /* Brand */
+        --brand-main: #2d6a4f;
+        --brand-hover: #1b4332;
+        --brand-light: #52b788;
+        --brand-soft-1: #d8f3dc;
+        --brand-soft-2: #b7e4c7;
+        --brand-soft-3: #95d5b2;
+
+        /* Neutrals */
+        --gray-50: #fafaf9;
+        --gray-100: #f5f5f4;
+        --gray-200: #e7e5e0;
+        --gray-300: #d6d3d1;
+        --gray-400: #a8a29e;
+        --gray-500: #78716c;
+        --gray-600: #57534e;
+        --gray-800: #292524;
+        --gray-900: #1c1917;
+
+        /* UI */
+        --bg-page: #f0f8f3;
+        --bg-card: #f8fdfb;
+        --bg-sidebar: #d4ecdc;
+        --border-default: #d4e8db;
+        --border-strong: #b8d9c4;
+
+        /* Accents */
+        --blue-bg: #dbeafe;
+        --blue-text: #2563eb;
+        --orange-bg: #ffedd5;
+        --orange-text: #ea580c;
+        --purple-bg: #f3e8ff;
+        --purple-text: #9333ea;
+        --red-bg: #fee2e2;
+        --red-text: #dc2626;
+        --green-bg: #dcfce7;
+        --green-text: #16a34a;
+        --amber-bg: #fef3c7;
+        --amber-text: #d97706;
+
+        /* Typography & Metrics */
+        --font-family: "Inter", -apple-system, sans-serif, "PingFang SC", "Microsoft YaHei";
+        --base-size: 13px;
+        --radius-sm: 6px;
+        --radius-md: 8px;
+        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+        --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: var(--font-family);
+        font-size: var(--base-size);
+        color: var(--gray-800);
+        background-color: var(--bg-page);
+        display: flex;
+        height: 100vh;
+        overflow: hidden;
+        line-height: 1.5;
+      }
+
+      /* Layout */
+      .sidebar {
+        width: 250px;
+        background-color: var(--bg-sidebar);
+        border-right: 1px solid var(--border-strong);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .sidebar-item {
+        padding: 8px 12px;
+        border-radius: var(--radius-sm);
+        color: var(--gray-600);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .sidebar-item.active {
+        background-color: var(--brand-soft-2);
+        color: var(--brand-main);
+        font-weight: 500;
+      }
+
+      .main-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+        padding: 24px 32px;
+        gap: 20px;
+      }
+
+      /* Header */
+      .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-left: 3px solid var(--brand-main);
+        padding-left: 12px;
+        margin-bottom: 8px;
+      }
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .header-title {
+        font-size: 20px;
+        font-weight: 600;
+        color: var(--gray-900);
+      }
+      .header-meta {
+        color: var(--gray-500);
+        font-size: 12px;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 12px;
+        background-color: var(--brand-soft-1);
+        color: var(--brand-main);
+        font-weight: 500;
+        font-size: 12px;
+      }
+      .badge-blue {
+        background: var(--blue-bg);
+        color: var(--blue-text);
+      }
+      .badge-green {
+        background: var(--green-bg);
+        color: var(--green-text);
+      }
+      .badge-amber {
+        background: var(--amber-bg);
+        color: var(--amber-text);
+      }
+
+      /* Grid */
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+
+      /* Cards */
+      .card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-sm);
+        display: flex;
+        flex-direction: column;
+      }
+      .card-header {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border-default);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: 600;
+        color: var(--gray-800);
+      }
+      .card-body {
+        padding: 16px;
+        flex: 1;
+      }
+
+      /* Icons */
+      svg {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+      }
+      .icon-green {
+        color: var(--brand-main);
+      }
+      .icon-blue {
+        color: var(--blue-text);
+      }
+      .icon-amber {
+        color: var(--amber-text);
+      }
+      .icon-muted {
+        color: var(--gray-400);
+      }
+
+      /* Buttons */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: var(--radius-sm);
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid var(--border-strong);
+        background: var(--gray-50);
+        color: var(--gray-600);
+        transition: all 0.2s;
+      }
+      .btn:hover {
+        background: var(--gray-100);
+      }
+      .btn-primary {
+        background: var(--brand-main);
+        color: white;
+        border-color: var(--brand-main);
+      }
+      .btn-primary:hover {
+        background: var(--brand-hover);
+      }
+
+      /* Dataset List */
+      .dataset-item {
+        display: flex;
+        align-items: center;
+        padding: 12px;
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-sm);
+        background: white;
+        gap: 12px;
+      }
+      .ds-icon {
+        width: 32px;
+        height: 32px;
+        background: var(--brand-soft-1);
+        border-radius: var(--radius-sm);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--brand-main);
+      }
+      .ds-info {
+        flex: 1;
+      }
+      .ds-title {
+        font-weight: 500;
+        margin-bottom: 2px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .ds-meta {
+        font-size: 11px;
+        color: var(--gray-500);
+      }
+      .ds-tag {
+        background: var(--gray-200);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 600;
+      }
+
+      /* Stats Grid */
+      .stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        height: 100%;
+      }
+      .stat-card {
+        background: white;
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-sm);
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .stat-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--gray-500);
+        font-size: 12px;
+      }
+      .stat-value {
+        font-size: 20px;
+        font-weight: 600;
+        color: var(--gray-800);
+      }
+
+      /* Bar Chart */
+      .bar-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .bar-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .bar-label-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+      }
+      .bar-track {
+        height: 6px;
+        background: var(--gray-200);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .bar-fill {
+        height: 100%;
+        background: var(--brand-light);
+        border-radius: 3px;
+      }
+
+      /* Stepper */
+      .stepper {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        padding-left: 8px;
+      }
+      .step {
+        display: flex;
+        position: relative;
+        padding-bottom: 16px;
+      }
+      .step:last-child {
+        padding-bottom: 0;
+      }
+      .step-indicator {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2;
+        position: relative;
+      }
+      .step.completed .step-indicator {
+        background: var(--brand-main);
+        color: white;
+      }
+      .step.completed .step-indicator svg {
+        width: 12px;
+        height: 12px;
+      }
+      .step.in-progress .step-indicator {
+        background: var(--blue-text);
+        box-shadow: 0 0 0 4px var(--blue-bg);
+        animation: pulse 2s infinite;
+      }
+      .step.in-progress .step-indicator::after {
+        content: "";
+        width: 8px;
+        height: 8px;
+        background: white;
+        border-radius: 50%;
+      }
+      .step.pending .step-indicator {
+        background: var(--gray-200);
+        border: 2px solid var(--gray-300);
+      }
+      /* Line connection */
+      .step::before {
+        content: "";
+        position: absolute;
+        left: 9px;
+        top: 20px;
+        bottom: -4px;
+        width: 2px;
+        background: var(--gray-200);
+        z-index: 1;
+      }
+      .step:last-child::before {
+        display: none;
+      }
+      .step.completed::before {
+        background: var(--brand-main);
+      }
+      .step.in-progress::before {
+        background: repeating-linear-gradient(
+          to bottom,
+          var(--gray-300) 0,
+          var(--gray-300) 4px,
+          transparent 4px,
+          transparent 8px
+        );
+      }
+
+      .step-content {
+        padding-left: 12px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      .step-title {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--gray-800);
+      }
+      .step.pending .step-title {
+        color: var(--gray-400);
+      }
+
+      /* Timeline */
+      .timeline {
+        display: flex;
+        flex-direction: column;
+        padding-left: 8px;
+      }
+      .tl-item {
+        display: flex;
+        position: relative;
+        padding-bottom: 16px;
+      }
+      .tl-item:last-child {
+        padding-bottom: 0;
+      }
+      .tl-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-top: 5px;
+        position: relative;
+        z-index: 2;
+        background: white;
+        border: 2px solid var(--gray-300);
+      }
+      .tl-dot.green {
+        border-color: var(--brand-main);
+      }
+      .tl-dot.blue {
+        border-color: var(--blue-text);
+      }
+      .tl-dot.orange {
+        border-color: var(--orange-text);
+      }
+
+      .tl-item::before {
+        content: "";
+        position: absolute;
+        left: 4px;
+        top: 15px;
+        bottom: -5px;
+        width: 2px;
+        background: var(--gray-200);
+        z-index: 1;
+      }
+      .tl-item:last-child::before {
+        display: none;
+      }
+      .tl-content {
+        padding-left: 12px;
+        flex: 1;
+      }
+      .tl-time {
+        font-size: 11px;
+        color: var(--gray-500);
+        margin-bottom: 2px;
+      }
+      .tl-desc {
+        font-size: 12px;
+      }
+
+      /* Version Tree */
+      .v-tree {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .v-node {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .v-node.child {
+        padding-left: 24px;
+        position: relative;
+      }
+      .v-node.child::before {
+        content: "└─";
+        position: absolute;
+        left: 4px;
+        color: var(--gray-300);
+      }
+      .v-name {
+        font-weight: 500;
+      }
+      .v-date {
+        color: var(--gray-400);
+        font-size: 11px;
+      }
+
+      /* Action Bar */
+      .action-bar {
+        display: flex;
+        gap: 12px;
+        padding: 16px;
+        background: var(--brand-soft-1);
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-default);
+        align-items: center;
+        margin-top: 4px;
+      }
+
+      /* Animations */
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4);
+        }
+        70% {
+          box-shadow: 0 0 0 6px rgba(37, 99, 235, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div style="font-weight: 600; padding: 8px 12px; color: var(--gray-800); margin-bottom: 8px">生态监测数据</div>
+      <div class="sidebar-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+        </svg>
+        气象数据
+      </div>
+      <div class="sidebar-item active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 16v-4M12 8h.01" />
+        </svg>
+        负氧离子
+      </div>
+      <div class="sidebar-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+          <circle cx="12" cy="10" r="3" />
+        </svg>
+        土壤温湿度
+      </div>
+      <div class="sidebar-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M2 12h4l2-9 5 18 3-9h6" />
+        </svg>
+        涡度通量
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Top Header -->
+      <div class="page-header">
+        <div class="header-left">
+          <svg
+            class="icon-green"
+            style="width: 24px; height: 24px"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 16v-4M12 8h.01" />
+          </svg>
+          <span class="header-title">负氧离子</span>
+          <span class="header-meta">创建于: 2026/3/19</span>
+        </div>
+        <div>
+          <span class="badge">1 数据集</span>
+        </div>
+      </div>
+
+      <!-- Row 1 -->
+      <div class="row">
+        <!-- Dataset List -->
+        <div class="card">
+          <div class="card-header">
+            <span>数据集列表</span>
+            <div style="display: flex; gap: 8px">
+              <button class="btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16" />
+                </svg>
+                刷新
+              </button>
+              <button class="btn btn-primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                导入
+              </button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="dataset-item">
+              <div class="ds-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                  <polyline points="10 9 9 9 8 9" />
+                </svg>
+              </div>
+              <div class="ds-info">
+                <div class="ds-title">2023龙潭湖负氧离子 <span class="ds-tag">CSV</span></div>
+                <div class="ds-meta">/data/raw/longtan/2023_anion.csv • 更新于 03/19 15:25</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quality Overview -->
+        <div class="card">
+          <div class="card-header">
+            <span>数据质量概览</span>
+          </div>
+          <div class="card-body">
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-header">
+                  <svg class="icon-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="8" y1="6" x2="21" y2="6" />
+                    <line x1="8" y1="12" x2="21" y2="12" />
+                    <line x1="8" y1="18" x2="21" y2="18" />
+                    <line x1="3" y1="6" x2="3.01" y2="6" />
+                    <line x1="3" y1="12" x2="3.01" y2="12" />
+                    <line x1="3" y1="18" x2="3.01" y2="18" />
+                  </svg>
+                  总行数
+                </div>
+                <div class="stat-value">12,480</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-header">
+                  <svg class="icon-blue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <line x1="9" y1="3" x2="9" y2="21" />
+                  </svg>
+                  总列数
+                </div>
+                <div class="stat-value">15</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-header">
+                  <svg class="icon-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                    <polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                  数据完整率
+                </div>
+                <div class="stat-value">96.2%</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-header">
+                  <svg class="icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path
+                      d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                  异常值
+                </div>
+                <div class="stat-value" style="color: var(--amber-text)">23</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 2 -->
+      <div class="row">
+        <!-- Missing Distribution -->
+        <div class="card">
+          <div class="card-header">
+            <span>缺失值分布 (Top 5)</span>
+          </div>
+          <div class="card-body">
+            <div class="bar-list">
+              <div class="bar-item">
+                <div class="bar-label-row"><span>温度</span><span>3.2%</span></div>
+                <div class="bar-track"><div class="bar-fill" style="width: 100%"></div></div>
+              </div>
+              <div class="bar-item">
+                <div class="bar-label-row"><span>相对湿度</span><span>1.8%</span></div>
+                <div class="bar-track"><div class="bar-fill" style="width: 56%"></div></div>
+              </div>
+              <div class="bar-item">
+                <div class="bar-label-row"><span>风速</span><span>0.5%</span></div>
+                <div class="bar-track"><div class="bar-fill" style="width: 15%"></div></div>
+              </div>
+              <div class="bar-item">
+                <div class="bar-label-row"><span>气压</span><span>0.3%</span></div>
+                <div class="bar-track"><div class="bar-fill" style="width: 9%"></div></div>
+              </div>
+              <div class="bar-item">
+                <div class="bar-label-row"><span>辐射</span><span>0.1%</span></div>
+                <div class="bar-track"><div class="bar-fill" style="width: 3%"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Process Stepper -->
+        <div class="card">
+          <div class="card-header">
+            <span>处理进度</span>
+          </div>
+          <div class="card-body" style="padding: 20px">
+            <div class="stepper">
+              <div class="step completed">
+                <div class="step-indicator">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </div>
+                <div class="step-content"><div class="step-title">数据导入</div></div>
+              </div>
+              <div class="step completed">
+                <div class="step-indicator">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </div>
+                <div class="step-content"><div class="step-title">数据视图</div></div>
+              </div>
+              <div class="step in-progress">
+                <div class="step-indicator"></div>
+                <div class="step-content">
+                  <div class="step-title" style="color: var(--blue-text); font-weight: 600">异常值检测</div>
+                </div>
+              </div>
+              <div class="step pending">
+                <div class="step-indicator"></div>
+                <div class="step-content"><div class="step-title">缺失值插补</div></div>
+              </div>
+              <div class="step pending">
+                <div class="step-indicator"></div>
+                <div class="step-content"><div class="step-title">通量分割</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 3 -->
+      <div class="row">
+        <!-- Recent Activity -->
+        <div class="card">
+          <div class="card-header">
+            <span>最近活动</span>
+          </div>
+          <div class="card-body">
+            <div class="timeline">
+              <div class="tl-item">
+                <div class="tl-dot green"></div>
+                <div class="tl-content">
+                  <div class="tl-time">03/19 15:25</div>
+                  <div class="tl-desc">导入数据集 "2023龙潭湖负氧离子"</div>
+                </div>
+              </div>
+              <div class="tl-item">
+                <div class="tl-dot blue"></div>
+                <div class="tl-content">
+                  <div class="tl-time">03/19 15:26</div>
+                  <div class="tl-desc">数据质量分析完成，完整率 96.2%</div>
+                </div>
+              </div>
+              <div class="tl-item">
+                <div class="tl-dot orange"></div>
+                <div class="tl-content">
+                  <div class="tl-time">03/19 16:10</div>
+                  <div class="tl-desc">执行异常值检测 (IQR方法)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Version Management -->
+        <div class="card">
+          <div class="card-header">
+            <span>版本管理</span>
+          </div>
+          <div class="card-body">
+            <div class="v-tree">
+              <div class="v-node">
+                <span class="v-name">v1 原始数据</span>
+                <span class="v-date">(03/19)</span>
+                <span class="badge badge-green" style="padding: 2px 6px; font-size: 10px">original</span>
+              </div>
+              <div class="v-node child">
+                <span class="v-name">v2 异常值处理</span>
+                <span class="v-date">(03/19)</span>
+                <span class="badge badge-blue" style="padding: 2px 6px; font-size: 10px">outlier-removed</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Bar -->
+      <div class="action-bar">
+        <button class="btn btn-primary" style="padding: 8px 16px">查看数据</button>
+        <button class="btn">检测异常</button>
+        <button class="btn">插补缺失</button>
+        <div style="flex: 1"></div>
+        <button class="btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          导出数据
+        </button>
+      </div>
+    </main>
+  </body>
+</html>

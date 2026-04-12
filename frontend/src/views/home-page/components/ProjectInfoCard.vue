@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { DataAnalysis } from "@element-plus/icons-vue";
+import { BarChart2 } from "lucide-vue-next";
 import { useCategoryStore } from "@/stores/useCategoryStore";
 import { computed } from "vue";
 
@@ -17,9 +17,7 @@ const createdAt = computed(() => {
     <!-- 左侧项目名 地理信息 -->
     <div class="left-section">
       <div class="project-icon">
-        <el-icon class="icon">
-          <DataAnalysis />
-        </el-icon>
+        <BarChart2 :size="20" class="icon" />
       </div>
       <div class="project-details">
         <h1 class="project-name">{{ categoryName }}</h1>
@@ -42,33 +40,33 @@ const createdAt = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 8px 16px 0;
-  padding: 12px 16px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  margin: var(--space-2) var(--space-4) 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-card);
 }
 
 .left-section {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .project-icon {
   width: 40px;
   height: 40px;
-  background: #d1fae5;
-  border: 1px solid #a7f3d0;
-  border-radius: 10px;
+  background: var(--color-primary-100);
+  border: 1px solid var(--color-primary-200);
+  border-radius: var(--radius-panel);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .icon {
-  color: #047857;
-  font-size: 20px;
+  color: var(--color-primary-700);
+  font-size: var(--text-3xl);
 }
 
 .project-details {
@@ -78,22 +76,22 @@ const createdAt = computed(() => {
 }
 
 .project-name {
-  font-size: 17px;
-  font-weight: 700;
-  color: #1e293b;
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  color: var(--c-text-base);
   margin: 0;
 }
 
 .project-meta {
-  font-size: 12px;
-  color: #64748b;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
   margin: 0;
 }
 
 .right-section {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: var(--space-5);
 }
 
 .stat-item {
@@ -101,13 +99,13 @@ const createdAt = computed(() => {
 }
 
 .stat-value {
-  font-size: 22px;
-  font-weight: 700;
-  color: #10b981;
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  color: var(--c-brand);
 }
 
 .stat-label {
-  font-size: 11px;
-  color: #64748b;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
 }
 </style>

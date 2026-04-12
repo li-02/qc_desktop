@@ -1,8 +1,8 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { ElMessage, ElMessageBox } from "element-plus";
 import { computed } from "vue";
 import { useRouter } from "vue-router";
-import { Refresh, Plus, Delete, Odometer, Cloudy, Flag, Histogram, Document } from "@element-plus/icons-vue";
+import { RefreshCw, Plus, Trash2, Gauge, Cloud, Flag, BarChart, FileText } from "lucide-vue-next";
 import { useCategoryStore } from "@/stores/useCategoryStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import emitter from "@/utils/eventBus";
@@ -49,13 +49,13 @@ const handleDelete = async (dataset: any) => {
 
 const getIconName = (type: string) => {
   const iconMap: Record<string, any> = {
-    flux: Odometer,
-    micrometeorology: Cloudy,
+    flux: Gauge,
+    micrometeorology: Cloud,
     aqi: Flag,
-    sapflow: Histogram,
-    emerald: Histogram,
+    sapflow: BarChart,
+    emerald: BarChart,
   };
-  return iconMap[type] || Document;
+  return iconMap[type] || FileText;
 };
 
 const getTypeTagClass = (type: string) => {
@@ -82,7 +82,6 @@ const getDatasetTypeLabel = (type: string): string => {
 
 import { formatLocalWithTZ } from "@/utils/timeUtils";
 const formatRelativeTime = (timestamp: number): string => {
-  // 按用户要求：所有时间显示为本地时间 + 时区后缀
   return formatLocalWithTZ(timestamp);
 };
 </script>
@@ -93,10 +92,10 @@ const formatRelativeTime = (timestamp: number): string => {
       <div class="section-title">数据集列表</div>
       <div class="section-actions">
         <button class="action-btn" title="刷新" @click="handleRefresh">
-          <el-icon><Refresh /></el-icon>
+          <RefreshCw :size="14" />
         </button>
         <button class="action-btn" title="添加数据集" @click="handleImportData">
-          <el-icon><Plus /></el-icon>
+          <Plus :size="14" />
         </button>
       </div>
     </div>
@@ -117,9 +116,7 @@ const formatRelativeTime = (timestamp: number): string => {
         <div v-for="dataset in datasets" :key="dataset.id" class="dataset-item" @click="selectDataset(dataset)">
           <div class="dataset-header">
             <div class="dataset-icon-wrapper">
-              <el-icon size="16" class="dataset-icon">
-                <component :is="getIconName(dataset.type)" />
-              </el-icon>
+              <component :is="getIconName(dataset.type)" :size="16" class="dataset-icon" />
             </div>
 
             <div class="dataset-info">
@@ -130,7 +127,7 @@ const formatRelativeTime = (timestamp: number): string => {
             </div>
 
             <button class="dataset-delete-btn" title="删除数据集" @click.stop="handleDelete(dataset)">
-              <el-icon><Delete /></el-icon>
+              <Trash2 :size="14" />
             </button>
           </div>
 
@@ -148,9 +145,9 @@ const formatRelativeTime = (timestamp: number): string => {
 
 <style scoped>
 .dataset-card-container {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-card);
   overflow: hidden;
   height: 100%;
 }
@@ -159,44 +156,44 @@ const formatRelativeTime = (timestamp: number): string => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px 10px;
-  border-bottom: 1px solid #e2e8f0;
+  padding: var(--space-3) var(--space-4) var(--space-2-5);
+  border-bottom: 1px solid var(--c-border);
 }
 
 .section-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: #1e293b;
+  font-size: var(--text-sm);
+  font-weight: var(--font-bold);
+  color: var(--c-text-primary);
 }
 
 .section-actions {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1);
 }
 
 .action-btn {
   width: 28px;
   height: 28px;
-  border: 1px solid #e2e8f0;
-  background: #ffffff;
-  border-radius: 6px;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-surface);
+  border-radius: var(--radius-btn);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
-  color: #64748b;
-  font-size: 14px;
+  transition: var(--transition-fast);
+  color: var(--c-text-secondary);
+  font-size: var(--text-base);
 }
 
 .action-btn:hover {
-  background: #ecfdf5;
-  border-color: #86efac;
-  color: #059669;
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
+  color: var(--c-brand);
 }
 
 .dataset-list {
-  padding: 10px 12px;
+  padding: var(--space-2-5) var(--space-3);
   height: calc(100% - 48px);
   overflow-y: auto;
 }
@@ -204,8 +201,8 @@ const formatRelativeTime = (timestamp: number): string => {
 /* 空状态 */
 .empty-state {
   text-align: center;
-  padding: 40px 20px;
-  color: #9ca3af;
+  padding: var(--space-10) var(--space-5);
+  color: var(--c-text-muted);
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -216,102 +213,102 @@ const formatRelativeTime = (timestamp: number): string => {
 .empty-icon {
   width: 44px;
   height: 44px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  background: var(--c-bg-muted);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-card);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 12px;
-  font-size: 20px;
+  margin: 0 auto var(--space-3);
+  font-size: var(--text-3xl);
 }
 
 .empty-text {
-  font-size: 13px;
-  color: #64748b;
-  margin-bottom: 16px;
+  font-size: var(--text-base);
+  color: var(--c-text-secondary);
+  margin-bottom: var(--space-4);
   line-height: 1.5;
 }
 
 .empty-action {
-  background: #10b981;
-  color: white;
+  background: var(--c-brand);
+  color: var(--c-text-inverse);
   border: none;
-  border-radius: 8px;
-  padding: 8px 20px;
-  font-size: 13px;
-  font-weight: 600;
+  border-radius: var(--radius-btn);
+  padding: var(--space-2) var(--space-5);
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: var(--transition-fast);
 }
 
 .empty-action:hover {
-  background: #059669;
+  background: var(--c-brand-hover);
 }
 
 /* 数据集列表 */
 .datasets-container {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .dataset-item {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 10px 12px;
+  background: var(--c-bg-muted);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-2-5) var(--space-3);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: var(--transition-fast);
 }
 
 .dataset-item:hover {
-  background: #ecfdf5;
-  border-color: #86efac;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
+  box-shadow: var(--shadow-xs);
 }
 
 .dataset-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
+  gap: var(--space-2-5);
+  margin-bottom: var(--space-1);
 }
 
 .dataset-icon-wrapper {
   width: 36px;
   height: 36px;
-  background: #d1fae5;
-  border: 1px solid #a7f3d0;
-  border-radius: 8px;
+  background: var(--color-primary-100);
+  border: 1px solid var(--color-primary-200);
+  border-radius: var(--radius-card);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all 0.2s ease;
+  transition: var(--transition-fast);
 }
 
 .dataset-item:hover .dataset-icon-wrapper {
-  background: #a7f3d0;
-  border-color: #6ee7b7;
+  background: var(--color-primary-200);
+  border-color: var(--color-primary-300);
 }
 
 .dataset-icon {
-  color: #047857;
-  font-size: 16px;
+  color: var(--color-primary-700);
+  font-size: var(--text-base);
 }
 
 .dataset-info {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .dataset-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1e293b;
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--c-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -319,63 +316,48 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .dataset-type-badge {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-weight: 600;
+  font-size: var(--text-xs);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-btn);
+  font-weight: var(--font-semibold);
   text-transform: uppercase;
   flex-shrink: 0;
 }
 
-.tag-emerald {
-  background: #d1fae5;
-  color: #065f46;
-  border: 1px solid #a7f3d0;
-}
-
-.tag-flux {
-  background: #dcfce7;
-  color: #065f46;
-  border: 1px solid #bbf7d0;
-}
-
-.tag-sapflow {
-  background: #d1fae5;
-  color: #065f46;
-  border: 1px solid #a7f3d0;
+.tag-emerald,
+.tag-flux,
+.tag-sapflow,
+.tag-default {
+  background: var(--color-primary-100);
+  color: var(--color-primary-800);
+  border: 1px solid var(--color-primary-200);
 }
 
 .tag-aqi {
-  background: #ede9fe;
-  color: #581c87;
-  border: 1px solid #ddd6fe;
+  background: var(--color-purple-100);
+  color: var(--color-purple-900);
+  border: 1px solid var(--color-purple-200);
 }
 
 .tag-micrometeorology {
-  background: #ffedd5;
-  color: #92400e;
-  border: 1px solid #fed7aa;
-}
-
-.tag-default {
-  background: #d1fae5;
-  color: #059669;
-  border: 1px solid #a7f3d0;
+  background: var(--color-orange-100);
+  color: var(--color-orange-800);
+  border: 1px solid var(--color-orange-200);
 }
 
 .dataset-delete-btn {
   width: 24px;
   height: 24px;
   border: none;
-  background: #fef2f2;
-  border-radius: 6px;
+  background: var(--c-danger-bg);
+  border-radius: var(--radius-btn);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
-  color: #ef4444;
-  font-size: 14px;
+  transition: var(--transition-fast);
+  color: var(--c-danger);
+  font-size: var(--text-base);
   opacity: 0;
   flex-shrink: 0;
 }
@@ -385,7 +367,7 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .dataset-delete-btn:hover {
-  background: #fecaca;
+  background: var(--color-red-100);
 }
 
 .dataset-meta {
@@ -396,16 +378,16 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .dataset-description {
-  font-size: 12px;
-  color: #64748b;
+  font-size: var(--text-xs);
+  color: var(--c-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .dataset-time {
-  font-size: 10px;
-  color: #94a3b8;
+  font-size: var(--text-2xs);
+  color: var(--c-text-muted);
 }
 
 /* 自定义滚动条样式 */
@@ -419,7 +401,7 @@ const formatRelativeTime = (timestamp: number): string => {
 
 .dataset-list::-webkit-scrollbar-thumb {
   background: rgba(203, 213, 225, 0.6);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 
 .dataset-list::-webkit-scrollbar-thumb:hover {

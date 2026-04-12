@@ -1,19 +1,18 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { ref, computed } from "vue";
 import {
-  FolderAdd,
-  Document,
-  DataAnalysis,
-  Connection,
-  Warning,
-  MagicStick,
-  TrendCharts,
+  FolderPlus,
+  FileText,
+  BarChart2,
+  AlertTriangle,
+  Wand2,
+  LineChart,
   Download,
-  ArrowRight,
-  Close,
+  ChevronRight,
+  X,
   Check,
-  QuestionFilled,
-} from "@element-plus/icons-vue";
+  HelpCircle,
+} from "lucide-vue-next";
 
 const props = defineProps<{ modelValue: boolean }>();
 const emit = defineEmits<{ "update:modelValue": [val: boolean] }>();
@@ -26,7 +25,6 @@ const sections = [
   { id: "start", label: "快速开始", icon: "start" },
   { id: "project", label: "项目与数据集", icon: "project" },
   { id: "overview", label: "数据视图", icon: "overview" },
-  { id: "correlation", label: "相关性分析", icon: "correlation" },
   { id: "outlier", label: "异常值检测", icon: "outlier" },
   { id: "gapfill", label: "缺失值插补", icon: "gapfill" },
   { id: "flux", label: "通量分割", icon: "flux" },
@@ -52,7 +50,7 @@ const scrollTo = (id: string) => {
       <div class="g-header">
         <div class="g-header-left">
           <div class="g-header-icon">
-            <el-icon><QuestionFilled /></el-icon>
+            <HelpCircle :size="20" />
           </div>
           <div>
             <div class="g-header-title">使用指南</div>
@@ -60,7 +58,7 @@ const scrollTo = (id: string) => {
           </div>
         </div>
         <button class="g-close-btn" @click="visible = false">
-          <el-icon><Close /></el-icon>
+          <X :size="16" />
         </button>
       </div>
     </template>
@@ -75,18 +73,26 @@ const scrollTo = (id: string) => {
           class="g-nav-item"
           :class="{ active: activeSection === s.id }"
           @click="scrollTo(s.id)">
-          <el-icon class="n-icon">
-            <FolderAdd v-if="s.icon === 'start'" />
-            <Document v-else-if="s.icon === 'project'" />
-            <DataAnalysis v-else-if="s.icon === 'overview'" />
-            <Connection v-else-if="s.icon === 'correlation'" />
-            <Warning v-else-if="s.icon === 'outlier'" />
-            <MagicStick v-else-if="s.icon === 'gapfill'" />
-            <TrendCharts v-else-if="s.icon === 'flux'" />
-            <Download v-else-if="s.icon === 'export'" />
-          </el-icon>
+          <component
+            :is="
+              s.icon === 'start'
+                ? FolderPlus
+                : s.icon === 'project'
+                  ? FileText
+                  : s.icon === 'overview'
+                    ? BarChart2
+                    : s.icon === 'outlier'
+                      ? AlertTriangle
+                      : s.icon === 'gapfill'
+                        ? Wand2
+                        : s.icon === 'flux'
+                          ? LineChart
+                          : Download
+            "
+            :size="15"
+            class="n-icon" />
           <span>{{ s.label }}</span>
-          <el-icon class="n-arrow"><ArrowRight /></el-icon>
+          <ChevronRight :size="12" class="n-arrow" />
         </button>
       </nav>
 
@@ -130,7 +136,7 @@ const scrollTo = (id: string) => {
             </div>
           </div>
           <div class="tip-box">
-            <el-icon class="tip-icon"><Check /></el-icon>
+            <Check :size="15" class="tip-icon" />
             <span>每步处理自动生成新版本快照，所有历史版本可通过版本管理器随时查看和切换。</span>
           </div>
         </section>
@@ -166,7 +172,7 @@ const scrollTo = (id: string) => {
             </div>
           </div>
           <div class="tip-box tip-warn">
-            <el-icon class="tip-icon"><Warning /></el-icon>
+            <AlertTriangle :size="15" class="tip-icon" />
             <span>CSV 第一行须为列标题。时间列建议使用 ISO 8601 格式，如 <code>2024-01-01 00:30:00</code>。</span>
           </div>
         </section>
@@ -193,35 +199,6 @@ const scrollTo = (id: string) => {
               <div class="c4-title">🗂 版本切换</div>
               <div class="c4-desc">右上角「版本管理」随时切换不同处理阶段的数据快照。</div>
             </div>
-          </div>
-        </section>
-
-        <!-- § 相关性分析 -->
-        <section id="gs-correlation" class="g-sec">
-          <div class="sec-tag">相关性分析</div>
-          <h2 class="sec-h">变量相关性分析</h2>
-          <p class="sec-p">「数据视图 → 相关性分析」面板计算并可视化各数值列之间的 Pearson 相关系数矩阵。</p>
-          <div class="nsteps">
-            <div class="ns">
-              <div class="ns-num">①</div>
-              <div class="ns-text">在列选择器中勾选需要分析的变量（支持全选或多选）。</div>
-            </div>
-            <div class="ns">
-              <div class="ns-num">②</div>
-              <div class="ns-text">点击「执行分析」，系统计算相关系数并渲染热力矩阵。</div>
-            </div>
-            <div class="ns">
-              <div class="ns-num">③</div>
-              <div class="ns-text">热力图颜色深浅表示相关强度；点击色块可查看精确系数值。</div>
-            </div>
-            <div class="ns">
-              <div class="ns-num">④</div>
-              <div class="ns-text">可导出热力图为 PNG 或复制系数表为 CSV 格式。</div>
-            </div>
-          </div>
-          <div class="tip-box">
-            <el-icon class="tip-icon"><Check /></el-icon>
-            <span>建议在异常值处理完成后再进行相关性分析，以减少异常值对系数的干扰。</span>
           </div>
         </section>
 
@@ -254,7 +231,7 @@ const scrollTo = (id: string) => {
             <span class="itag">替换为均值/中位数</span>
           </div>
           <div class="tip-box">
-            <el-icon class="tip-icon"><Check /></el-icon>
+            <Check :size="15" class="tip-icon" />
             <span>推荐先「标记」再结合图表人工审核，确认无误后再执行实际替换；处理结果保存为新版本。</span>
           </div>
         </section>
@@ -274,9 +251,9 @@ const scrollTo = (id: string) => {
               <div class="mdesc">使用列整体或滚动窗口内的统计量填充，适合无明显趋势的场景。</div>
             </div>
             <div class="method">
-              <span class="mbadge mb-purple">随机森林</span>
+              <span class="mbadge mb-purple">自定义模型</span>
               <div class="mdesc">
-                以其他变量为特征训练随机森林模型预测缺失值；处理非线性关系能力强，推荐用于中长间隔缺口。
+                支持注册自定义机器学习模型（如随机森林、XGBoost等），手动配置模型文件与推理脚本，灵活处理各类缺失值场景。
               </div>
             </div>
             <div class="method">
@@ -358,7 +335,7 @@ const scrollTo = (id: string) => {
             </div>
           </div>
           <div class="tip-box tip-warn">
-            <el-icon class="tip-icon"><Warning /></el-icon>
+            <AlertTriangle :size="15" class="tip-icon" />
             <span>运行前须确保 NEE 列已完成缺失值插补；系统使用 Ustar 阈值过滤低湍流夜间数据。</span>
           </div>
         </section>
@@ -401,7 +378,7 @@ const scrollTo = (id: string) => {
             </div>
           </div>
           <div class="tip-box">
-            <el-icon class="tip-icon"><Check /></el-icon>
+            <Check :size="15" class="tip-icon" />
             <span>导出文件名默认为「数据集名称 + 版本号 + 时间戳」，可在弹出框中自行修改。</span>
           </div>
         </section>
@@ -415,12 +392,10 @@ const scrollTo = (id: string) => {
 <style scoped>
 /* ── Dialog 覆盖 ── */
 :deep(.user-guide-dialog .el-dialog) {
-  border-radius: 16px;
+  border-radius: var(--radius-card);
   overflow: hidden;
   padding: 0;
-  box-shadow:
-    0 24px 64px rgba(0, 0, 0, 0.12),
-    0 0 0 1px rgba(229, 231, 235, 0.6);
+  box-shadow: var(--shadow-lg);
 }
 :deep(.user-guide-dialog .el-dialog__header) {
   padding: 0;
@@ -435,55 +410,55 @@ const scrollTo = (id: string) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 24px 16px;
-  background: linear-gradient(135deg, #fff 0%, #f0fdf4 100%);
-  border-bottom: 1px solid #e5e7eb;
+  padding: 18px var(--space-6) 16px;
+  background: var(--c-bg-surface);
+  border-bottom: 1px solid var(--c-border);
 }
 .g-header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .g-header-icon {
   width: 38px;
   height: 38px;
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   flex-shrink: 0;
-  background: linear-gradient(135deg, #10b981, #059669);
+  background: var(--c-brand);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-size: 18px;
+  color: var(--c-text-inverse);
+  font-size: var(--text-2xl);
 }
 .g-header-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: #111827;
+  font-size: var(--text-md);
+  font-weight: var(--font-bold);
+  color: var(--c-text-primary);
 }
 .g-header-sub {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: var(--text-xs);
+  color: var(--c-text-secondary);
   margin-top: 2px;
 }
 .g-close-btn {
   width: 30px;
   height: 30px;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  background: #fff;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-surface);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: #6b7280;
-  font-size: 14px;
-  transition: all 0.18s;
+  color: var(--c-text-secondary);
+  font-size: var(--text-base);
+  transition: var(--transition-fast);
 }
 .g-close-btn:hover {
-  background: #fee2e2;
-  border-color: #fca5a5;
-  color: #ef4444;
+  background: var(--c-danger-bg);
+  border-color: var(--c-danger-border);
+  color: var(--c-danger);
 }
 
 /* ── 主体布局 ── */
@@ -497,53 +472,51 @@ const scrollTo = (id: string) => {
 .g-nav {
   width: 160px;
   flex-shrink: 0;
-  background: #f9fafb;
-  border-right: 1px solid #e5e7eb;
-  padding: 14px 8px;
+  background: var(--c-bg-muted);
+  border-right: 1px solid var(--c-border);
+  padding: 14px var(--space-2);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 .g-nav-label {
-  font-size: 10px;
-  font-weight: 600;
-  color: #9ca3af;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--c-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  padding: 0 8px;
-  margin-bottom: 8px;
+  padding: 0 var(--space-2);
+  margin-bottom: var(--space-2);
 }
 .g-nav-item {
   display: flex;
   align-items: center;
   gap: 7px;
   width: 100%;
-  padding: 8px 10px;
-  border-radius: 8px;
+  padding: var(--space-2) 10px;
+  border-radius: var(--radius-btn);
   border: none;
   background: transparent;
   cursor: pointer;
   text-align: left;
-  font-size: 13px;
-  color: #374151;
-  transition: all 0.18s;
+  font-size: var(--text-base);
+  color: var(--c-text-base);
+  transition: var(--transition-fast);
 }
 .g-nav-item:hover {
-  background: #ecfdf5;
-  color: #059669;
+  background: var(--c-brand-soft);
+  color: var(--c-brand-hover);
 }
 .g-nav-item.active {
-  background: #d1fae5;
-  color: #047857;
-  font-weight: 600;
+  background: var(--color-primary-100);
+  color: var(--color-primary-700);
+  font-weight: var(--font-semibold);
 }
 .n-icon {
-  font-size: 14px;
   flex-shrink: 0;
 }
 .n-arrow {
-  font-size: 11px;
   margin-left: auto;
   opacity: 0.35;
 }
@@ -555,53 +528,53 @@ const scrollTo = (id: string) => {
 .g-content {
   flex: 1;
   overflow-y: auto;
-  padding: 24px 28px;
+  padding: var(--space-6) 28px;
   display: flex;
   flex-direction: column;
   gap: 0;
-  background: #fff;
+  background: var(--c-bg-surface);
 }
 .g-content::-webkit-scrollbar {
   width: 5px;
 }
 .g-content::-webkit-scrollbar-thumb {
   background: rgba(203, 213, 225, 0.7);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 
 /* ── 各章节 ── */
 .g-sec {
-  padding-bottom: 32px;
-  margin-bottom: 32px;
-  border-bottom: 1px solid #f3f4f6;
+  padding-bottom: var(--space-8);
+  margin-bottom: var(--space-8);
+  border-bottom: 1px solid var(--c-border-subtle);
 }
 .g-sec:last-child {
   border-bottom: none;
   margin-bottom: 0;
-  padding-bottom: 8px;
+  padding-bottom: var(--space-2);
 }
 .sec-tag {
   display: inline-block;
-  font-size: 10px;
-  font-weight: 700;
-  color: #059669;
-  background: #d1fae5;
-  border: 1px solid #a7f3d0;
-  border-radius: 6px;
+  font-size: var(--text-xs);
+  font-weight: var(--font-bold);
+  color: var(--c-brand-hover);
+  background: var(--color-primary-100);
+  border: 1px solid var(--color-primary-200);
+  border-radius: var(--radius-btn);
   padding: 2px 9px;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 .sec-h {
-  font-size: 17px;
-  font-weight: 700;
-  color: #111827;
-  margin: 0 0 8px;
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  color: var(--c-text-primary);
+  margin: 0 0 var(--space-2);
 }
 .sec-p {
-  font-size: 13px;
-  color: #6b7280;
+  font-size: var(--text-base);
+  color: var(--c-text-secondary);
   line-height: 1.7;
   margin: 0 0 14px;
 }
@@ -616,39 +589,39 @@ const scrollTo = (id: string) => {
 .step-row {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .step-num {
   width: 28px;
   height: 28px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   flex-shrink: 0;
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
+  background: var(--c-brand);
+  color: var(--c-text-inverse);
+  font-size: var(--text-base);
+  font-weight: var(--font-bold);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .step-body {
   flex: 1;
-  padding-bottom: 4px;
+  padding-bottom: var(--space-1);
 }
 .step-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #111827;
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--c-text-primary);
   margin-bottom: 3px;
 }
 .step-desc {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: var(--text-xs);
+  color: var(--c-text-secondary);
   line-height: 1.6;
 }
 .step-conn {
   width: 28px;
-  border-left: 2px dashed #d1fae5;
+  border-left: 2px dashed var(--color-primary-100);
   height: 14px;
   margin-left: 13px;
 }
@@ -657,105 +630,104 @@ kbd {
   align-items: center;
   justify-content: center;
   padding: 0 5px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  background: #f3f4f6;
-  border: 1px solid #d1d5db;
-  color: #374151;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  background: var(--c-bg-muted);
+  border: 1px solid var(--c-border-strong);
+  color: var(--c-text-base);
 }
 code {
   padding: 1px 5px;
-  border-radius: 4px;
-  font-size: 12px;
-  background: #f3f4f6;
-  color: #374151;
-  font-family: "Courier New", monospace;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  background: var(--c-bg-muted);
+  color: var(--c-text-base);
+  font-family: var(--font-mono);
 }
 
 /* ── Tip 提示框 ── */
 .tip-box {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-btn);
   margin-top: 14px;
-  background: #ecfdf5;
-  border: 1px solid #a7f3d0;
-  font-size: 12px;
-  color: #065f46;
+  background: var(--c-success-bg);
+  border: 1px solid var(--c-success-border);
+  font-size: var(--text-xs);
+  color: var(--c-success-text);
   line-height: 1.6;
 }
 .tip-box.tip-warn {
-  background: #fffbeb;
-  border-color: #fde68a;
-  color: #92400e;
+  background: var(--c-warning-bg);
+  border-color: var(--c-warning-border);
+  color: var(--c-warning-text);
 }
 .tip-icon {
-  font-size: 14px;
   flex-shrink: 0;
   margin-top: 1px;
 }
 
 /* ── 表格 ── */
 .ftable {
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   overflow: hidden;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 .ftable.compact .fc {
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 .frow {
   display: flex;
 }
 .frow-head {
-  background: #f9fafb;
+  background: var(--c-bg-muted);
 }
 .frow-head .fc {
-  font-size: 12px;
-  font-weight: 600;
-  color: #374151;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--c-text-base);
 }
 .fc {
   flex: 1;
-  padding: 9px 12px;
-  font-size: 13px;
-  color: #374151;
-  border-bottom: 1px solid #f3f4f6;
+  padding: 9px var(--space-3);
+  font-size: var(--text-base);
+  color: var(--c-text-base);
+  border-bottom: 1px solid var(--c-border-subtle);
 }
 .frow:last-child .fc {
   border-bottom: none;
 }
 .frow:not(.frow-head):hover .fc {
-  background: #f9fafb;
+  background: var(--c-bg-muted);
 }
 
 /* ── 操作徽章 ── */
 .badge {
   display: inline-block;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 5px;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
 }
 .b-green {
-  background: #d1fae5;
-  color: #047857;
+  background: var(--color-primary-100);
+  color: var(--color-primary-700);
 }
 .b-blue {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: var(--color-blue-100);
+  color: var(--color-blue-700);
 }
 .b-orange {
-  background: #ffedd5;
-  color: #c2410c;
+  background: var(--c-warning-bg);
+  color: var(--c-warning-text);
 }
 .b-red {
-  background: #fee2e2;
-  color: #b91c1c;
+  background: var(--color-red-100);
+  color: var(--color-red-700);
 }
 
 /* ── 4卡片网格 ── */
@@ -763,28 +735,28 @@ code {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 .card4 {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 12px 14px;
-  transition: all 0.18s;
+  background: var(--c-bg-muted);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
+  padding: var(--space-3) 14px;
+  transition: var(--transition-fast);
 }
 .card4:hover {
-  border-color: #a7f3d0;
-  background: #f0fdf4;
+  border-color: var(--c-brand-border);
+  background: var(--c-brand-soft);
 }
 .c4-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 5px;
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--c-text-primary);
+  margin-bottom: var(--space-1);
 }
 .c4-desc {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: var(--text-xs);
+  color: var(--c-text-secondary);
   line-height: 1.55;
 }
 
@@ -792,7 +764,7 @@ code {
 .nsteps {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .ns {
   display: flex;
@@ -802,20 +774,20 @@ code {
 .ns-num {
   width: 22px;
   height: 22px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   flex-shrink: 0;
-  background: #d1fae5;
-  border: 1px solid #6ee7b7;
-  color: #047857;
-  font-size: 12px;
-  font-weight: 700;
+  background: var(--color-primary-100);
+  border: 1px solid var(--color-primary-300);
+  color: var(--color-primary-700);
+  font-size: var(--text-xs);
+  font-weight: var(--font-bold);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .ns-text {
-  font-size: 13px;
-  color: #374151;
+  font-size: var(--text-base);
+  color: var(--c-text-base);
   line-height: 1.6;
   padding-top: 1px;
 }
@@ -824,50 +796,50 @@ code {
 .methods {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 .method {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  background: var(--c-bg-muted);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-btn);
   padding: 10px 14px;
 }
 .mbadge {
   display: inline-block;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-xs);
+  font-weight: var(--font-bold);
   padding: 2px 9px;
-  border-radius: 5px;
-  margin-bottom: 5px;
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-1);
 }
 .mb-blue {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: var(--color-blue-100);
+  color: var(--color-blue-700);
 }
 .mb-orange {
-  background: #ffedd5;
-  color: #c2410c;
+  background: var(--c-warning-bg);
+  color: var(--c-warning-text);
 }
 .mb-purple {
-  background: #ede9fe;
-  color: #6d28d9;
+  background: var(--color-purple-100);
+  color: var(--color-purple-600);
 }
 .mb-green {
-  background: #d1fae5;
-  color: #047857;
+  background: var(--color-primary-100);
+  color: var(--color-primary-700);
 }
 .mdesc {
-  font-size: 12px;
-  color: #6b7280;
+  font-size: var(--text-xs);
+  color: var(--c-text-secondary);
   line-height: 1.6;
 }
 
 /* ── 标题 & 内联标签 ── */
 .sub-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: #374151;
+  font-size: var(--text-xs);
+  font-weight: var(--font-bold);
+  color: var(--c-text-base);
   margin: 10px 0 6px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -875,15 +847,15 @@ code {
 .itags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 4px;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
 }
 .itag {
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 3px 9px;
-  border-radius: 20px;
-  background: #f3f4f6;
-  border: 1px solid #e5e7eb;
-  color: #374151;
+  border-radius: var(--radius-full);
+  background: var(--c-bg-muted);
+  border: 1px solid var(--c-border);
+  color: var(--c-text-base);
 }
 </style>

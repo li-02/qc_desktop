@@ -25,7 +25,8 @@ const columnNames = computed(() => {
   // 精确匹配（大小写不敏感）
   const exact = (names: string[]) => keys.find(k => names.some(n => k.toLowerCase() === n.toLowerCase()));
   // 前缀匹配（大小写不敏感），用于 REddyProc 输出列名如 GPP_f, Reco_DT 等
-  const prefix = (prefixes: string[]) => keys.find(k => prefixes.some(p => k.toLowerCase().startsWith(p.toLowerCase())));
+  const prefix = (prefixes: string[]) =>
+    keys.find(k => prefixes.some(p => k.toLowerCase().startsWith(p.toLowerCase())));
   return {
     time: exact(["record_time", "datetime", "timestamp", "date", "time"]) || keys[0],
     gpp: exact(["gpp", "gpp_nt_vut_ref", "gpp_dt_vut_ref", "gpp_f", "gpp_dt_f"]) || prefix(["GPP_"]) || "gpp",
@@ -47,7 +48,7 @@ const loadDataFromFile = async (filePath: string) => {
   loading.value = true;
   errorMsg.value = "";
   noValidData.value = false;
-  console.log('[FluxCharts] 开始加载文件:', filePath);
+  console.log("[FluxCharts] 开始加载文件:", filePath);
   try {
     const resp = await window.electronAPI.invoke(API_ROUTES.FILES.READ_CSV_DATA, { filePath });
     if (!resp?.success) throw new Error(resp?.error || "读取失败");
@@ -67,7 +68,7 @@ const loadDataFromFile = async (filePath: string) => {
 
 watch(
   () => props.filePath,
-  (fp) => {
+  fp => {
     if (fp) loadDataFromFile(fp);
   },
   { immediate: true }
@@ -98,7 +99,9 @@ let temperatureChart: echarts.ECharts | null = null;
 const carbonBalance = computed(() => {
   if (!effectiveData.value?.length) return null;
   const { gpp: gppCol, reco: recoCol, nee: neeCol } = columnNames.value;
-  let gppSum = 0, recoSum = 0, neeSum = 0;
+  let gppSum = 0,
+    recoSum = 0,
+    neeSum = 0;
   let count = 0;
 
   for (const row of effectiveData.value) {
@@ -121,7 +124,7 @@ const carbonBalance = computed(() => {
   const gppTotal = gppSum;
   const recoTotal = recoSum;
   const neeTotal = neeSum;
-  const cue = gppTotal > 0 ? (1 - recoTotal / gppTotal) : 0;
+  const cue = gppTotal > 0 ? 1 - recoTotal / gppTotal : 0;
   const gppRecoRatio = recoTotal !== 0 ? gppTotal / recoTotal : 0;
 
   return {
@@ -151,8 +154,8 @@ const parseData = () => {
   const data = effectiveData.value;
   if (data.length > 0) {
     const sampleKeys = Object.keys(data[0]);
-    console.log('[FluxCharts] 数据列:', sampleKeys.join(', '));
-    console.log('[FluxCharts] 检测到列映射:', { time: timeCol, gpp: gppCol, reco: recoCol, nee: neeCol });
+    console.log("[FluxCharts] 数据列:", sampleKeys.join(", "));
+    console.log("[FluxCharts] 检测到列映射:", { time: timeCol, gpp: gppCol, reco: recoCol, nee: neeCol });
   }
 
   for (const row of data) {
@@ -178,8 +181,10 @@ const parseData = () => {
 
   noValidData.value = data.length > 0 && times.length === 0;
   if (noValidData.value) {
-    const sampleKeys = data[0] ? Object.keys(data[0]).join(', ') : 'N/A';
-    console.warn(`[FluxCharts] 数据有 ${data.length} 行但无有效解析行。列名: ${sampleKeys}，期望: time=${timeCol}, gpp=${gppCol}, reco=${recoCol}, nee=${neeCol}`);
+    const sampleKeys = data[0] ? Object.keys(data[0]).join(", ") : "N/A";
+    console.warn(
+      `[FluxCharts] 数据有 ${data.length} 行但无有效解析行。列名: ${sampleKeys}，期望: time=${timeCol}, gpp=${gppCol}, reco=${recoCol}, nee=${neeCol}`
+    );
   }
 
   return { times, gpps, recos, nees, rgs, tairs };
@@ -501,10 +506,10 @@ const renderCumulative = () => {
                   xAxis: turningPoint.doy,
                   label: {
                     formatter: `碳汇转折点\nDOY ${turningPoint.doy}`,
-                    color: "#10b981",
+                    color: "#2d6a4f",
                     fontSize: 11,
                   },
-                  lineStyle: { color: "#10b981", type: "dashed", width: 1.5 },
+                  lineStyle: { color: "#2d6a4f", type: "dashed", width: 1.5 },
                 },
               ],
             }
@@ -626,15 +631,16 @@ const fitMichaelisMenten = (data: [number, number][]): [number, number][] => {
   // 简单梯度下降
   const lr = 0.00001;
   for (let iter = 0; iter < 200; iter++) {
-    let dGpMax = 0, dAlpha = 0;
+    let dGpMax = 0,
+      dAlpha = 0;
     for (const [par, gppObs] of data) {
       const denom = alpha * par + gpMax;
       if (denom === 0) continue;
       const gppPred = (alpha * par * gpMax) / denom;
       const err = gppPred - gppObs;
       // 偏导
-      dGpMax += err * (alpha * par * alpha * par) / (denom * denom);
-      dAlpha += err * (par * gpMax * gpMax) / (denom * denom);
+      dGpMax += (err * (alpha * par * alpha * par)) / (denom * denom);
+      dAlpha += (err * (par * gpMax * gpMax)) / (denom * denom);
     }
     gpMax -= lr * dGpMax;
     alpha -= lr * dAlpha;
@@ -744,11 +750,13 @@ const fitLloydTaylor = (data: [number, number][]): [number, number][] => {
   const Tref = 283.15; // K (10°C)
 
   // 过滤有效数据
-  const validData = data.filter(([t, r]) => (t + 273.15) > T0 + 1 && r > 0);
+  const validData = data.filter(([t, r]) => t + 273.15 > T0 + 1 && r > 0);
   if (validData.length < 5) return [];
 
   // 网格搜索参数
-  let bestRref = 1, bestE0 = 100, bestErr = Infinity;
+  let bestRref = 1,
+    bestE0 = 100,
+    bestErr = Infinity;
   for (let rref = 0.5; rref <= 30; rref += 0.5) {
     for (let e0 = 50; e0 <= 400; e0 += 10) {
       let err = 0;
@@ -863,15 +871,15 @@ onBeforeUnmount(() => {
       <div class="balance-grid">
         <div class="balance-item">
           <span class="balance-label">年 GPP 总量</span>
-          <span class="balance-value" style="color: #22c55e">{{ carbonBalance.gppTotal }}</span>
+          <span class="balance-value" style="color: var(--c-success)">{{ carbonBalance.gppTotal }}</span>
         </div>
         <div class="balance-item">
           <span class="balance-label">年 Reco 总量</span>
-          <span class="balance-value" style="color: #ef4444">{{ carbonBalance.recoTotal }}</span>
+          <span class="balance-value" style="color: var(--c-danger)">{{ carbonBalance.recoTotal }}</span>
         </div>
         <div class="balance-item">
           <span class="balance-label">年 NEE 总量</span>
-          <span class="balance-value" :style="{ color: carbonBalance.isSink ? '#3b82f6' : '#f97316' }">
+          <span class="balance-value" :style="{ color: carbonBalance.isSink ? 'var(--c-info)' : 'var(--c-warning)' }">
             {{ carbonBalance.neeTotal }}
           </span>
         </div>
@@ -885,7 +893,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="balance-item">
           <span class="balance-label">数据点数</span>
-          <span class="balance-value" style="color: #64748b">{{ carbonBalance.dataPoints }}</span>
+          <span class="balance-value" style="color: var(--c-text-muted)">{{ carbonBalance.dataPoints }}</span>
         </div>
       </div>
     </div>
@@ -948,15 +956,29 @@ onBeforeUnmount(() => {
       <div v-if="loading" class="chart-loading">
         <span>加载数据中...</span>
       </div>
-      <div v-else-if="errorMsg" class="chart-loading" style="color: #ef4444">
+      <div v-else-if="errorMsg" class="chart-loading chart-loading--error">
         <span>{{ errorMsg }}</span>
       </div>
       <!-- 列名不匹配提示 -->
       <div v-if="noValidData" class="chart-placeholder">
+        <div class="no-data-hint">
+          <p class="no-data-title">⚠️ 未找到匹配的 GPP / Reco / NEE 列</p>
+          <p class="no-data-detail">
+            数据列: {{ effectiveData.length ? Object.keys(effectiveData[0]).join(", ") : "-" }}
+          </p>
+          <p class="no-data-detail">期望列名: gpp / GPP_f / GPP_NT_VUT_REF, reco / Reco / Reco_DT, nee / co2_flux</p>
+        </div>
+      </div>
+      <!-- 列名不匹配提示 -->
+      <div v-if="noValidData" class="chart-placeholder">
         <div style="text-align: center; padding: 40px; color: #94a3b8">
-          <p style="font-size: 14px; margin-bottom: 8px">⚠️ 未找到匹配的 GPP / Reco / NEE 列</p>
-          <p style="font-size: 12px; color: #94a3b8">数据列: {{ effectiveData.length ? Object.keys(effectiveData[0]).join(', ') : '-' }}</p>
-          <p style="font-size: 12px; color: #94a3b8">期望列名: gpp / GPP_f / GPP_NT_VUT_REF, reco / Reco / Reco_DT, nee / co2_flux</p>
+          <p style="font-size: var(--text-md); margin-bottom: 8px">⚠️ 未找到匹配的 GPP / Reco / NEE 列</p>
+          <p style="font-size: var(--text-sm); color: #94a3b8">
+            数据列: {{ effectiveData.length ? Object.keys(effectiveData[0]).join(", ") : "-" }}
+          </p>
+          <p style="font-size: var(--text-sm); color: #94a3b8">
+            期望列名: gpp / GPP_f / GPP_NT_VUT_REF, reco / Reco / Reco_DT, nee / co2_flux
+          </p>
         </div>
       </div>
       <div v-show="activeTab === 'timeseries' && !noValidData" ref="timeseriesRef" class="chart-canvas"></div>
@@ -980,15 +1002,15 @@ onBeforeUnmount(() => {
 .flux-charts-container {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   width: 100%;
 }
 
 /* ==================== 碳平衡汇总卡片 ==================== */
 .carbon-balance-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   padding: 16px 20px;
 }
 
@@ -996,20 +1018,20 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
 
 .balance-header h3 {
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
-  color: #1e293b;
+  color: var(--c-text-base);
   margin: 0;
 }
 
 .balance-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .balance-item {
@@ -1017,22 +1039,22 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 4px;
   padding: 10px 12px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #f1f5f9;
+  background: var(--c-bg-muted);
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--c-border-subtle);
 }
 
 .balance-label {
-  font-size: 11px;
-  color: #64748b;
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
   font-weight: 500;
 }
 
 .balance-value {
-  font-size: 18px;
+  font-size: var(--text-2xl);
   font-weight: 700;
-  font-family: "Courier New", monospace;
-  color: #1e293b;
+  font-family: var(--font-mono);
+  color: var(--c-text-base);
 }
 
 /* ==================== 图表 Tab ==================== */
@@ -1040,8 +1062,8 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 4px;
   padding: 4px;
-  background: #f1f5f9;
-  border-radius: 8px;
+  background: var(--c-bg-subtle);
+  border-radius: var(--radius-panel);
   flex-wrap: wrap;
 }
 
@@ -1049,25 +1071,25 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 100px;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
-  color: #64748b;
+  color: var(--c-text-muted);
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
 }
 
 .chart-tab:hover:not(:disabled) {
-  color: #1e293b;
-  background: rgba(255, 255, 255, 0.6);
+  color: var(--c-text-base);
+  background: var(--c-bg-surface);
 }
 
 .chart-tab--active {
-  color: #1e293b;
-  background: #ffffff;
+  color: var(--c-text-base);
+  background: var(--c-bg-surface);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
@@ -1080,34 +1102,34 @@ onBeforeUnmount(() => {
 .granularity-switch {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .granularity-label {
-  font-size: 12px;
-  color: #64748b;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
 }
 
 .granularity-btn {
   padding: 4px 12px;
-  font-size: 12px;
-  color: #64748b;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  font-size: var(--text-sm);
+  color: var(--c-text-muted);
+  background: var(--c-bg-subtle);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .granularity-btn:hover {
-  color: #1e293b;
-  border-color: #cbd5e1;
+  color: var(--c-text-base);
+  border-color: var(--c-border-strong);
 }
 
 .granularity-btn--active {
-  color: #10b981;
-  background: #ecfdf5;
-  border-color: #86efac;
+  color: var(--c-brand);
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand-border);
 }
 
 /* ==================== 图表容器 ==================== */
@@ -1115,9 +1137,9 @@ onBeforeUnmount(() => {
   position: relative;
   width: 100%;
   min-height: 420px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
   overflow: hidden;
 }
 
@@ -1132,10 +1154,14 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--c-bg-surface);
   z-index: 10;
-  color: #64748b;
-  font-size: 14px;
+  color: var(--c-text-muted);
+  font-size: var(--text-base);
+}
+
+.chart-loading--error {
+  color: var(--c-danger);
 }
 
 .chart-placeholder {
@@ -1143,7 +1169,23 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #9ca3af;
-  font-size: 14px;
+  color: var(--c-text-disabled);
+  font-size: var(--text-base);
+}
+
+.no-data-hint {
+  text-align: center;
+  padding: 40px;
+}
+
+.no-data-title {
+  font-size: var(--text-base);
+  margin-bottom: var(--space-2);
+  color: var(--c-text-disabled);
+}
+
+.no-data-detail {
+  font-size: var(--text-sm);
+  color: var(--c-text-disabled);
 }
 </style>

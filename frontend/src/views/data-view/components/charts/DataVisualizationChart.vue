@@ -506,7 +506,7 @@ const getHistogramOption = (data: number[]) => {
         showDetail: false,
         filterMode: "empty",
         handleStyle: {
-          color: "#10b981",
+          color: "#2d6a4f",
           shadowBlur: 3,
           shadowColor: "rgba(0, 0, 0, 0.6)",
           shadowOffsetX: 2,
@@ -543,7 +543,7 @@ const getHistogramOption = (data: number[]) => {
         type: "bar",
         data: bins,
         itemStyle: {
-          color: "#10b981",
+          color: "#2d6a4f",
           borderColor: "#047857",
           borderWidth: 1,
         },
@@ -713,10 +713,10 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
         showDetail: false,
         throttle: 100, // 限制缩放频率
         handleStyle: {
-          color: "#10b981",
+          color: "#2d6a4f",
         },
         fillerColor: "rgba(16, 185, 129, 0.2)",
-        borderColor: "#10b981",
+        borderColor: "#2d6a4f",
       },
       {
         type: "slider", // 滑动条型数据区域缩放组件 - Y轴
@@ -730,10 +730,10 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
         showDetail: false,
         throttle: 100, // 限制缩放频率
         handleStyle: {
-          color: "#10b981",
+          color: "#2d6a4f",
         },
         fillerColor: "rgba(16, 185, 129, 0.2)",
-        borderColor: "#10b981",
+        borderColor: "#2d6a4f",
       },
     ],
     grid: {
@@ -773,11 +773,11 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
         large: sampledData.length > 1000, // 启用大数据优化
         largeThreshold: 1000, // 大数据阈值
         lineStyle: {
-          color: "#10b981",
+          color: "#2d6a4f",
           width: sampledData.length > 5000 ? 1 : 2, // 大数据集时使用细线
         },
         itemStyle: {
-          color: "#10b981",
+          color: "#2d6a4f",
         },
         emphasis: {
           disabled: sampledData.length > 3000, // 大数据集时禁用高亮效果
@@ -881,7 +881,7 @@ const getCdfOption = (data: number[]) => {
         height: 20,
         showDetail: false,
         handleStyle: {
-          color: "#10b981",
+          color: "#2d6a4f",
           shadowBlur: 3,
           shadowColor: "rgba(0, 0, 0, 0.6)",
           shadowOffsetX: 2,
@@ -921,11 +921,11 @@ const getCdfOption = (data: number[]) => {
         step: "end", // 阶梯状线条
         symbol: "none",
         lineStyle: {
-          color: "#10b981",
+          color: "#2d6a4f",
           width: 2,
         },
         itemStyle: {
-          color: "#10b981",
+          color: "#2d6a4f",
         },
         emphasis: {
           lineStyle: {
@@ -957,103 +957,189 @@ const getCdfOption = (data: number[]) => {
 const getHeatmapOption = (timeData: Array<{ time: string; value: number }>) => {
   if (timeData.length === 0) return null;
 
-  // 初始化聚合数组: 12个月 * 24小时
-  const aggregation = new Array(12).fill(0).map(() => new Array(24).fill(0).map(() => ({ sum: 0, count: 0 })));
+  // 找时间范围
+  const validItems = timeData.filter(item => !isNaN(new Date(item.time).getTime()));
+  if (validItems.length === 0) return null;
 
-  timeData.forEach(item => {
-    const date = new Date(item.time);
-    if (isNaN(date.getTime())) return;
+  const timestamps = validItems.map(item => new Date(item.time).getTime());
+  const minTs = Math.min(...timestamps);
+  const maxTs = Math.max(...timestamps);
 
-    const month = date.getMonth(); // 0-11
-    const hour = date.getHours(); // 0-23
+  // 按天×小时聚合：key = "YYYY-MM-DD", value = 24格 {sum, count}
+  const dayMap = new Map<string, Array<{ sum: number; count: number }>>();
 
-    aggregation[month][hour].sum += item.value;
-    aggregation[month][hour].count += 1;
+  validItems.forEach(item => {
+    const d = new Date(item.time);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const hour = d.getHours();
+    if (!dayMap.has(dateStr)) {
+      dayMap.set(
+        dateStr,
+        Array.from({ length: 24 }, () => ({ sum: 0, count: 0 }))
+      );
+    }
+    const slots = dayMap.get(dateStr)!;
+    slots[hour].sum += item.value;
+    slots[hour].count += 1;
   });
 
-  // 转换为 ECharts 需要的格式 [monthIndex, hourIndex, averageValue]
-  const data: [number, number, number][] = [];
-  let minVal = Infinity;
-  let maxVal = -Infinity;
-
-  for (let m = 0; m < 12; m++) {
-    for (let h = 0; h < 24; h++) {
-      const { sum, count } = aggregation[m][h];
-      if (count > 0) {
-        const avg = parseFloat((sum / count).toFixed(3));
-        data.push([h, m, avg]);
-        if (avg < minVal) minVal = avg;
-        if (avg > maxVal) maxVal = avg;
-      }
-    }
+  // 枚举从 minDate 到 maxDate 的所有天，建立 Y 轴桶
+  const dayBuckets: Array<{ dateStr: string; year: number; month: number; day: number }> = [];
+  const cur = new Date(minTs);
+  cur.setHours(0, 0, 0, 0);
+  const endDay = new Date(maxTs);
+  endDay.setHours(0, 0, 0, 0);
+  while (cur <= endDay) {
+    const y = cur.getFullYear();
+    const mo = cur.getMonth();
+    const d = cur.getDate();
+    const dateStr = `${y}-${String(mo + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    dayBuckets.push({ dateStr, year: y, month: mo, day: d });
+    cur.setDate(cur.getDate() + 1);
   }
 
-  // 如果没有数据，避免 min/max 为 Infinity
-  if (minVal === Infinity) minVal = 0;
-  if (maxVal === -Infinity) maxVal = 100;
+  const isMultiYear = new Date(minTs).getFullYear() !== new Date(maxTs).getFullYear();
 
-  const months = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
-  const hours = Array.from({ length: 24 }, (_, i) => `${i}点`);
+  // 构建 Y 轴标签：只在每月第一天（或首个桶）处显示月份名
+  const yAxisLabels = dayBuckets.map((b, idx) => {
+    const isFirstDay = b.day === 1 || idx === 0;
+    if (!isFirstDay) return "";
+    if (isMultiYear && (b.month === 0 || idx === 0)) {
+      return `{year|${b.year}}\n{month|${b.month + 1}月}`;
+    }
+    return `${b.month + 1}月`;
+  });
+
+  // 构建 heatmap 数据：[hourIndex, dayIndex, avgValue]，只加入有数据的格子
+  const heatmapData: [number, number, number][] = [];
+  let globalMin = Infinity;
+  let globalMax = -Infinity;
+
+  dayBuckets.forEach((b, dayIdx) => {
+    const slots = dayMap.get(b.dateStr);
+    if (!slots) return;
+    for (let h = 0; h < 24; h++) {
+      const { sum, count } = slots[h];
+      if (count > 0) {
+        const avg = parseFloat((sum / count).toFixed(4));
+        heatmapData.push([h, dayIdx, avg]);
+        if (avg < globalMin) globalMin = avg;
+        if (avg > globalMax) globalMax = avg;
+      }
+    }
+  });
+
+  if (heatmapData.length === 0) return null;
+  if (globalMin === Infinity) globalMin = 0;
+  if (globalMax === -Infinity) globalMax = 1;
+
+  const hours = Array.from({ length: 24 }, (_, i) => `${i}:00`);
+
+  // 动态高度：每天 4px，最小 300px，最大 900px
+  const rowHeight = 4;
+  const chartHeight = Math.min(900, Math.max(300, dayBuckets.length * rowHeight + 120));
+
+  const rich = isMultiYear
+    ? {
+        year: { color: "#374151", fontSize: 11, fontWeight: "bold", lineHeight: 16 },
+        month: { color: "#6b7280", fontSize: 12, lineHeight: 16 },
+      }
+    : undefined;
 
   return {
     title: {
-      text: `${props.selectedColumn} 月份-小时热力图`,
+      text: `${props.selectedColumn} 日期-小时热力图`,
       left: "center",
-      textStyle: {
-        fontSize: 16,
-        fontWeight: "bold",
-      },
+      textStyle: { fontSize: 16, fontWeight: "bold" },
     },
     tooltip: {
       position: "top",
       formatter: function (params: any) {
-        return `${months[params.value[1]]} ${hours[params.value[0]]}<br />平均值: ${params.value[2]}`;
+        const bucket = dayBuckets[params.value[1]];
+        const dateLabel = bucket
+          ? isMultiYear
+            ? `${bucket.year}年${bucket.month + 1}月${bucket.day}日`
+            : `${bucket.month + 1}月${bucket.day}日`
+          : "";
+        return `${dateLabel} ${params.value[0]}:00<br />${props.selectedColumn}: <b>${params.value[2]}</b>`;
       },
     },
     toolbox: getCommonToolbox(),
     grid: {
-      height: "70%",
-      top: "10%",
-      left: "10%",
-      right: "10%",
+      top: 60,
+      bottom: 80,
+      left: 70,
+      right: 100,
+      height: `${chartHeight - 140}px`,
     },
     xAxis: {
       type: "category",
       data: hours,
-      splitArea: {
-        show: true,
-      },
+      name: "时间",
+      nameLocation: "middle",
+      nameGap: 30,
+      nameTextStyle: { color: "#374151", fontSize: 13, fontWeight: "bold" },
+      axisLine: { lineStyle: { color: "#d1d5db" } },
+      axisTick: { show: true, lineStyle: { color: "#d1d5db" } },
+      axisLabel: { color: "#6b7280", interval: 1 },
+      splitArea: { show: false },
     },
     yAxis: {
       type: "category",
-      data: months,
-      splitArea: {
-        show: true,
+      data: yAxisLabels,
+      name: "月",
+      nameLocation: "middle",
+      nameGap: 45,
+      nameRotate: 0,
+      nameTextStyle: { color: "#374151", fontSize: 13, fontWeight: 500 },
+      inverse: false,
+      axisLine: { lineStyle: { color: "#d1d5db" } },
+      axisTick: { show: true, lineStyle: { color: "#d1d5db" } },
+      axisLabel: {
+        color: "#6b7280",
+        interval: (index: number) => yAxisLabels[index] !== "",
+        ...(rich ? { rich } : {}),
       },
+      splitArea: { show: false },
     },
     visualMap: {
-      min: minVal,
-      max: maxVal,
+      min: globalMin,
+      max: globalMax,
       calculable: true,
       orient: "horizontal",
       left: "center",
-      bottom: "5%",
+      bottom: 10,
+      text: [String(globalMax.toFixed(2)), String(globalMin.toFixed(2))],
+      textStyle: { color: "#6b7280", fontSize: 11 },
+      // 蓝→青→绿→黄→橙→红 全光谱渐变，契合参考图二风格
       inRange: {
-        color: ["#f6efa6", "#d88273", "#bf444c"], // 经典热力图配色
+        color: [
+          "#313695",
+          "#4575b4",
+          "#74add1",
+          "#abd9e9",
+          "#e0f3f8",
+          "#ffffbf",
+          "#fee090",
+          "#fdae61",
+          "#f46d43",
+          "#d73027",
+          "#a50026",
+        ],
       },
     },
     series: [
       {
-        name: "Heatmap",
+        name: props.selectedColumn,
         type: "heatmap",
-        data: data,
-        label: {
-          show: false,
-        },
+        data: heatmapData,
+        label: { show: false },
         emphasis: {
           itemStyle: {
             shadowBlur: 10,
-            shadowColor: "rgba(0, 0, 0, 0.5)",
+            shadowColor: "rgba(0,0,0,0.4)",
+            borderColor: "#333",
+            borderWidth: 1,
           },
         },
       },
@@ -1219,6 +1305,17 @@ const updateChart = () => {
       return;
     }
 
+    // 热力图：根据 Y 轴天数动态调整容器高度
+    if (props.chartType === "heatmap" && chartContainer.value) {
+      const yData: any[] = (option as any).yAxis?.data || [];
+      const dayCount = yData.length;
+      if (dayCount > 0) {
+        const h = Math.min(900, Math.max(300, dayCount * 4 + 120));
+        chartContainer.value.style.height = `${h}px`;
+        if (chartInstance) chartInstance.resize();
+      }
+    }
+
     console.log("设置图表配置:", option);
 
     // 根据数据量选择更新策略
@@ -1353,13 +1450,13 @@ onBeforeUnmount(() => {
 
 /* 全屏模式样式 */
 .chart-visualization:fullscreen {
-  background-color: #ffffff;
-  padding: 20px;
+  background-color: var(--c-bg-surface);
+  padding: var(--space-5);
 }
 
 .chart-visualization.fullscreen-mode {
-  background-color: #ffffff;
-  padding: 20px;
+  background-color: var(--c-bg-surface);
+  padding: var(--space-5);
 }
 
 .chart-visualization:fullscreen .chart-container {
@@ -1378,7 +1475,7 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   min-height: 500px;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   overflow: hidden;
 }
 
@@ -1387,34 +1484,34 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  color: #6b7280;
+  color: var(--c-text-secondary);
 }
 
 .loading-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid #e5e7eb;
-  border-top: 3px solid #10b981;
-  border-radius: 50%;
+  border: 3px solid var(--c-border);
+  border-top: 3px solid var(--c-brand);
+  border-radius: var(--radius-full);
   animation: spin 1s linear infinite;
 }
 
 .loading-text {
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 .chart-placeholder {
   text-align: center;
-  color: #6b7280;
+  color: var(--c-text-secondary);
 }
 
 .placeholder-icon {
-  font-size: 48px;
+  font-size: var(--text-display-lg);
   margin-bottom: 12px;
 }
 
 .placeholder-text {
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 /* 全屏提示样式 */
@@ -1427,8 +1524,8 @@ onBeforeUnmount(() => {
   background: rgba(0, 0, 0, 0.8);
   color: white;
   padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--radius-control);
+  font-size: var(--text-sm);
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.3s ease;

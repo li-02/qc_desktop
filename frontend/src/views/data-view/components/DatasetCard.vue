@@ -1,13 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { formatLocalWithTZ } from '@/utils/timeUtils';
+import { formatLocalWithTZ } from "@/utils/timeUtils";
 import { ElMessage } from "element-plus";
-import {
-  DataAnalysis,
-  Document,
-  DocumentCopy,
-  DocumentDelete,
-} from "@element-plus/icons-vue";
+import { BarChart2, FileText, Copy, FileX, FolderOpen, RefreshCw } from "lucide-vue-next";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 
 const datasetStore = useDatasetStore();
@@ -24,9 +19,6 @@ const isDataReady = computed(() => {
   );
 });
 
-
-
-
 // Methods
 const formatDate = (timestamp: number): string => {
   if (!timestamp) return "未知";
@@ -36,12 +28,10 @@ const formatDate = (timestamp: number): string => {
 const formatFileSize = (sizeStr: string | number): string => {
   if (!sizeStr) return "未知";
 
-  // 如果已经是格式化的字符串，直接返回
   if (typeof sizeStr === "string" && sizeStr.includes("B")) {
     return sizeStr;
   }
 
-  // 如果是数字，进行格式化
   const size = typeof sizeStr === "string" ? parseInt(sizeStr) : sizeStr;
   if (isNaN(size)) return "未知";
   if (size < 1024) return `${size} B`;
@@ -49,7 +39,6 @@ const formatFileSize = (sizeStr: string | number): string => {
   if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
   return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 };
-
 
 const getDatasetTypeLabel = (type: string): string => {
   if (!type) return "未知";
@@ -85,28 +74,23 @@ const copyFilePath = async () => {
     ElMessage.error("复制失败");
   }
 };
-
 </script>
 
 <template>
   <div class="dataset-card">
-    <!-- 数据集信息容器 -->
     <div class="dataset-container">
       <!-- 数据集图标 -->
       <div class="dataset-icon-wrapper">
-        <el-icon class="dataset-icon">
-          <DataAnalysis />
-        </el-icon>
+        <BarChart2 :size="24" class="dataset-icon" />
       </div>
 
       <!-- 数据集详细信息 -->
       <div class="dataset-content">
         <!-- 标题行 -->
         <div class="dataset-header">
-          <!-- 数据集名称 -->
           <div class="dataset-title-section">
             <div v-if="datasetStore.loading" class="loading-title">
-              <el-skeleton-item variant="text" style="width: 200px; height: 28px" />
+              <el-skeleton-item variant="text" style="width: 200px; height: 24px" />
               <el-skeleton-item variant="button" style="width: 60px; height: 20px" />
             </div>
             <div v-else-if="datasetInfo" class="title-group">
@@ -128,43 +112,31 @@ const copyFilePath = async () => {
               <el-skeleton-item variant="text" style="width: 120px; height: 14px" />
             </div>
             <div v-else-if="datasetInfo.updatedAt" class="meta-item">
-              <el-icon class="meta-icon update-icon">
-                <Refresh />
-              </el-icon>
+              <RefreshCw :size="12" class="meta-icon update-icon" />
               <span class="meta-text">{{ formatDate(datasetInfo.updatedAt) }}</span>
             </div>
           </div>
         </div>
 
-        <!-- 文件信息 - 文件大小和路径同行显示 -->
+        <!-- 文件信息 -->
         <div v-if="isDataReady && datasetInfo" class="file-info-section">
-          <!-- 文件大小 -->
           <div class="file-size-info">
-            <el-icon class="stat-icon">
-              <Document />
-            </el-icon>
+            <FileText :size="12" class="stat-icon" />
             <span class="stat-value">{{ formatFileSize(datasetInfo.originalFile.size) }}</span>
           </div>
-          
-          <!-- 文件路径 -->
+
           <div v-if="datasetInfo.originalFile.filePath" class="file-path-info">
-            <el-icon class="path-icon">
-              <FolderOpened />
-            </el-icon>
+            <FolderOpen :size="12" class="path-icon" />
             <code class="file-path">{{ datasetInfo.originalFile.filePath }}</code>
             <el-button text size="small" @click="copyFilePath" class="copy-btn">
-              <el-icon>
-                <DocumentCopy />
-              </el-icon>
+              <Copy :size="12" />
             </el-button>
           </div>
         </div>
 
         <!-- 无数据提示 -->
         <div v-if="!datasetStore.loading && !datasetInfo" class="empty-section">
-          <el-icon class="empty-icon">
-            <DocumentDelete />
-          </el-icon>
+          <FileX :size="32" class="empty-icon" />
           <span class="empty-text">请从左侧选择一个数据集</span>
         </div>
       </div>
@@ -173,59 +145,56 @@ const copyFilePath = async () => {
 </template>
 
 <style scoped>
-/* 主容器 */
 .dataset-card {
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(229, 231, 235, 0.4);
-  border-radius: 12px;
-  padding: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  backdrop-filter: blur(10px);
-  transition: all 0.3s ease;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--card-radius);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition-base);
 }
 
 .dataset-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  border-color: rgba(139, 92, 246, 0.3);
+  box-shadow: var(--shadow-md);
+  border-color: var(--c-brand-border);
 }
 
 .dataset-container {
   display: flex;
   align-items: flex-start;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
-/* 数据集图标 */
+/* 图标 */
 .dataset-icon-wrapper {
-  width: 48px;
-  height: 48px;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  background: var(--c-brand);
+  border-radius: var(--radius-panel);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+  box-shadow: var(--shadow-brand);
 }
 
 .dataset-icon {
-  font-size: 20px;
-  color: white;
+  font-size: var(--text-3xl);
+  color: var(--c-text-inverse);
 }
 
-/* 数据集内容 */
+/* 内容区 */
 .dataset-content {
   flex: 1;
   min-width: 0;
 }
 
-/* 标题部分 */
 .dataset-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
-  gap: 16px;
+  margin-bottom: var(--space-3);
+  gap: var(--space-4);
 }
 
 .dataset-title-section {
@@ -236,20 +205,20 @@ const copyFilePath = async () => {
 .loading-title {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .title-group {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .dataset-title {
-  font-size: 20px;
-  font-weight: 600;
-  color: #1f2937;
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--c-text-primary);
   margin: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -259,122 +228,108 @@ const copyFilePath = async () => {
 
 .dataset-type-tag {
   text-transform: uppercase;
-  font-weight: 500;
+  font-weight: var(--font-medium);
   letter-spacing: 0.5px;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .no-dataset {
   display: flex;
   align-items: center;
-  gap: 12px;
 }
 
 .no-dataset-title {
-  font-size: 20px;
-  font-weight: 600;
-  color: #9ca3af;
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--c-text-disabled);
   margin: 0;
 }
 
-/* 元数据部分 */
+/* 元数据 */
 .dataset-meta-section {
   flex-shrink: 0;
 }
 
 .loading-meta {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .meta-item {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: #6b7280;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--c-text-secondary);
 }
 
 .meta-icon {
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 .update-icon {
-  color: #3b82f6;
+  color: var(--c-info);
 }
 
 .meta-text {
   white-space: nowrap;
 }
 
-/* 文件信息 - 文件大小和路径同行显示 */
+/* 文件信息栏 */
 .file-info-section {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
-  font-size: 12px;
-  color: #6b7280;
-  background: rgba(249, 250, 251, 0.6);
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(229, 231, 235, 0.3);
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--c-text-secondary);
+  background: var(--c-bg-muted);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--c-border-subtle);
 }
 
 .file-size-info {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1);
   flex-shrink: 0;
 }
 
 .file-path-info {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1);
   flex: 1;
   min-width: 0;
 }
 
 .stat-icon {
-  color: #6b7280;
-  font-size: 14px;
+  color: var(--c-text-muted);
+  font-size: var(--text-sm);
   flex-shrink: 0;
 }
 
 .stat-value {
-  font-weight: 500;
-  color: #374151;
+  font-weight: var(--font-medium);
+  color: var(--c-text-base);
   white-space: nowrap;
 }
 
-/* 数据质量样式 */
-.quality-excellent {
-  color: #059669;
-}
-
-.quality-good {
-  color: #d97706;
-}
-
-.quality-poor {
-  color: #dc2626;
-}
-
 .path-icon {
-  color: #6b7280;
-  font-size: 12px;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
   flex-shrink: 0;
 }
 
 .file-path {
-  background: rgba(229, 231, 235, 0.3);
-  padding: 2px 6px;
-  border-radius: 3px;
-  color: #374151;
-  font-family: "Consolas", "Monaco", monospace;
-  font-size: 10px;
+  background: var(--c-bg-elevated);
+  padding: 2px var(--space-1);
+  border-radius: var(--radius-sm);
+  color: var(--c-text-base);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
@@ -384,13 +339,13 @@ const copyFilePath = async () => {
 
 .copy-btn {
   padding: 2px;
-  color: #6b7280;
-  transition: color 0.2s ease;
+  color: var(--c-text-muted);
+  transition: color var(--transition-fast);
   min-height: auto;
 }
 
 .copy-btn:hover {
-  color: #059669;
+  color: var(--c-brand);
 }
 
 /* 空状态 */
@@ -398,54 +353,53 @@ const copyFilePath = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  color: #9ca3af;
-  text-align: center;
-  padding: 16px;
+  gap: var(--space-2);
+  color: var(--c-text-disabled);
+  padding: var(--space-4);
 }
 
 .empty-icon {
-  font-size: 20px;
-  color: #d1d5db;
+  font-size: var(--text-3xl);
+  color: var(--c-border-strong);
 }
 
 .empty-text {
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
-/* 响应式处理 */
+/* 响应式 */
 @media (max-width: 768px) {
   .dataset-card {
-    padding: 12px;
+    padding: var(--space-3);
   }
 
   .dataset-container {
-    gap: 12px;
+    gap: var(--space-3);
   }
 
   .dataset-icon-wrapper {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
   }
 
   .dataset-icon {
-    font-size: 16px;
+    font-size: var(--text-xl);
   }
 
   .dataset-header {
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
     align-items: flex-start;
   }
 
   .dataset-title {
-    font-size: 18px;
+    font-size: var(--text-lg);
     max-width: none;
   }
 
   .file-info-section {
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
     align-items: flex-start;
   }
 
@@ -458,7 +412,6 @@ const copyFilePath = async () => {
   }
 }
 
-/* 微动画 */
 @keyframes fadeIn {
   from {
     opacity: 0;

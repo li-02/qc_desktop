@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DatasetVersionInfo } from "@shared/types/projectInterface";
 import { translateRemark } from "@/utils/versionUtils";
-import { Download, Check, Timer } from "@element-plus/icons-vue";
+import { Download, Check, Clock } from "lucide-vue-next";
 
 // Tree Node Interface defined in parent, repeated here for type safety if needed,
 // or just use 'any' for the recursive prop if strict types are hard to share without a common file.
@@ -26,13 +26,13 @@ defineEmits<{
 const getStageColor = (stage: string) => {
   switch (stage) {
     case "RAW":
-      return "#909399"; // Info/Gray
+      return "var(--color-neutral-400)";
     case "FILTERED":
-      return "#e6a23c"; // Warning/Orange
+      return "var(--color-amber-500)";
     case "QC":
-      return "#67c23a"; // Success/Green
+      return "var(--c-brand)";
     default:
-      return "#409eff"; // Primary/Blue
+      return "var(--color-blue-500)";
   }
 };
 
@@ -66,7 +66,7 @@ const formatTime = (timestamp: number) => {
             {{ getStageLabel(node.data.stageType) }}
           </el-tag>
           <span class="version-id">#{{ node.id }}</span>
-          <el-icon v-if="node.isCurrent" class="current-icon"><Check /></el-icon>
+          <Check v-if="node.isCurrent" :size="14" class="current-icon" />
         </div>
 
         <div class="node-info">
@@ -74,7 +74,7 @@ const formatTime = (timestamp: number) => {
             {{ translateRemark(node.data.remark) || "无备注" }}
           </div>
           <div class="info-row time">
-            <el-icon><Timer /></el-icon>
+            <Clock :size="12" />
             {{ formatTime(node.data.createdAt) }}
           </div>
         </div>
@@ -87,7 +87,7 @@ const formatTime = (timestamp: number) => {
 
           <div class="secondary-actions">
             <el-button link size="small" @click.stop="$emit('export', node.id)">
-              <el-icon><Download /></el-icon>
+              <Download :size="14" />
             </el-button>
             <!-- Delete button reserved for future use or strict permissions -->
             <!-- <el-button link type="danger" size="small" @click.stop="$emit('delete', node.id)">
@@ -125,26 +125,26 @@ const formatTime = (timestamp: number) => {
 
 .node-card {
   position: relative;
-  background: white;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  margin-bottom: 12px;
-  transition: all 0.2s;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-card);
+  margin-bottom: var(--space-3);
+  transition: var(--transition-base);
   cursor: pointer;
   overflow: hidden;
   display: flex;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-xs);
 }
 
 .node-card:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
-  border-color: var(--el-color-primary-light-7);
+  box-shadow: var(--shadow-sm);
+  border-color: var(--c-brand-border);
 }
 
 .node-card.is-current {
-  border-color: var(--el-color-primary);
-  background-color: var(--el-color-primary-light-9);
+  border-color: var(--c-brand);
+  background-color: var(--c-brand-soft);
 }
 
 .node-status-line {
@@ -154,47 +154,47 @@ const formatTime = (timestamp: number) => {
 
 .node-main {
   flex: 1;
-  padding: 10px 12px;
+  padding: var(--space-2) var(--space-3);
 }
 
 .node-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
 }
 
 .version-id {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  font-family: monospace;
+  font-size: var(--text-xs);
+  color: var(--c-text-secondary);
+  font-family: var(--font-mono);
 }
 
 .current-icon {
-  color: var(--el-color-primary);
+  color: var(--c-brand);
   margin-left: auto;
 }
 
 .node-info {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 
 .info-row {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--el-text-color-regular);
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--c-text-base);
   margin-bottom: 2px;
 }
 
 .info-row.time {
-  color: var(--el-text-color-secondary);
-  font-size: 11px;
+  color: var(--c-text-secondary);
+  font-size: var(--text-2xs);
 }
 
 .remark {
-  font-weight: 500;
+  font-weight: var(--font-medium);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -205,27 +205,27 @@ const formatTime = (timestamp: number) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px dashed var(--el-border-color-lighter);
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px dashed var(--c-border);
 }
 
 .current-text {
-  font-size: 11px;
-  color: var(--el-color-primary);
-  font-weight: bold;
+  font-size: var(--text-xs);
+  color: var(--c-brand);
+  font-weight: var(--font-bold);
 }
 
 .secondary-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 /* Branch Logic */
 .node-children {
-  margin-left: 20px; /* Indent */
+  margin-left: 20px;
   padding-left: 12px;
-  border-left: 2px dashed var(--el-border-color-light);
+  border-left: 2px dashed var(--c-border);
   position: relative;
 }
 
@@ -233,9 +233,9 @@ const formatTime = (timestamp: number) => {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -11px; /* Adjust based on padding */
+  left: -11px;
   width: 1px;
-  background-color: var(--el-border-color-light);
+  background-color: var(--c-border);
 }
 
 .children-list {

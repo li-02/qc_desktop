@@ -3,13 +3,11 @@ import { ref, computed, watch } from "vue";
 import { ElMessage } from "element-plus";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import DataOverviewPanel from "./panels/DataOverviewPanel.vue";
-import CorrelationAnalysisPanel from "./panels/CorrelationAnalysisPanel.vue";
 import OutlierDetectionPanel from "./panels/OutlierDetectionPanel.vue";
 import MissingValuePanel from "./panels/GapFillingPanel.vue";
 import FluxPartitioningPanel from "./panels/FluxPartitioningPanel.vue";
 import ExportDataPanel from "./panels/ExportDataPanel.vue";
 
-// Props
 interface Props {
   datasetInfo?: DatasetInfo | null;
   contentLoading?: boolean;
@@ -23,7 +21,6 @@ const props = withDefaults(defineProps<Props>(), {
   defaultTab: "overview",
 });
 
-// Emits
 const emit = defineEmits<{
   tabChange: [tabId: string];
   refresh: [];
@@ -33,18 +30,10 @@ const emit = defineEmits<{
   exportData: [options: any];
 }>();
 
-// Reactive state
 const activeTab = ref(props.defaultTab);
 
-// Tab configuration
 const tabs = computed(() => [
-  {
-    id: "overview",
-    name: "数据概览",
-    icon: "📈",
-    disabled: false,
-    description: "查看数据集的基本统计信息和分布",
-  },
+  { id: "overview", name: "数据概览", icon: "📈", disabled: false, description: "查看数据集的基本统计信息和分布" },
   {
     id: "outlier",
     name: "异常值检测",
@@ -66,31 +55,15 @@ const tabs = computed(() => [
     disabled: !props.datasetInfo,
     description: "将NEE分解为GPP与Reco，ET分解为T与E",
   },
-  {
-    id: "correlation",
-    name: "相关性分析",
-    icon: "🔗",
-    disabled: !props.datasetInfo,
-    description: "分析变量间的相关性关系",
-  },
-  {
-    id: "export",
-    name: "导出数据",
-    icon: "📤",
-    disabled: !props.datasetInfo,
-    description: "导出处理后的数据文件",
-  },
+  { id: "export", name: "导出数据", icon: "📤", disabled: !props.datasetInfo, description: "导出处理后的数据文件" },
 ]);
 
-// Computed properties
-// Methods
 const switchTab = (tabId: string) => {
   const tab = tabs.value.find(t => t.id === tabId);
   if (tab?.disabled) {
     ElMessage.warning("请先选择一个数据集");
     return;
   }
-
   activeTab.value = tabId;
   emit("tabChange", tabId);
 };
@@ -100,20 +73,10 @@ const getTabDescription = (tabId: string) => {
   return tab?.description || "功能即将推出...";
 };
 
-// Event handlers
-const handleRefresh = () => {
-  emit("refresh");
-};
+const handleRefresh = () => emit("refresh");
+const handleStartOutlierDetection = (options: any) => emit("startOutlierDetection", options);
+const handleStartMissingValueImputation = (options: any) => emit("startMissingValueImputation", options);
 
-const handleStartOutlierDetection = (options: any) => {
-  emit("startOutlierDetection", options);
-};
-
-const handleStartMissingValueImputation = (options: any) => {
-  emit("startMissingValueImputation", options);
-};
-
-// Watch for dataset changes
 watch(
   () => props.datasetInfo,
   (newDataset, oldDataset) => {
@@ -124,35 +87,26 @@ watch(
   }
 );
 
-// Watch for defaultTab prop changes (e.g. async navigation from workflow)
 watch(
   () => props.defaultTab,
   newTab => {
     if (newTab && newTab !== activeTab.value) {
       const tab = tabs.value.find(t => t.id === newTab);
-      if (tab && !tab.disabled) {
-        activeTab.value = newTab;
-      }
+      if (tab && !tab.disabled) activeTab.value = newTab;
     }
   }
 );
 
-// Expose methods
-defineExpose({
-  switchTab,
-  activeTab: activeTab,
-});
+defineExpose({ switchTab, activeTab });
 </script>
 
 <template>
   <div class="data-analysis-tabs">
-    <!-- 选项卡导航 - 采用自然生态风格 -->
     <div class="tabs-header">
       <nav class="tabs-nav">
         <button
           v-for="tab in tabs"
           :key="tab.id"
-          @click="switchTab(tab.id)"
           :disabled="tab.disabled"
           :class="[
             'tab-button',
@@ -161,48 +115,22 @@ defineExpose({
               'tab-button--inactive': activeTab !== tab.id && !tab.disabled,
               'tab-button--disabled': tab.disabled,
             },
-          ]">
-          <!-- 图标容器 -->
-          <div class="tab-icon-container">
-            <span
-              class="tab-icon"
-              :class="{
-                'tab-icon--hover': !tab.disabled,
-                'tab-icon--active': activeTab === tab.id,
-              }">
-              {{ tab.icon }}
-            </span>
-
-            <!-- 激活状态的光晕效果 -->
-            <div v-if="activeTab === tab.id" class="tab-icon-glow"></div>
-          </div>
-
-          <!-- 标签文字 -->
+          ]"
+          @click="switchTab(tab.id)">
+          <span class="tab-icon">{{ tab.icon }}</span>
           <span class="tab-text">{{ tab.name }}</span>
-
-          <!-- 禁用状态遮罩 -->
           <div v-if="tab.disabled" class="tab-disabled-mask"></div>
         </button>
       </nav>
     </div>
 
-    <!-- 选项卡内容区域 -->
     <div class="tabs-content">
-      <!-- 数据概览 -->
       <div v-if="activeTab === 'overview'" class="tab-panel">
         <div class="panel-wrapper">
           <DataOverviewPanel :dataset-info="datasetInfo" :loading="contentLoading" @refresh="handleRefresh" />
         </div>
       </div>
 
-      <!-- 相关性分析 -->
-      <div v-else-if="activeTab === 'correlation'" class="tab-panel">
-        <div class="panel-wrapper">
-          <CorrelationAnalysisPanel :dataset-info="datasetInfo" :loading="contentLoading" @refresh="handleRefresh" />
-        </div>
-      </div>
-
-      <!-- 异常检测 -->
       <div v-else-if="activeTab === 'outlier'" class="tab-panel full-height-panel">
         <div class="panel-wrapper full-height-wrapper">
           <OutlierDetectionPanel
@@ -213,7 +141,6 @@ defineExpose({
         </div>
       </div>
 
-      <!-- 缺失值处理 -->
       <div v-else-if="activeTab === 'missing'" class="tab-panel full-height-panel">
         <div class="panel-wrapper full-height-wrapper">
           <MissingValuePanel
@@ -223,49 +150,29 @@ defineExpose({
         </div>
       </div>
 
-      <!-- 通量分割 -->
       <div v-else-if="activeTab === 'flux-partitioning'" class="tab-panel full-height-panel">
         <div class="panel-wrapper full-height-wrapper">
           <FluxPartitioningPanel :dataset-info="datasetInfo" :loading="contentLoading" @refresh="handleRefresh" />
         </div>
       </div>
 
-      <!-- 导出数据 -->
       <div v-else-if="activeTab === 'export'" class="tab-panel full-height-panel">
         <div class="panel-wrapper full-height-wrapper">
           <ExportDataPanel :dataset-info="datasetInfo" :loading="contentLoading" @refresh="handleRefresh" />
         </div>
       </div>
 
-      <!-- 开发中占位符 -->
       <div v-else class="tab-panel tab-panel--placeholder">
         <div class="placeholder-container">
-          <!-- 动态图标 -->
-          <div class="placeholder-icon">
-            <div class="placeholder-emoji">🚧</div>
-            <!-- 装饰性小点 -->
-            <div class="placeholder-dots">
-              <div class="placeholder-dot placeholder-dot--1"></div>
-              <div class="placeholder-dot placeholder-dot--2"></div>
-              <div class="placeholder-dot placeholder-dot--3"></div>
-            </div>
+          <div class="placeholder-emoji">🚧</div>
+          <div class="placeholder-dots">
+            <div class="placeholder-dot placeholder-dot--1"></div>
+            <div class="placeholder-dot placeholder-dot--2"></div>
+            <div class="placeholder-dot placeholder-dot--3"></div>
           </div>
-
-          <!-- 标题与描述 -->
-          <div class="placeholder-content">
-            <h3 class="placeholder-title">功能开发中</h3>
-            <div class="placeholder-divider"></div>
-            <p class="placeholder-description">{{ getTabDescription(activeTab) }}</p>
-          </div>
-
-          <!-- 装饰性元素 -->
-          <div class="placeholder-decoration">
-            <div class="decoration-dots">
-              <div class="decoration-dot decoration-dot--1"></div>
-              <div class="decoration-dot decoration-dot--2"></div>
-              <div class="decoration-dot decoration-dot--3"></div>
-            </div>
-          </div>
+          <h3 class="placeholder-title">功能开发中</h3>
+          <div class="placeholder-divider"></div>
+          <p class="placeholder-description">{{ getTabDescription(activeTab) }}</p>
         </div>
       </div>
     </div>
@@ -273,156 +180,92 @@ defineExpose({
 </template>
 
 <style scoped>
-/* 主容器 */
 .data-analysis-tabs {
-  background: white;
-  border-radius: 0;
-  box-shadow: none;
+  background: var(--c-bg-surface);
+  border-radius: var(--radius-panel);
   border: none;
   overflow: hidden;
-  height: 100%; /* 占满父容器 */
+  height: 100%;
   display: flex;
   flex-direction: column;
 }
 
-/* 选项卡头部 - 浮动工具栏风格 */
 .tabs-header {
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border-bottom: 1px solid rgba(229, 231, 235, 0.6);
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.04),
-    0 4px 12px rgba(0, 0, 0, 0.02);
-  padding: 9px 12px;
+  background: var(--c-bg-surface);
+  border-bottom: 1px solid var(--c-border);
+  box-shadow: var(--shadow-xs);
+  padding: 9px var(--space-3);
   position: relative;
   z-index: 20;
 }
 
 .tabs-nav {
   display: flex;
-  gap: 4px;
-  position: relative;
-  z-index: 1;
+  gap: var(--space-1);
   padding: 3px;
-  background: rgba(243, 244, 246, 0.6);
-  border-radius: 10px;
-  border: 1px solid rgba(229, 231, 235, 0.5);
+  background: var(--c-bg-muted);
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--c-border);
 }
 
-/* 选项卡按钮 - 紧凑胶囊风格 */
 .tab-button {
   position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
-  min-width: auto;
   justify-content: center;
-  padding: 12px 14px;
-  font-size: 13px;
-  font-weight: 500;
-  border-radius: 8px;
+  padding: var(--space-3) 14px;
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  border-radius: var(--radius-btn);
   border: 1px solid transparent;
-  transition: all 0.2s ease;
+  transition: var(--transition-fast);
   cursor: pointer;
   background: transparent;
   outline: none;
   white-space: nowrap;
+  color: var(--c-text-secondary);
 }
 
-.tab-button:hover {
-  transform: none;
-}
-
-/* 激活状态 */
 .tab-button--active {
-  background: white;
-  color: #059669;
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.08),
-    0 1px 2px rgba(0, 0, 0, 0.04);
-  border-color: rgba(16, 185, 129, 0.2);
-  transform: none;
-}
-
-/* 未激活状态 */
-.tab-button--inactive {
-  background: transparent;
-  color: #6b7280;
+  background: var(--c-bg-surface);
+  color: var(--c-brand-hover);
+  box-shadow: var(--shadow-xs);
+  border-color: var(--c-brand-border);
+  font-weight: var(--font-semibold);
 }
 
 .tab-button--inactive:hover {
-  color: #059669;
-  background: rgba(255, 255, 255, 0.7);
-  border-color: transparent;
-  box-shadow: none;
-  transform: none;
+  color: var(--c-brand-hover);
+  background: var(--c-bg-surface);
 }
 
-/* 禁用状态 */
 .tab-button--disabled {
-  background: transparent;
-  color: rgba(168, 162, 158, 0.8);
+  color: var(--c-text-disabled);
   cursor: not-allowed;
-  border-color: transparent;
-  position: relative;
   overflow: hidden;
 }
 
-.tab-button--disabled::after {
-  content: none;
-}
-
-/* 图标容器 */
-.tab-icon-container {
-  position: relative;
-}
-
 .tab-icon {
-  font-size: 15px;
+  font-size: var(--text-lg);
   line-height: 1;
-  display: block;
-  transition: transform 0.2s ease;
 }
 
-.tab-icon--hover:hover {
-  transform: scale(1.05);
-}
-
-.tab-icon--active {
-  transform: none;
-  animation: none;
-}
-
-.tab-icon-glow {
-  display: none;
-}
-
-/* 标签文字 */
 .tab-text {
-  font-weight: 500;
+  font-size: var(--text-base);
   letter-spacing: 0.01em;
-  font-size: 13px;
 }
 
-.tab-button--active .tab-text {
-  font-weight: 600;
-}
-
-/* 禁用遮罩 */
 .tab-disabled-mask {
   position: absolute;
   inset: 0;
   background: rgba(231, 229, 228, 0.2);
-  border-radius: 12px;
-  backdrop-filter: blur(1px);
+  border-radius: var(--radius-btn);
 }
 
-/* 选项卡内容 */
 .tabs-content {
-  /* min-height: 384px; */
-  background: linear-gradient(135deg, rgba(250, 250, 249, 0.3) 0%, rgba(236, 253, 245, 0.2) 100%);
+  background: var(--c-bg-page);
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -430,7 +273,7 @@ defineExpose({
 }
 
 .tab-panel {
-  padding: 16px 0 0 0;
+  padding: var(--space-4) 0 0 0;
   height: 100%;
   box-sizing: border-box;
   display: flex;
@@ -438,18 +281,15 @@ defineExpose({
 }
 
 .tab-panel--placeholder {
-  padding: 48px;
-  text-align: center;
+  padding: var(--space-10);
   align-items: center;
   justify-content: center;
 }
 
 .panel-wrapper {
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(4px);
-  border-radius: 12px;
+  background: var(--c-bg-surface);
+  border-radius: var(--radius-card);
   border: none;
-  box-shadow: none;
   padding: 0;
   flex: 1;
   display: flex;
@@ -457,129 +297,91 @@ defineExpose({
   overflow-y: auto;
 }
 
-/* 占位符样式 */
 .placeholder-container {
-  background: rgba(255, 255, 255, 0.6);
-  backdrop-filter: blur(4px);
-  border-radius: 16px;
-  border: 2px dashed rgba(167, 243, 208, 0.6);
-  padding: 48px;
+  background: var(--c-bg-surface);
+  border-radius: var(--radius-card);
+  border: 2px dashed var(--c-brand-border);
+  padding: var(--space-10);
   max-width: 384px;
   margin: 0 auto;
-}
-
-.placeholder-icon {
-  position: relative;
-  margin-bottom: 24px;
+  text-align: center;
 }
 
 .placeholder-emoji {
-  font-size: 60px;
-  margin-bottom: 8px;
+  font-size: var(--text-display-xl);
+  margin-bottom: var(--space-2);
   animation: bounce 1s infinite;
 }
 
 .placeholder-dots {
   display: flex;
   justify-content: center;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  margin-bottom: var(--space-6);
 }
 
 .placeholder-dot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 .placeholder-dot--1 {
-  background: rgba(110, 231, 183, 1);
+  background: var(--color-primary-300);
 }
-
 .placeholder-dot--2 {
-  background: rgba(34, 197, 94, 1);
+  background: var(--color-primary-500);
   animation-delay: 0.1s;
 }
-
 .placeholder-dot--3 {
-  background: rgba(52, 211, 153, 1);
+  background: var(--color-primary-400);
   animation-delay: 0.2s;
 }
 
-.placeholder-content {
-  margin-bottom: 32px;
-}
-
 .placeholder-title {
-  font-size: 20px;
-  font-weight: 600;
-  color: rgba(68, 64, 60, 1);
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--c-text-primary);
   letter-spacing: 0.025em;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
 
 .placeholder-divider {
   width: 64px;
   height: 2px;
-  background: linear-gradient(to right, rgba(110, 231, 183, 1), rgba(34, 197, 94, 1));
-  margin: 0 auto;
-  border-radius: 9999px;
-  margin-bottom: 12px;
+  background: var(--c-brand);
+  margin: 0 auto var(--space-3);
+  border-radius: var(--radius-full);
 }
 
 .placeholder-description {
-  color: rgba(120, 113, 108, 1);
+  color: var(--c-text-secondary);
   line-height: 1.625;
-  font-weight: 500;
+  font-weight: var(--font-medium);
+  font-size: var(--text-base);
 }
 
-.placeholder-decoration {
+.full-height-panel {
+  height: 100%;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  padding: 0 !important;
 }
 
-.decoration-dots {
+.full-height-wrapper {
+  flex: 1;
+  position: relative;
+  height: 100%;
+  overflow: hidden;
   display: flex;
-  gap: 4px;
-}
-
-.decoration-dot {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-}
-
-.decoration-dot--1 {
-  background: rgba(167, 243, 208, 1);
-}
-.decoration-dot--2 {
-  background: rgba(34, 197, 94, 1);
-}
-.decoration-dot--3 {
-  background: rgba(110, 231, 183, 1);
-}
-
-/* 高级动画效果 */
-@keyframes breathe {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(1.05);
-    opacity: 0.8;
-  }
-}
-
-@keyframes shimmer {
-  0% {
-    left: -100%;
-  }
-  100% {
-    left: 100%;
-  }
+  flex-direction: column;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  border-radius: var(--radius-panel);
+  padding: 0;
 }
 
 @keyframes bounce {
@@ -613,81 +415,5 @@ defineExpose({
   50% {
     opacity: 0.5;
   }
-}
-
-/* 自定义滚动条 */
-:deep(.overflow-y-auto::-webkit-scrollbar) {
-  width: 6px;
-}
-
-:deep(.overflow-y-auto::-webkit-scrollbar-track) {
-  background: rgba(120, 113, 108, 0.1);
-  border-radius: 3px;
-}
-
-:deep(.overflow-y-auto::-webkit-scrollbar-thumb) {
-  background: rgba(34, 197, 94, 0.3);
-  border-radius: 3px;
-  transition: background 0.2s ease;
-}
-
-:deep(.overflow-y-auto::-webkit-scrollbar-thumb:hover) {
-  background: rgba(34, 197, 94, 0.5);
-}
-
-/* 响应式调整 */
-@media (max-width: 768px) {
-  .tab-button {
-    min-width: 100px;
-    font-size: 12px;
-    padding: 12px;
-  }
-
-  .tabs-nav {
-    gap: 4px;
-  }
-
-  .tab-panel {
-    padding: 16px;
-  }
-
-  .tab-panel--placeholder {
-    padding: 32px;
-  }
-
-  .placeholder-container {
-    padding: 32px;
-  }
-
-  .placeholder-emoji {
-    font-size: 48px;
-  }
-
-  .placeholder-title {
-    font-size: 18px;
-  }
-}
-
-/* 全屏面板样式 */
-.full-height-panel {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  padding-bottom: 0 !important; /* 覆盖默认padding */
-  padding: 0 !important;
-}
-
-.full-height-wrapper {
-  flex: 1;
-  position: relative;
-  height: 100%;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  border: none;
-  background: transparent;
-  box-shadow: none;
-  border-radius: 0;
-  padding: 0;
 }
 </style>

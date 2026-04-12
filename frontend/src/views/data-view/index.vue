@@ -4,7 +4,7 @@ import { ElMessage } from "element-plus";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useWorkflowStore } from "@/stores/useWorkflowStore";
 import { useRoute, useRouter } from "vue-router";
-import { Back } from "@element-plus/icons-vue";
+import { ArrowLeft } from "lucide-vue-next";
 
 import DataAnalysisTabs from "./components/DataAnalysisTabs.vue";
 
@@ -109,23 +109,23 @@ const handleRouteQuery = async () => {
       await datasetStore.setCurrentDataset(idStr);
     }
   }
-  
-  if (tab && typeof tab === 'string') {
+
+  if (tab && typeof tab === "string") {
     currentTab.value = tab;
   }
 };
 
 const returnToWorkflow = async () => {
   // Navigating back; workflow page will clear workflowReturnState after restoring state
-  await router.push({ name: 'Workflow' });
+  await router.push({ name: "Workflow" });
 };
 
 // 生命周期
 onMounted(async () => {
   console.log("DataView 组件已挂载");
-  
+
   await handleRouteQuery();
-  
+
   if (!currentDataset.value) {
     ElMessage.warning("请先从左侧选择一个数据集");
   }
@@ -161,8 +161,8 @@ watch(currentDataset, (newDataset, oldDataset) => {
             :dataset-info="currentDataset"
             :content-loading="loading"
             :default-tab="currentTab"
-            :initial-business-result-id="(route.query.businessResultId as string)"
-            :initial-version-id="(route.query.versionId as string)"
+            :initial-business-result-id="route.query.businessResultId as string"
+            :initial-version-id="route.query.versionId as string"
             @tab-change="handleTabChange"
             @refresh="refreshDatasetInfo"
             @start-outlier-detection="handleStartOutlierDetection"
@@ -188,7 +188,7 @@ watch(currentDataset, (newDataset, oldDataset) => {
     <!-- 返回工作流悬浮按钮 -->
     <div v-if="workflowStore.workflowReturnState.active" class="return-workflow-float">
       <el-button type="warning" size="large" class="btn-return" @click="returnToWorkflow">
-        <el-icon class="mr-2"><Back /></el-icon>
+        <ArrowLeft :size="16" class="mr-2" />
         返回工作流
       </el-button>
     </div>
@@ -199,9 +199,9 @@ watch(currentDataset, (newDataset, oldDataset) => {
 /* 主容器 */
 .data-view-container {
   width: 100%;
-  height: 100%; /* 适配父容器高度 */
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
-  overflow: hidden; /* 防止外层滚动 */
+  height: 100%;
+  background: var(--c-bg-page);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -213,7 +213,7 @@ watch(currentDataset, (newDataset, oldDataset) => {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  flex: 1; /* 填充剩余空间 */
+  flex: 1;
   overflow: hidden;
   padding: 0;
   box-sizing: border-box;
@@ -244,19 +244,10 @@ watch(currentDataset, (newDataset, oldDataset) => {
   align-items: center;
   justify-content: center;
   min-height: 384px;
-  background: linear-gradient(
-    160deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(248, 250, 252, 0.9) 30%,
-    rgba(240, 253, 244, 0.85) 70%,
-    rgba(236, 253, 245, 0.9) 100%
-  );
-  backdrop-filter: blur(20px);
-  border-radius: 16px;
-  border: 1px solid rgba(229, 231, 235, 0.4);
-  box-shadow:
-    0 4px 24px rgba(0, 0, 0, 0.06),
-    0 0 0 1px rgba(255, 255, 255, 0.1);
+  background: var(--c-bg-surface);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--c-border);
+  box-shadow: var(--shadow-md);
   position: relative;
   overflow: hidden;
 }
@@ -268,27 +259,27 @@ watch(currentDataset, (newDataset, oldDataset) => {
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.3), transparent);
+  background: linear-gradient(90deg, transparent, var(--c-brand-border), transparent);
 }
 
 /* 空状态内容 */
 .empty-state-content {
   text-align: center;
   max-width: 400px;
-  padding: 32px;
+  padding: var(--space-8);
 }
 
 /* 空状态图标 */
 .empty-state-icon {
   width: 80px;
   height: 80px;
-  margin: 0 auto 24px;
-  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
-  border-radius: 50%;
+  margin: 0 auto var(--space-6);
+  background: linear-gradient(135deg, var(--color-primary-300) 0%, var(--c-brand) 100%);
+  border-radius: var(--radius-full);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 32px rgba(16, 185, 129, 0.3);
+  box-shadow: var(--shadow-brand);
   position: relative;
 }
 
@@ -297,115 +288,73 @@ watch(currentDataset, (newDataset, oldDataset) => {
   position: absolute;
   inset: 2px;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), transparent);
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   pointer-events: none;
 }
 
 .empty-state-icon span {
-  font-size: 32px;
+  font-size: var(--text-display-sm);
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
 }
 
 /* 空状态标题 */
 .empty-state-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: #1f2937;
-  margin-bottom: 16px;
-  letter-spacing: -0.02em;
+  font-size: var(--text-4xl);
+  font-weight: var(--font-bold);
+  color: var(--c-text-base);
+  margin-bottom: var(--space-4);
+  letter-spacing: var(--tracking-tight);
 }
 
 /* 空状态描述 */
 .empty-state-description {
-  color: #6b7280;
-  margin-bottom: 24px;
-  line-height: 1.6;
-  font-size: 16px;
+  color: var(--c-text-muted);
+  margin-bottom: var(--space-6);
+  line-height: var(--leading-relaxed);
+  font-size: var(--text-xl);
 }
 
 /* 空状态提示 */
 .empty-state-tip {
-  font-size: 14px;
-  color: #6b7280;
-  background: rgba(16, 185, 129, 0.08);
-  padding: 12px 16px;
-  border-radius: 8px;
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  font-size: var(--text-md);
+  color: var(--c-text-muted);
+  background: var(--c-brand-soft);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--c-brand-border);
   display: inline-block;
-  font-weight: 500;
+  font-weight: var(--font-medium);
 }
 
-/* 响应式布局 */
-/* @media (min-width: 1280px) {
-  .main-content-grid {
-    grid-template-columns: 2fr 1fr;
-  }
-} */
-
-/* 悬停和交互效果 */
+/* 悬停效果 */
 .empty-state-container:hover {
   transform: translateY(-2px);
-  box-shadow:
-    0 8px 40px rgba(0, 0, 0, 0.08),
-    0 0 0 1px rgba(255, 255, 255, 0.1);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-lg);
+  transition: all var(--transition-base);
 }
 
 .empty-state-icon:hover {
   transform: scale(1.05);
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* 加载状态动画 */
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
-}
-
-.content-wrapper[data-loading="true"] {
-  animation: pulse 2s infinite;
-}
-
-/* 渐变动画 */
-@keyframes gradient-shift {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
-.data-view-container {
-  background-size: 400% 400%;
-  animation: gradient-shift 15s ease infinite;
+  transition: transform var(--transition-base);
 }
 
 /* 返回工作流悬浮按钮 */
 .return-workflow-float {
   position: absolute;
-  top: 16px;
-  right: 24px;
-  z-index: 100;
-  animation: slide-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  top: var(--space-4);
+  right: var(--space-6);
+  z-index: var(--z-above);
+  animation: slide-in var(--transition-base) cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .btn-return {
   box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
-  border-radius: 20px;
-  font-weight: 600;
+  border-radius: var(--radius-3xl);
+  font-weight: var(--font-semibold);
   border: 1px solid rgba(245, 158, 11, 0.5);
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  color: white;
-  padding: 8px 20px;
+  background: linear-gradient(135deg, var(--color-amber-500) 0%, var(--color-amber-600) 100%);
+  color: var(--c-text-inverse);
+  padding: var(--space-2) var(--space-5);
 }
 
 .btn-return:hover {

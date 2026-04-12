@@ -1,59 +1,40 @@
 <template>
   <button
     :disabled="disabled || loading"
-    :class="[
-      'relative group flex flex-col items-center gap-3 p-4 rounded-lg transition-all duration-200 text-center min-h-24',
-      'hover:shadow-md hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2',
-      buttonClasses,
-      {
-        'cursor-not-allowed opacity-50': disabled,
-        'cursor-pointer': !disabled && !loading,
-      },
-    ]"
+    :class="['action-btn', `action-btn--${color}`, { 'is-disabled': disabled, 'is-loading': loading }]"
     @click="handleClick">
     <!-- 加载状态覆盖层 -->
-    <div v-if="loading" class="absolute inset-0 bg-white/80 rounded-lg flex items-center justify-center z-10">
-      <el-icon class="animate-spin text-xl text-gray-600">
-        <Loading />
-      </el-icon>
+    <div v-if="loading" class="loading-overlay">
+      <Loader2 :size="18" class="spin-icon" />
     </div>
 
     <!-- 徽章 -->
-    <div
-      v-if="badge && !loading"
-      :class="[
-        'absolute -top-2 -right-2 text-xs font-bold px-2 py-1 rounded-full min-w-5 h-5 flex items-center justify-center',
-        badgeClasses,
-      ]">
+    <div v-if="badge && !loading" :class="['action-badge', `badge--${badgeType}`]">
       {{ badge }}
     </div>
 
     <!-- 图标 -->
-    <div :class="['text-2xl transition-transform group-hover:scale-110', iconClasses]">
+    <div :class="['action-icon', { 'is-faded': loading }]">
       {{ icon }}
     </div>
 
     <!-- 标题和描述 -->
-    <div class="flex-1">
-      <div :class="['font-medium text-sm mb-1', titleClasses]">
-        {{ title }}
-      </div>
-      <div :class="['text-xs opacity-75 leading-tight', descriptionClasses]">
-        {{ description }}
-      </div>
+    <div class="action-body">
+      <div :class="['action-title', { 'is-faded': loading }]">{{ title }}</div>
+      <div :class="['action-desc', { 'is-faded': loading }]">{{ description }}</div>
     </div>
 
     <!-- 状态指示器 -->
-    <div v-if="showStatus" class="flex items-center gap-1 text-xs mt-1">
-      <span :class="['w-2 h-2 rounded-full', statusIndicatorClass]"></span>
-      <span :class="statusTextClass">{{ statusText }}</span>
+    <div v-if="showStatus" class="status-row">
+      <span :class="['status-dot', `status-dot--${status}`]"></span>
+      <span :class="['status-text', `status-text--${status}`]">{{ statusText }}</span>
     </div>
   </button>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { Loading } from "@element-plus/icons-vue";
+import { Loader2 } from "lucide-vue-next";
 
 // Props
 interface Props {
@@ -84,77 +65,8 @@ const emit = defineEmits<{
   click: [];
 }>();
 
-// Computed properties
-const buttonClasses = computed(() => {
-  const colorMap = {
-    emerald: "bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500 shadow-emerald-200",
-    blue: "bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 shadow-blue-200",
-    purple: "bg-purple-600 text-white hover:bg-purple-700 focus:ring-purple-500 shadow-purple-200",
-    orange: "bg-orange-600 text-white hover:bg-orange-700 focus:ring-orange-500 shadow-orange-200",
-    gray: "bg-gray-600 text-white hover:bg-gray-700 focus:ring-gray-500 shadow-gray-200",
-    red: "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 shadow-red-200",
-  };
-
-  return `${colorMap[props.color]} shadow-md`;
-});
-
-const iconClasses = computed(() => {
-  if (props.loading) return "opacity-30";
-  return "drop-shadow-sm";
-});
-
-const titleClasses = computed(() => {
-  if (props.loading) return "opacity-50";
-  return "";
-});
-
-const descriptionClasses = computed(() => {
-  if (props.loading) return "opacity-30";
-  return "";
-});
-
-const badgeClasses = computed(() => {
-  const typeMap = {
-    primary: "bg-blue-500 text-white",
-    success: "bg-emerald-500 text-white",
-    warning: "bg-yellow-500 text-white",
-    danger: "bg-red-500 text-white",
-    info: "bg-gray-500 text-white",
-  };
-
-  return `${typeMap[props.badgeType]} shadow-sm`;
-});
-
-const statusIndicatorClass = computed(() => {
-  const statusMap = {
-    idle: "bg-gray-400",
-    processing: "bg-yellow-400 animate-pulse",
-    completed: "bg-emerald-400",
-    error: "bg-red-400",
-  };
-
-  return statusMap[props.status];
-});
-
-const statusTextClass = computed(() => {
-  const statusMap = {
-    idle: "text-gray-500",
-    processing: "text-yellow-600",
-    completed: "text-emerald-600",
-    error: "text-red-600",
-  };
-
-  return statusMap[props.status];
-});
-
 const statusText = computed(() => {
-  const statusMap = {
-    idle: "就绪",
-    processing: "处理中",
-    completed: "已完成",
-    error: "失败",
-  };
-
+  const statusMap = { idle: "就绪", processing: "处理中", completed: "已完成", error: "失败" };
   return statusMap[props.status];
 });
 
@@ -167,28 +79,211 @@ const handleClick = () => {
 </script>
 
 <style scoped>
-/* 按钮阴影动画 */
-.group:hover {
-  box-shadow:
-    0 10px 25px -5px rgba(0, 0, 0, 0.1),
-    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+/* 基础按钮 */
+.action-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: none;
+  border-radius: var(--radius-btn);
+  min-height: 96px;
+  cursor: pointer;
+  text-align: center;
+  font-family: inherit;
+  transition: var(--transition-base);
+  color: var(--c-text-inverse);
+  box-shadow: var(--shadow-sm);
 }
 
-/* 聚焦状态样式 */
-.focus\:ring-2:focus {
-  box-shadow:
-    0 0 0 2px rgba(255, 255, 255, 0.2),
-    0 0 0 4px currentColor;
+.action-btn:hover:not(.is-disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
-/* 禁用状态过渡 */
-.transition-all {
-  transition-property: all;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 200ms;
+.action-btn.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
-/* 徽章动画 */
+/* 颜色变体 */
+.action-btn--emerald {
+  background: var(--c-brand);
+}
+.action-btn--emerald:hover:not(.is-disabled) {
+  background: var(--c-brand-hover);
+}
+
+.action-btn--blue {
+  background: var(--color-blue-600);
+}
+.action-btn--blue:hover:not(.is-disabled) {
+  background: var(--color-blue-700);
+}
+
+.action-btn--purple {
+  background: var(--color-purple-600);
+}
+.action-btn--purple:hover:not(.is-disabled) {
+  background: var(--color-purple-700);
+}
+
+.action-btn--orange {
+  background: var(--color-orange-600);
+}
+.action-btn--orange:hover:not(.is-disabled) {
+  background: var(--color-orange-700);
+}
+
+.action-btn--gray {
+  background: var(--color-neutral-600);
+}
+.action-btn--gray:hover:not(.is-disabled) {
+  background: var(--color-neutral-700);
+}
+
+.action-btn--red {
+  background: var(--color-red-600);
+}
+.action-btn--red:hover:not(.is-disabled) {
+  background: var(--color-red-700);
+}
+
+/* 加载层 */
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.spin-icon {
+  font-size: var(--text-xl);
+  animation: qc-spin 1s linear infinite;
+}
+
+/* 徽章 */
+.action-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  font-size: var(--text-xs);
+  font-weight: var(--font-bold);
+  padding: 2px var(--space-1);
+  border-radius: var(--radius-full);
+  min-width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-xs);
+  color: var(--c-text-inverse);
+  animation: badge-appear 0.3s ease-out;
+}
+
+.badge--primary {
+  background: var(--color-blue-500);
+}
+.badge--success {
+  background: var(--c-brand);
+}
+.badge--warning {
+  background: var(--color-amber-500);
+}
+.badge--danger {
+  background: var(--color-red-500);
+}
+.badge--info {
+  background: var(--color-neutral-500);
+}
+
+/* 图标 */
+.action-icon {
+  font-size: var(--text-4xl);
+  transition: transform var(--transition-fast);
+}
+
+.action-btn:hover:not(.is-disabled) .action-icon {
+  transform: scale(1.1);
+}
+
+.action-icon.is-faded {
+  opacity: 0.3;
+}
+
+/* 文字 */
+.action-body {
+  flex: 1;
+}
+
+.action-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  margin-bottom: var(--space-1);
+}
+
+.action-title.is-faded {
+  opacity: 0.5;
+}
+
+.action-desc {
+  font-size: var(--text-xs);
+  opacity: 0.8;
+  line-height: 1.3;
+}
+
+.action-desc.is-faded {
+  opacity: 0.3;
+}
+
+/* 状态指示器 */
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.status-dot--idle {
+  background: var(--color-neutral-400);
+}
+.status-dot--processing {
+  background: var(--color-amber-400);
+  animation: pulse 2s infinite;
+}
+.status-dot--completed {
+  background: var(--c-brand);
+}
+.status-dot--error {
+  background: var(--color-red-400);
+}
+
+.status-text--idle {
+  opacity: 0.8;
+}
+.status-text--processing {
+  color: var(--color-amber-400);
+}
+.status-text--completed {
+  color: var(--c-text-inverse);
+}
+.status-text--error {
+  color: var(--color-red-400);
+}
+
 @keyframes badge-appear {
   0% {
     transform: scale(0);
@@ -203,27 +298,6 @@ const handleClick = () => {
   }
 }
 
-/* 徽章进入动画 */
-.absolute {
-  animation: badge-appear 0.3s ease-out;
-}
-
-/* 图标悬停动画 */
-.group:hover .group-hover\:scale-110 {
-  transform: scale(1.1);
-}
-
-/* 加载状态背景模糊 */
-.bg-white\/80 {
-  background-color: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(2px);
-}
-
-/* 状态指示器呼吸动画 */
-.animate-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
 @keyframes pulse {
   0%,
   100% {
@@ -234,18 +308,14 @@ const handleClick = () => {
   }
 }
 
-/* 响应式调整 */
 @media (max-width: 768px) {
-  .min-h-24 {
-    min-height: 5rem;
+  .action-btn {
+    min-height: 80px;
+    padding: var(--space-2);
   }
 
-  .text-2xl {
-    font-size: 1.25rem;
-  }
-
-  .p-4 {
-    padding: 0.75rem;
+  .action-icon {
+    font-size: var(--text-3xl);
   }
 }
 </style>

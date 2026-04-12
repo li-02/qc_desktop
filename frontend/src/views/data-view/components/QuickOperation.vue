@@ -1,30 +1,26 @@
 <template>
-  <div class="bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-xl p-6">
-    <div class="flex items-center justify-between mb-4">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 bg-emerald-600 rounded-full flex items-center justify-center">
-          <el-icon class="text-white text-lg">
-            <Lightning />
-          </el-icon>
+  <div class="quick-operation">
+    <!-- 头部 -->
+    <div class="qo-header">
+      <div class="qo-header-left">
+        <div class="qo-icon-wrap">
+          <Zap :size="18" class="qo-icon" />
         </div>
         <div>
-          <h3 class="text-lg font-semibold text-gray-800">⚡ 快速操作</h3>
-          <p class="text-sm text-gray-600">选择下方操作开始数据处理流程</p>
+          <h3 class="qo-title">快速操作</h3>
+          <p class="qo-subtitle">选择下方操作开始数据处理流程</p>
         </div>
       </div>
 
       <!-- 数据集状态指示器 -->
-      <div v-if="datasetInfo" class="flex items-center gap-2 text-sm">
-        <el-icon :class="datasetStatusIcon.color">
-          <component :is="datasetStatusIcon.icon" />
-        </el-icon>
-        <span :class="datasetStatusIcon.textColor">{{ datasetStatusIcon.text }}</span>
+      <div v-if="datasetInfo" class="qo-status">
+        <component :is="datasetStatusIcon.icon" :size="16" :class="['qo-status-icon', datasetStatusIcon.colorClass]" />
+        <span :class="['qo-status-text', datasetStatusIcon.textClass]">{{ datasetStatusIcon.text }}</span>
       </div>
     </div>
 
     <!-- 操作按钮网格 -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-      <!-- 异常检测 -->
+    <div class="qo-grid">
       <ActionButton
         icon="🔍"
         title="异常检测"
@@ -34,7 +30,6 @@
         color="emerald"
         @click="handleOutlierDetection" />
 
-      <!-- 缺失值处理 -->
       <ActionButton
         icon="🔧"
         title="缺失值处理"
@@ -46,7 +41,6 @@
         color="blue"
         @click="handleMissingValueImputation" />
 
-      <!-- 数据清洗 -->
       <ActionButton
         icon="🧹"
         title="数据清洗"
@@ -56,7 +50,6 @@
         color="purple"
         @click="handleDataCleaning" />
 
-      <!-- 生成报告 -->
       <ActionButton
         icon="📊"
         title="生成报告"
@@ -66,7 +59,6 @@
         color="orange"
         @click="handleGenerateReport" />
 
-      <!-- 导出数据 -->
       <ActionButton
         icon="📤"
         title="导出数据"
@@ -78,20 +70,19 @@
     </div>
 
     <!-- 高级设置折叠面板 -->
-    <el-collapse v-model="activeCollapse" class="mt-6 bg-white/50 rounded-lg">
-      <el-collapse-item name="advanced" class="border-none">
+    <el-collapse v-model="activeCollapse" class="qo-collapse">
+      <el-collapse-item name="advanced">
         <template #title>
-          <div class="flex items-center gap-2 text-gray-700">
-            <el-icon><Setting /></el-icon>
-            <span class="font-medium">高级设置</span>
+          <div class="collapse-title">
+            <Settings :size="14" />
+            <span>高级设置</span>
           </div>
         </template>
 
-        <div class="space-y-4 p-4 bg-white rounded-lg">
-          <!-- 处理选项 -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">处理模式</label>
+        <div class="advanced-settings">
+          <div class="settings-grid">
+            <div class="setting-item">
+              <label class="setting-label">处理模式</label>
               <el-radio-group v-model="advancedSettings.processingMode" size="small">
                 <el-radio-button label="auto">自动</el-radio-button>
                 <el-radio-button label="manual">手动</el-radio-button>
@@ -99,8 +90,8 @@
               </el-radio-group>
             </div>
 
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">输出格式</label>
+            <div class="setting-item">
+              <label class="setting-label">输出格式</label>
               <el-select v-model="advancedSettings.outputFormat" size="small" style="width: 100%">
                 <el-option label="CSV" value="csv" />
                 <el-option label="Excel" value="excel" />
@@ -110,12 +101,11 @@
             </div>
           </div>
 
-          <!-- 质量阈值设置 -->
-          <div class="space-y-3">
-            <label class="block text-sm font-medium text-gray-700">数据质量阈值</label>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label class="block text-xs text-gray-500 mb-1">缺失值容忍度</label>
+          <div class="threshold-section">
+            <label class="setting-label">数据质量阈值</label>
+            <div class="threshold-grid">
+              <div class="threshold-item">
+                <label class="threshold-label">缺失值容忍度</label>
                 <el-slider
                   v-model="advancedSettings.missingThreshold"
                   :min="0"
@@ -124,25 +114,14 @@
                   show-input
                   size="small" />
               </div>
-              <div>
-                <label class="block text-xs text-gray-500 mb-1">异常值敏感度</label>
+              <div class="threshold-item">
+                <label class="threshold-label">异常值敏感度</label>
                 <el-slider v-model="advancedSettings.outlierSensitivity" :min="1" :max="10" show-input size="small" />
-              </div>
-              <div>
-                <label class="block text-xs text-gray-500 mb-1">相关性阈值</label>
-                <el-slider
-                  v-model="advancedSettings.correlationThreshold"
-                  :min="0"
-                  :max="1"
-                  :step="0.1"
-                  show-input
-                  size="small" />
               </div>
             </div>
           </div>
 
-          <!-- 保存和重置 -->
-          <div class="flex justify-end gap-2 pt-4 border-t border-gray-200">
+          <div class="settings-footer">
             <el-button size="small" @click="resetAdvancedSettings">重置</el-button>
             <el-button type="primary" size="small" @click="saveAdvancedSettings">保存设置</el-button>
           </div>
@@ -151,19 +130,19 @@
     </el-collapse>
 
     <!-- 操作历史 -->
-    <div v-if="recentOperations.length > 0" class="mt-6">
-      <h4 class="text-sm font-medium text-gray-700 mb-3">📝 最近操作</h4>
-      <div class="flex flex-wrap gap-2">
+    <div v-if="recentOperations.length > 0" class="recent-ops">
+      <h4 class="recent-ops-title">最近操作</h4>
+      <div class="recent-ops-list">
         <el-tag
           v-for="op in recentOperations"
           :key="op.id"
           :type="getOperationTagType(op.status)"
           size="small"
-          class="cursor-pointer"
+          class="op-tag"
           @click="viewOperationDetails(op)">
-          <span class="mr-1">{{ op.icon }}</span>
+          <span class="op-icon">{{ op.icon }}</span>
           {{ op.name }}
-          <span class="ml-1 text-xs opacity-75">{{ formatRelativeTime(op.timestamp) }}</span>
+          <span class="op-time">{{ formatRelativeTime(op.timestamp) }}</span>
         </el-tag>
       </div>
     </div>
@@ -172,9 +151,10 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive } from "vue";
-import { formatLocalWithTZ } from '@/utils/timeUtils';
+import { formatLocalWithTZ } from "@/utils/timeUtils";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Lightning, Setting } from "@element-plus/icons-vue";
+import { type Component } from "vue";
+import { Zap, Settings, AlertTriangle, CheckCircle, XCircle } from "lucide-vue-next";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import ActionButton from "./ActionButton.vue";
 
@@ -209,45 +189,26 @@ const advancedSettings = reactive({
   outputFormat: "csv",
   missingThreshold: 10,
   outlierSensitivity: 5,
-  correlationThreshold: 0.3,
 });
 
 const recentOperations = ref([
-  {
-    id: 1,
-    name: "异常检测",
-    icon: "🔍",
-    status: "completed",
-    timestamp: Date.now() - 1000 * 60 * 5, // 5分钟前
-  },
-  {
-    id: 2,
-    name: "缺失值填补",
-    icon: "🔧",
-    status: "failed",
-    timestamp: Date.now() - 1000 * 60 * 15, // 15分钟前
-  },
-  {
-    id: 3,
-    name: "数据导出",
-    icon: "📤",
-    status: "completed",
-    timestamp: Date.now() - 1000 * 60 * 60 * 2, // 2小时前
-  },
+  { id: 1, name: "异常检测", icon: "🔍", status: "completed", timestamp: Date.now() - 1000 * 60 * 5 },
+  { id: 2, name: "缺失值填补", icon: "🔧", status: "failed", timestamp: Date.now() - 1000 * 60 * 15 },
+  { id: 3, name: "数据导出", icon: "📤", status: "completed", timestamp: Date.now() - 1000 * 60 * 60 * 2 },
 ]);
 
 // Computed properties
 const missingValueCount = computed(() => {
   if (!props.datasetInfo) return 0;
-  return props.datasetInfo.missingValueTypes.length * 10; // 简化计算
+  return props.datasetInfo.missingValueTypes.length * 10;
 });
 
 const datasetStatusIcon = computed(() => {
   if (!props.datasetInfo) {
     return {
-      icon: "WarningFilled",
-      color: "text-gray-400",
-      textColor: "text-gray-500",
+      icon: AlertTriangle as Component,
+      colorClass: "icon-muted",
+      textClass: "text-muted",
       text: "未选择数据集",
     };
   }
@@ -255,32 +216,26 @@ const datasetStatusIcon = computed(() => {
   const qualityScore = calculateDataQuality();
   if (qualityScore >= 95) {
     return {
-      icon: "SuccessFilled",
-      color: "text-emerald-500",
-      textColor: "text-emerald-600",
+      icon: CheckCircle as Component,
+      colorClass: "icon-success",
+      textClass: "text-success",
       text: "数据质量优秀",
     };
   } else if (qualityScore >= 80) {
     return {
-      icon: "WarningFilled",
-      color: "text-yellow-500",
-      textColor: "text-yellow-600",
+      icon: AlertTriangle as Component,
+      colorClass: "icon-warning",
+      textClass: "text-warning",
       text: "数据质量良好",
     };
   } else {
-    return {
-      icon: "CircleCloseFilled",
-      color: "text-red-500",
-      textColor: "text-red-600",
-      text: "数据质量较差",
-    };
+    return { icon: XCircle as Component, colorClass: "icon-danger", textClass: "text-danger", text: "数据质量较差" };
   }
 });
 
 // Methods
 const calculateDataQuality = (): number => {
   if (!props.datasetInfo) return 0;
-
   const totalCells = props.datasetInfo.originalFile.rows * props.datasetInfo.originalFile.columns.length;
   const missingCells = missingValueCount.value;
   return ((totalCells - missingCells) / totalCells) * 100;
@@ -291,31 +246,21 @@ const handleOutlierDetection = async () => {
     ElMessage.warning("请先选择一个数据集");
     return;
   }
-
   try {
     await ElMessageBox.confirm("开始异常值检测将分析数据中的离群点，是否继续？", "异常值检测", {
       confirmButtonText: "开始检测",
       cancelButtonText: "取消",
       type: "info",
     });
-
     loadingStates.outlier = true;
-
-    const options = {
-      sensitivity: advancedSettings.outlierSensitivity,
-      method: "iqr", // 可以基于用户选择调整
-    };
-
-    emit("startOutlierDetection", options);
-
-    // 模拟异步操作
+    emit("startOutlierDetection", { sensitivity: advancedSettings.outlierSensitivity, method: "iqr" });
     setTimeout(() => {
       loadingStates.outlier = false;
       addRecentOperation("异常检测", "🔍", "completed");
       ElMessage.success("异常值检测已启动");
     }, 2000);
   } catch {
-    // 用户取消操作
+    /* 用户取消 */
   }
 };
 
@@ -324,18 +269,12 @@ const handleMissingValueImputation = async () => {
     ElMessage.warning("请先选择一个数据集");
     return;
   }
-
   loadingStates.missing = true;
-
-  const options = {
+  emit("startMissingValueImputation", {
     threshold: advancedSettings.missingThreshold,
-    method: "mean", // 可以基于用户选择调整
+    method: "mean",
     mode: advancedSettings.processingMode,
-  };
-
-  emit("startMissingValueImputation", options);
-
-  // 模拟异步操作
+  });
   setTimeout(() => {
     loadingStates.missing = false;
     addRecentOperation("缺失值处理", "🔧", "completed");
@@ -348,17 +287,8 @@ const handleDataCleaning = async () => {
     ElMessage.warning("请先选择一个数据集");
     return;
   }
-
   loadingStates.cleaning = true;
-
-  const options = {
-    mode: advancedSettings.processingMode,
-    outputFormat: advancedSettings.outputFormat,
-  };
-
-  emit("startDataCleaning", options);
-
-  // 模拟异步操作
+  emit("startDataCleaning", { mode: advancedSettings.processingMode, outputFormat: advancedSettings.outputFormat });
   setTimeout(() => {
     loadingStates.cleaning = false;
     addRecentOperation("数据清洗", "🧹", "completed");
@@ -371,18 +301,8 @@ const handleGenerateReport = async () => {
     ElMessage.warning("请先选择一个数据集");
     return;
   }
-
   loadingStates.report = true;
-
-  const options = {
-    includeCharts: true,
-    includeStats: true,
-    format: "pdf",
-  };
-
-  emit("generateReport", options);
-
-  // 模拟异步操作
+  emit("generateReport", { includeCharts: true, includeStats: true, format: "pdf" });
   setTimeout(() => {
     loadingStates.report = false;
     addRecentOperation("报告生成", "📊", "completed");
@@ -395,17 +315,8 @@ const handleExportData = async () => {
     ElMessage.warning("请先选择一个数据集");
     return;
   }
-
   loadingStates.export = true;
-
-  const options = {
-    format: advancedSettings.outputFormat,
-    includeMetadata: true,
-  };
-
-  emit("exportData", options);
-
-  // 模拟异步操作
+  emit("exportData", { format: advancedSettings.outputFormat, includeMetadata: true });
   setTimeout(() => {
     loadingStates.export = false;
     addRecentOperation("数据导出", "📤", "completed");
@@ -414,40 +325,18 @@ const handleExportData = async () => {
 };
 
 const addRecentOperation = (name: string, icon: string, status: "completed" | "failed" | "running") => {
-  const newOp = {
-    id: Date.now(),
-    name,
-    icon,
-    status,
-    timestamp: Date.now(),
-  };
-
-  recentOperations.value.unshift(newOp);
-
-  // 只保留最近的5个操作
-  if (recentOperations.value.length > 5) {
-    recentOperations.value = recentOperations.value.slice(0, 5);
-  }
+  recentOperations.value.unshift({ id: Date.now(), name, icon, status, timestamp: Date.now() });
+  if (recentOperations.value.length > 5) recentOperations.value = recentOperations.value.slice(0, 5);
 };
 
 const getOperationTagType = (status: string) => {
-  const statusMap: Record<string, string> = {
-    completed: "success",
-    failed: "danger",
-    running: "warning",
-  };
+  const statusMap: Record<string, string> = { completed: "success", failed: "danger", running: "warning" };
   return statusMap[status] || "info";
 };
 
-const formatRelativeTime = (timestamp: number): string => {
-  // 按要求显示 本地时间 + 时区 后缀
-  return formatLocalWithTZ(timestamp);
-};
+const formatRelativeTime = (timestamp: number): string => formatLocalWithTZ(timestamp);
 
-const viewOperationDetails = (operation: any) => {
-  ElMessage.info(`查看操作详情: ${operation.name}`);
-  // 这里可以打开操作详情弹窗
-};
+const viewOperationDetails = (operation: any) => ElMessage.info(`查看操作详情: ${operation.name}`);
 
 const resetAdvancedSettings = () => {
   Object.assign(advancedSettings, {
@@ -455,48 +344,241 @@ const resetAdvancedSettings = () => {
     outputFormat: "csv",
     missingThreshold: 10,
     outlierSensitivity: 5,
-    correlationThreshold: 0.3,
   });
   ElMessage.success("设置已重置");
 };
 
-const saveAdvancedSettings = () => {
-  // 这里应该保存设置到本地存储或发送到后端
-  ElMessage.success("设置已保存");
-};
+const saveAdvancedSettings = () => ElMessage.success("设置已保存");
 </script>
 
 <style scoped>
-/* 折叠面板样式 */
-:deep(.el-collapse) {
+.quick-operation {
+  background: var(--c-brand-soft);
+  border: 1px solid var(--c-brand-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-5);
+}
+
+/* 头部 */
+.qo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.qo-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.qo-icon-wrap {
+  width: 40px;
+  height: 40px;
+  background: var(--c-brand);
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.qo-icon {
+  color: var(--c-text-inverse);
+}
+
+.qo-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--c-text-primary);
+  margin: 0 0 2px;
+}
+
+.qo-subtitle {
+  font-size: var(--text-sm);
+  color: var(--c-text-secondary);
+  margin: 0;
+}
+
+/* 状态 */
+.qo-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.qo-status-icon {
+  flex-shrink: 0;
+}
+
+.icon-muted {
+  color: var(--c-text-disabled);
+}
+.icon-success {
+  color: var(--c-success);
+}
+.icon-warning {
+  color: var(--c-warning);
+}
+.icon-danger {
+  color: var(--c-danger);
+}
+
+.text-muted {
+  color: var(--c-text-secondary);
+}
+.text-success {
+  color: var(--c-success-text);
+}
+.text-warning {
+  color: var(--c-warning-text);
+}
+.text-danger {
+  color: var(--c-danger-text);
+}
+
+/* 操作网格 */
+.qo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+/* 折叠面板 */
+.qo-collapse {
+  margin-top: var(--space-5);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+}
+
+:deep(.qo-collapse.el-collapse) {
   border: none;
   background: transparent;
 }
 
-:deep(.el-collapse-item__header) {
-  background: transparent;
-  border: none;
-  padding-left: 0;
-  font-weight: 500;
+:deep(.qo-collapse .el-collapse-item__header) {
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-panel);
+  padding: var(--space-2) var(--space-3);
+  font-weight: var(--font-medium);
 }
 
-:deep(.el-collapse-item__content) {
+:deep(.qo-collapse .el-collapse-item__wrap) {
+  border: 1px solid var(--c-border);
+  border-top: none;
+  border-radius: 0 0 var(--radius-panel) var(--radius-panel);
+  background: var(--c-bg-surface);
+}
+
+:deep(.qo-collapse .el-collapse-item__content) {
   padding-bottom: 0;
 }
 
-:deep(.el-collapse-item__wrap) {
-  border: none;
-  background: transparent;
+.collapse-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--c-text-base);
+  font-size: var(--text-sm);
 }
 
-/* 滑块样式 */
+/* 高级设置 */
+.advanced-settings {
+  padding: var(--space-4);
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.setting-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--c-text-base);
+}
+
+.threshold-section {
+  margin-bottom: var(--space-4);
+}
+
+.threshold-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.threshold-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.threshold-label {
+  font-size: var(--text-xs);
+  color: var(--c-text-secondary);
+}
+
 :deep(.el-slider__input) {
   width: 60px;
 }
 
-/* 标签悬停效果 */
-.el-tag.cursor-pointer:hover {
+.settings-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--c-border);
+}
+
+/* 最近操作 */
+.recent-ops {
+  margin-top: var(--space-5);
+}
+
+.recent-ops-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--c-text-base);
+  margin: 0 0 var(--space-2);
+}
+
+.recent-ops-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.op-tag {
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.op-tag:hover {
   transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-xs);
+}
+
+.op-icon {
+  margin-right: 2px;
+}
+
+.op-time {
+  margin-left: var(--space-1);
+  font-size: var(--text-xs);
+  opacity: 0.75;
 }
 </style>

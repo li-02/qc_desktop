@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { BrowserWindow } from "electron";
+import { BrowserWindow, safeStorage } from "electron";
 import {
   BEONResolvedSiteContext,
   BEONSiteRule,
@@ -21,12 +21,107 @@ import { DatabaseManager } from "../core/DatabaseManager";
 
 const IMPORT_PROGRESS_CHANNEL = "mysql/import-progress";
 
+const ENCRYPTED_PREFIX = "__enc__";
+
+function encryptPassword(plaintext: string): string {
+  if (!plaintext) return "";
+  if (safeStorage.isEncryptionAvailable()) {
+    const buf = safeStorage.encryptString(plaintext);
+    return ENCRYPTED_PREFIX + buf.toString("base64");
+  }
+  return plaintext;
+}
+
+function decryptPassword(stored: string): string {
+  if (!stored) return "";
+  if (stored.startsWith(ENCRYPTED_PREFIX) && safeStorage.isEncryptionAvailable()) {
+    try {
+      const b64 = stored.slice(ENCRYPTED_PREFIX.length);
+      const buf = Buffer.from(b64, "base64");
+      return safeStorage.decryptString(buf);
+    } catch {
+      return "";
+    }
+  }
+  return stored;
+}
+
 export class MySQLService {
   private datasetService?: DatasetService;
   private db = DatabaseManager.getInstance().getDatabase();
+  /** Cached connection pools keyed by "host:port:user:database" */
+  private pools: Map<string, any> = new Map();
 
   constructor(datasetService?: DatasetService) {
     this.datasetService = datasetService;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Pool Management
+  // ---------------------------------------------------------------------------
+
+  /** Build a stable cache key from connection config */
+  private poolKey(config: MySQLConnectionConfig): string {
+    return `${config.host}:${config.port}:${config.user}:${config.database}`;
+  }
+
+  /**
+   * Get or create a connection pool for the given config.
+   * Pools are cached per host:port:user:database and reused across calls.
+   */
+  getPool(config: MySQLConnectionConfig): any {
+    const key = this.poolKey(config);
+    let pool = this.pools.get(key);
+    if (pool) {
+      return pool;
+    }
+
+    const mysql2 = require("mysql2/promise");
+    pool = mysql2.createPool({
+      host: config.host,
+      port: config.port,
+      user: config.user,
+      password: config.password,
+      database: config.database,
+      connectTimeout: 10000,
+      dateStrings: true,
+      waitForConnections: true,
+      connectionLimit: 4,
+      maxIdle: 4,
+      idleTimeout: 60000,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 10000,
+    });
+
+    this.pools.set(key, pool);
+    return pool;
+  }
+
+  /**
+   * Close a specific pool (by config). Safe to call if pool doesn't exist.
+   */
+  async closePool(config: MySQLConnectionConfig): Promise<void> {
+    const key = this.poolKey(config);
+    const pool = this.pools.get(key);
+    if (pool) {
+      this.pools.delete(key);
+      try {
+        await pool.end();
+      } catch (_) {}
+    }
+  }
+
+  /**
+   * Close all cached pools. Call on app shutdown.
+   */
+  async closeAllPools(): Promise<void> {
+    const entries = Array.from(this.pools.entries());
+    this.pools.clear();
+    for (const [, pool] of entries) {
+      try {
+        await pool.end();
+      } catch (_) {}
+    }
   }
 
   private createConnection(config: MySQLConnectionConfig) {
@@ -164,13 +259,13 @@ export class MySQLService {
 
       const columns = Object.keys(arr[0]);
 
-      // 3. 写入临时 CSV
+      // 3. 写入临时 CSV (async to avoid blocking main thread)
       sendProgress({ status: "processing", message: "正在处理数据...", datasetName: request.datasetName });
       tmpCsvPath = path.join(os.tmpdir(), `mysql_import_${Date.now()}.csv`);
       const csvContent = this.toCsv(columns, arr);
-      fs.writeFileSync(tmpCsvPath, csvContent, "utf-8");
+      await fs.promises.writeFile(tmpCsvPath, csvContent, "utf-8");
 
-      const fileStats = fs.statSync(tmpCsvPath);
+      const fileStats = await fs.promises.stat(tmpCsvPath);
 
       // 4. 调用现有导入管线
       const importResult = await this.datasetService.importDataset({
@@ -213,17 +308,134 @@ export class MySQLService {
   }
 
   /**
+   * 按时间范围导出表数据到临时 CSV (streaming)
+   * 使用 mysql2 的 query().stream() 将行直接流式写入文件，避免将全量数据加载到内存。
+   * 如果传入 pool 则复用连接，否则创建新连接 (向后兼容)
+   */
+  async importTableByTimeRange(
+    config: MySQLConnectionConfig,
+    table: string,
+    startTime: string,
+    endTime: string,
+    columns?: string[],
+    timeColumn: string = "record_time",
+    pool?: any
+  ): Promise<ServiceResponse<{ csvPath: string; rowCount: number }>> {
+    const usePool = !!pool;
+    let connection: any = null;
+    const csvPath = path.join(os.tmpdir(), `mysql_time_range_${Date.now()}.csv`);
+
+    try {
+      if (usePool) {
+        connection = await pool.getConnection();
+      } else {
+        connection = await this.createConnection(config);
+      }
+
+      const safeTable = this.escapeIdentifier(table);
+      const safeTimeColumn = this.escapeIdentifier(timeColumn);
+      const safeColumns = columns?.length ? columns.map(column => this.escapeIdentifier(column)).join(", ") : "*";
+
+      const sql = `SELECT ${safeColumns}
+         FROM ${safeTable}
+         WHERE ${safeTimeColumn} BETWEEN ? AND ?
+         ORDER BY ${safeTimeColumn} ASC`;
+
+      // Access the underlying non-promise connection for streaming
+      const rawConn = connection.connection;
+      const queryCmd = rawConn.query(sql, [startTime, endTime]);
+      const rowStream = queryCmd.stream({ highWaterMark: 256 });
+
+      const result = await new Promise<{ rowCount: number }>((resolve, reject) => {
+        const fileStream = fs.createWriteStream(csvPath, { encoding: "utf-8" });
+        let headerWritten = false;
+        let csvColumns: string[] = [];
+        let rowCount = 0;
+
+        const escapeCsvField = (val: any): string => {
+          if (val === null || val === undefined) return "";
+          const str = String(val);
+          if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+            return `"${str.replace(/"/g, '""')}"`;
+          }
+          return str;
+        };
+
+        rowStream.on("data", (row: any) => {
+          if (!headerWritten) {
+            csvColumns = columns?.length ? columns : Object.keys(row);
+            fileStream.write(csvColumns.map(escapeCsvField).join(",") + "\n");
+            headerWritten = true;
+          }
+          const line = csvColumns.map(col => escapeCsvField(row[col])).join(",") + "\n";
+          rowCount++;
+          // Respect backpressure: if write buffer is full, pause the row stream
+          if (!fileStream.write(line)) {
+            rowStream.pause();
+            fileStream.once("drain", () => rowStream.resume());
+          }
+        });
+
+        rowStream.on("error", (err: Error) => {
+          fileStream.destroy();
+          reject(err);
+        });
+
+        rowStream.on("end", () => {
+          // If no rows came through, still write an empty file (or header-only)
+          if (!headerWritten && columns?.length) {
+            fileStream.write(columns.map(escapeCsvField).join(",") + "\n");
+          }
+          fileStream.end(() => resolve({ rowCount }));
+        });
+
+        fileStream.on("error", (err: Error) => {
+          rowStream.destroy();
+          reject(err);
+        });
+      });
+
+      return {
+        success: true,
+        data: {
+          csvPath,
+          rowCount: result.rowCount,
+        },
+      };
+    } catch (error: any) {
+      if (fs.existsSync(csvPath)) {
+        try {
+          fs.unlinkSync(csvPath);
+        } catch (_) {}
+      }
+      return { success: false, error: this.formatMySQLError(error) };
+    } finally {
+      if (connection) {
+        try {
+          if (usePool) {
+            connection.release();
+          } else {
+            await connection.end();
+          }
+        } catch (_) {}
+      }
+    }
+  }
+
+  /**
    * 获取保存的数据库连接配置
    */
   getConnectionProfiles(): ServiceResponse<DatabaseConnectionProfile[]> {
     try {
       const rows = this.db
-        .prepare(`
+        .prepare(
+          `
           SELECT *
           FROM conf_db_connection_profile
           WHERE is_del = 0
           ORDER BY is_default DESC, profile_name ASC
-        `)
+        `
+        )
         .all() as Array<any>;
 
       return {
@@ -246,11 +458,13 @@ export class MySQLService {
 
       const dbType: DatabaseType = request.dbType || "MYSQL";
       const duplicate = this.db
-        .prepare(`
+        .prepare(
+          `
           SELECT id
           FROM conf_db_connection_profile
           WHERE profile_name = ? AND is_del = 0 AND (? IS NULL OR id != ?)
-        `)
+        `
+        )
         .get(request.profileName.trim(), request.id ?? null, request.id ?? null) as { id: number } | undefined;
 
       if (duplicate) {
@@ -264,12 +478,17 @@ export class MySQLService {
 
       const trx = this.db.transaction(() => {
         if (shouldBeDefault) {
-          this.db.prepare(`UPDATE conf_db_connection_profile SET is_default = 0, updated_at = CURRENT_TIMESTAMP WHERE is_del = 0`).run();
+          this.db
+            .prepare(
+              `UPDATE conf_db_connection_profile SET is_default = 0, updated_at = CURRENT_TIMESTAMP WHERE is_del = 0`
+            )
+            .run();
         }
 
         if (request.id) {
           this.db
-            .prepare(`
+            .prepare(
+              `
               UPDATE conf_db_connection_profile
               SET profile_name = ?,
                   db_type = ?,
@@ -281,14 +500,15 @@ export class MySQLService {
                   is_default = ?,
                   updated_at = CURRENT_TIMESTAMP
               WHERE id = ? AND is_del = 0
-            `)
+            `
+            )
             .run(
               request.profileName.trim(),
               dbType,
               request.connection.host.trim(),
               request.connection.port,
               request.connection.user.trim(),
-              request.connection.password,
+              encryptPassword(request.connection.password),
               request.connection.database.trim(),
               shouldBeDefault ? 1 : 0,
               request.id
@@ -297,18 +517,20 @@ export class MySQLService {
         }
 
         const info = this.db
-          .prepare(`
+          .prepare(
+            `
             INSERT INTO conf_db_connection_profile
               (profile_name, db_type, host, port, user_name, password, database_name, is_default)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `)
+          `
+          )
           .run(
             request.profileName.trim(),
             dbType,
             request.connection.host.trim(),
             request.connection.port,
             request.connection.user.trim(),
-            request.connection.password,
+            encryptPassword(request.connection.password),
             request.connection.database.trim(),
             shouldBeDefault ? 1 : 0
           );
@@ -327,11 +549,13 @@ export class MySQLService {
   deleteConnectionProfile(id: number): ServiceResponse<void> {
     try {
       const current = this.db
-        .prepare(`
+        .prepare(
+          `
           SELECT id, is_default
           FROM conf_db_connection_profile
           WHERE id = ? AND is_del = 0
-        `)
+        `
+        )
         .get(id) as { id: number; is_default: number } | undefined;
 
       if (!current) {
@@ -340,31 +564,37 @@ export class MySQLService {
 
       const trx = this.db.transaction(() => {
         this.db
-          .prepare(`
+          .prepare(
+            `
             UPDATE conf_db_connection_profile
             SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
-          `)
+          `
+          )
           .run(id);
 
         if (current.is_default === 1) {
           const next = this.db
-            .prepare(`
+            .prepare(
+              `
               SELECT id
               FROM conf_db_connection_profile
               WHERE is_del = 0
               ORDER BY id ASC
               LIMIT 1
-            `)
+            `
+            )
             .get() as { id: number } | undefined;
 
           if (next) {
             this.db
-              .prepare(`
+              .prepare(
+                `
                 UPDATE conf_db_connection_profile
                 SET is_default = 1, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
-              `)
+              `
+              )
               .run(next.id);
           }
         }
@@ -384,20 +614,24 @@ export class MySQLService {
     try {
       const rows = siteCode
         ? (this.db
-            .prepare(`
+            .prepare(
+              `
               SELECT *
               FROM conf_beon_site_rule
               WHERE site_code = ? AND is_del = 0
               ORDER BY priority DESC, id ASC
-            `)
+            `
+            )
             .all(siteCode.trim().toLowerCase()) as Array<any>)
         : (this.db
-            .prepare(`
+            .prepare(
+              `
               SELECT *
               FROM conf_beon_site_rule
               WHERE is_del = 0
               ORDER BY site_code ASC, priority DESC, id ASC
-            `)
+            `
+            )
             .all() as Array<any>);
 
       return {
@@ -432,17 +666,16 @@ export class MySQLService {
       }
 
       const duplicate = this.db
-        .prepare(`
+        .prepare(
+          `
           SELECT id
           FROM conf_beon_site_rule
           WHERE site_code = ? AND rule_name = ? AND is_del = 0 AND (? IS NULL OR id != ?)
-        `)
-        .get(
-          request.siteCode.trim().toLowerCase(),
-          request.ruleName.trim(),
-          request.id ?? null,
-          request.id ?? null
-        ) as { id: number } | undefined;
+        `
+        )
+        .get(request.siteCode.trim().toLowerCase(), request.ruleName.trim(), request.id ?? null, request.id ?? null) as
+        | { id: number }
+        | undefined;
 
       if (duplicate) {
         return { success: false, error: `规则名称已存在: ${request.siteCode}.${request.ruleName}` };
@@ -452,7 +685,8 @@ export class MySQLService {
 
       if (request.id) {
         this.db
-          .prepare(`
+          .prepare(
+            `
             UPDATE conf_beon_site_rule
             SET site_code = ?,
                 rule_name = ?,
@@ -465,7 +699,8 @@ export class MySQLService {
                 is_active = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND is_del = 0
-          `)
+          `
+          )
           .run(
             request.siteCode.trim().toLowerCase(),
             request.ruleName.trim(),
@@ -482,11 +717,13 @@ export class MySQLService {
       }
 
       const info = this.db
-        .prepare(`
+        .prepare(
+          `
           INSERT INTO conf_beon_site_rule
             (site_code, rule_name, rule_type, connection_profile_id, source_table, match_time_column, priority, rule_config, is_active, is_builtin)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-        `)
+        `
+        )
         .run(
           request.siteCode.trim().toLowerCase(),
           request.ruleName.trim(),
@@ -519,11 +756,13 @@ export class MySQLService {
       }
 
       this.db
-        .prepare(`
+        .prepare(
+          `
           UPDATE conf_beon_site_rule
           SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
-        `)
+        `
+        )
         .run(id);
 
       return { success: true };
@@ -623,13 +862,51 @@ export class MySQLService {
     }
   }
 
-  private getConnectionProfileById(id: number): DatabaseConnectionProfile | null {
+  /**
+   * 从远程 MySQL 查询 sites 表，过滤 ftp IS NOT NULL 且 is_del != 1 的站点
+   */
+  async queryBEONSites(connectionProfileId: number): Promise<ServiceResponse<any[]>> {
+    const profile = this.getConnectionProfileById(connectionProfileId);
+    if (!profile) {
+      return { success: false, error: `连接配置不存在: ${connectionProfileId}` };
+    }
+    const config: MySQLConnectionConfig = {
+      host: profile.host,
+      port: profile.port,
+      user: profile.user,
+      password: profile.password,
+      database: profile.database,
+    };
+    let connection: any = null;
+    try {
+      connection = await this.createConnection(config);
+      const [rows] = await connection.execute(
+        `SELECT id, abbr_name, ftp, longitude, latitude, altitude
+         FROM sites
+         WHERE ftp IS NOT NULL AND (is_del IS NULL OR is_del != 1)
+         ORDER BY id ASC`
+      );
+      return { success: true, data: rows as any[] };
+    } catch (error: any) {
+      return { success: false, error: this.formatMySQLError(error) };
+    } finally {
+      if (connection) {
+        try {
+          await connection.end();
+        } catch (_) {}
+      }
+    }
+  }
+
+  getConnectionProfileById(id: number): DatabaseConnectionProfile | null {
     const row = this.db
-      .prepare(`
+      .prepare(
+        `
         SELECT *
         FROM conf_db_connection_profile
         WHERE id = ? AND is_del = 0
-      `)
+      `
+      )
       .get(id) as any;
 
     return row ? this.mapConnectionProfileRow(row) : null;
@@ -637,13 +914,15 @@ export class MySQLService {
 
   private getDefaultConnectionProfile(): DatabaseConnectionProfile | null {
     const row = this.db
-      .prepare(`
+      .prepare(
+        `
         SELECT *
         FROM conf_db_connection_profile
         WHERE is_default = 1 AND is_del = 0
         ORDER BY id ASC
         LIMIT 1
-      `)
+      `
+      )
       .get() as any;
 
     return row ? this.mapConnectionProfileRow(row) : null;
@@ -657,7 +936,7 @@ export class MySQLService {
       host: row.host,
       port: row.port,
       user: row.user_name,
-      password: row.password || "",
+      password: decryptPassword(row.password || ""),
       database: row.database_name,
       isDefault: row.is_default === 1,
       createdAt: row.created_at,

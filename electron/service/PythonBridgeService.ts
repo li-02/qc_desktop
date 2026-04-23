@@ -46,6 +46,23 @@ export class PythonBridgeService {
   }
 
   /**
+   * Strip R[write to console] noise (progress dots, blank lines) from stderr.
+   * Keeps meaningful R messages like warnings/errors.
+   */
+  private static cleanRStderr(raw: string): string {
+    return raw
+      .split(/\r?\n/)
+      .filter(line => {
+        // Drop lines that are only R console dot-progress: "R[write to console]: . "
+        if (/^R\[write to console\]:\s*[.\s]*$/.test(line)) return false;
+        return true;
+      })
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  /**
    * 检测 Python 环境
    */
   async detectPython(): Promise<{ available: boolean; version?: string; path?: string }> {
@@ -138,7 +155,9 @@ export class PythonBridgeService {
     }
 
     return new Promise(resolve => {
-      const proc = spawn(this.pythonPath!, ["-c", code]);
+      const proc = spawn(this.pythonPath!, ["-c", code], {
+        env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+      });
       let stdout = "";
       let stderr = "";
 
@@ -155,7 +174,7 @@ export class PythonBridgeService {
           exitCode: code ?? undefined,
           stdout,
           stderr,
-          error: code !== 0 ? stderr : undefined,
+          error: code !== 0 ? PythonBridgeService.cleanRStderr(stderr) || stderr : undefined,
         });
       });
 
@@ -242,7 +261,7 @@ export class PythonBridgeService {
 
       const proc = spawn(this.pythonPath!, args, {
         cwd: this.pythonDir,
-        env: { ...process.env, PYTHONUNBUFFERED: "1" },
+        env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" },
       });
 
       this.runningProcesses.set(taskId, proc);
@@ -279,7 +298,7 @@ export class PythonBridgeService {
           exitCode: code ?? undefined,
           stdout,
           stderr,
-          error: code !== 0 ? stderr || "执行失败" : undefined,
+          error: code !== 0 ? PythonBridgeService.cleanRStderr(stderr) || "执行失败" : undefined,
         });
       });
 
@@ -386,7 +405,7 @@ export class PythonBridgeService {
 
       const proc = spawn(this.pythonPath!, args, {
         cwd: this.pythonDir,
-        env: { ...process.env, PYTHONUNBUFFERED: "1" },
+        env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" },
       });
 
       this.runningProcesses.set(taskId, proc);
@@ -437,13 +456,14 @@ export class PythonBridgeService {
             }
           }
         }
+        const parsedError = data && typeof data === "object" && data.error ? String(data.error) : undefined;
         resolve({
           success: code === 0,
           data,
           exitCode: code ?? undefined,
           stdout,
           stderr,
-          error: code !== 0 ? stderr || "执行失败" : undefined,
+          error: code !== 0 ? (parsedError ?? PythonBridgeService.cleanRStderr(stderr)) || "执行失败" : undefined,
         });
       });
 
@@ -568,7 +588,7 @@ export class PythonBridgeService {
 
       const proc = spawn(this.pythonPath!, args, {
         cwd: this.pythonDir,
-        env: { ...process.env, PYTHONUNBUFFERED: "1" },
+        env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" },
       });
 
       this.runningProcesses.set(taskId, proc);
@@ -621,13 +641,14 @@ export class PythonBridgeService {
             }
           }
         }
+        const parsedError = data && typeof data === "object" && data.error ? String(data.error) : undefined;
         resolve({
           success: code === 0,
           data,
           exitCode: code ?? undefined,
           stdout,
           stderr,
-          error: code !== 0 ? stderr || "执行失败" : undefined,
+          error: code !== 0 ? (parsedError ?? PythonBridgeService.cleanRStderr(stderr)) || "执行失败" : undefined,
         });
       });
 
@@ -711,7 +732,7 @@ export class PythonBridgeService {
 
       const proc = spawn(this.pythonPath!, args, {
         cwd: this.pythonDir,
-        env: { ...process.env, PYTHONUNBUFFERED: "1" },
+        env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" },
       });
 
       this.runningProcesses.set(taskId, proc);
@@ -755,7 +776,7 @@ export class PythonBridgeService {
           exitCode: code ?? undefined,
           stdout,
           stderr,
-          error: code !== 0 ? stderr || "执行失败" : undefined,
+          error: code !== 0 ? PythonBridgeService.cleanRStderr(stderr) || "执行失败" : undefined,
         });
       });
 
@@ -822,7 +843,7 @@ export class PythonBridgeService {
 
       const proc = spawn(this.pythonPath!, args, {
         cwd: this.pythonDir,
-        env: { ...process.env, PYTHONUNBUFFERED: "1" },
+        env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" },
       });
 
       this.runningProcesses.set(taskId, proc);
@@ -871,13 +892,15 @@ export class PythonBridgeService {
             }
           }
         }
+        const parsedError =
+          resultData && typeof resultData === "object" && resultData.error ? String(resultData.error) : undefined;
         resolve({
           success: code === 0,
           data: resultData,
           exitCode: code ?? undefined,
           stdout,
           stderr,
-          error: code !== 0 ? stderr || "执行失败" : undefined,
+          error: code !== 0 ? (parsedError ?? PythonBridgeService.cleanRStderr(stderr)) || "执行失败" : undefined,
         });
       });
 
@@ -944,7 +967,7 @@ export class PythonBridgeService {
 
       const proc = spawn(this.pythonPath!, args, {
         cwd: this.pythonDir,
-        env: { ...process.env, PYTHONUNBUFFERED: "1" },
+        env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" },
       });
 
       this.runningProcesses.set(taskId, proc);
@@ -993,13 +1016,15 @@ export class PythonBridgeService {
             }
           }
         }
+        const parsedError =
+          resultData && typeof resultData === "object" && resultData.error ? String(resultData.error) : undefined;
         resolve({
           success: code === 0,
           data: resultData,
           exitCode: code ?? undefined,
           stdout,
           stderr,
-          error: code !== 0 ? stderr || "执行失败" : undefined,
+          error: code !== 0 ? (parsedError ?? PythonBridgeService.cleanRStderr(stderr)) || "执行失败" : undefined,
         });
       });
 
@@ -1053,7 +1078,7 @@ export class PythonBridgeService {
 
       const proc = spawn(this.pythonPath!, args, {
         cwd: this.pythonDir,
-        env: { ...process.env, PYTHONUNBUFFERED: "1" },
+        env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" },
       });
 
       this.runningProcesses.set(taskId, proc);
@@ -1100,13 +1125,140 @@ export class PythonBridgeService {
             }
           }
         }
+        const parsedError =
+          resultData && typeof resultData === "object" && resultData.error ? String(resultData.error) : undefined;
         resolve({
           success: code === 0,
           data: resultData,
           exitCode: code ?? undefined,
           stdout,
           stderr,
-          error: code !== 0 ? stderr || "执行失败" : undefined,
+          error: code !== 0 ? (parsedError ?? PythonBridgeService.cleanRStderr(stderr)) || "执行失败" : undefined,
+        });
+      });
+
+      proc.on("error", err => {
+        this.runningProcesses.delete(taskId);
+        resolve({ success: false, error: err.message });
+      });
+    });
+  }
+
+  async runBEONNonFluxPipeline(
+    params: {
+      inputFile: string;
+      outputFile: string;
+      fluxInputFile: string;
+      dataType: string;
+      latDeg: number;
+      longDeg: number;
+      timezoneHour: number;
+      siteCode?: string;
+      thresholdsJson?: string;
+      gapfillIndicators?: string;
+      sapflowStdWindow?: number;
+      sapflowStdStep?: number;
+    },
+    progressCallback?: ProgressCallback
+  ): Promise<PythonTaskResult> {
+    if (!this.pythonPath) {
+      await this.detectPython();
+    }
+    if (!this.pythonPath) {
+      return { success: false, error: "Python 环境未找到" };
+    }
+
+    const scriptPath = path.join(this.pythonDir, "methods", "beon_nonflux_pipeline.py");
+    if (!fs.existsSync(scriptPath)) {
+      return { success: false, error: `脚本文件不存在: ${scriptPath}` };
+    }
+
+    const args: string[] = [
+      scriptPath,
+      "--file",
+      params.inputFile,
+      "--output",
+      params.outputFile,
+      "--flux-file",
+      params.fluxInputFile,
+      "--data-type",
+      params.dataType,
+      "--lat",
+      params.latDeg.toString(),
+      "--long",
+      params.longDeg.toString(),
+      "--tz",
+      params.timezoneHour.toString(),
+    ];
+
+    if (params.siteCode) args.push("--site-code", params.siteCode);
+    if (params.thresholdsJson) args.push("--thresholds-json", params.thresholdsJson);
+    if (params.gapfillIndicators) args.push("--gapfill-indicators", params.gapfillIndicators);
+    if (params.sapflowStdWindow !== undefined) args.push("--sapflow-std-window", params.sapflowStdWindow.toString());
+    if (params.sapflowStdStep !== undefined) args.push("--sapflow-std-step", params.sapflowStdStep.toString());
+
+    const taskId = `beon_nonflux_${Date.now()}`;
+
+    return new Promise(resolve => {
+      progressCallback?.({ stage: "starting", progress: 0, message: "正在启动 BEON 非通量流程..." });
+
+      const proc = spawn(this.pythonPath!, args, {
+        cwd: this.pythonDir,
+        env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" },
+      });
+
+      this.runningProcesses.set(taskId, proc);
+
+      let stdout = "";
+      let stderr = "";
+
+      proc.stdout.on("data", data => {
+        const text = data.toString();
+        stdout += text;
+
+        if (text.includes("[1/4]")) {
+          progressCallback?.({ stage: "loading", progress: 15, message: "正在加载非通量数据..." });
+        } else if (text.includes("[2/4]")) {
+          progressCallback?.({ stage: "preparing", progress: 40, message: "正在准备驱动变量与阈值规则..." });
+        } else if (text.includes("[3/4]")) {
+          progressCallback?.({ stage: "imputing", progress: 70, message: "正在执行非通量 gap filling..." });
+        } else if (text.includes("[4/4]")) {
+          progressCallback?.({ stage: "saving", progress: 88, message: "正在保存非通量结果..." });
+        } else if (text.includes("流程完成")) {
+          progressCallback?.({ stage: "completed", progress: 100, message: "BEON 非通量流程完成" });
+        }
+      });
+
+      proc.stderr.on("data", data => {
+        stderr += data.toString();
+      });
+
+      proc.on("close", code => {
+        this.runningProcesses.delete(taskId);
+        let data: any;
+        const marker = "__RESULT_JSON__:";
+        const markerIndex = stdout.lastIndexOf(marker);
+        if (markerIndex >= 0) {
+          const jsonLine = stdout
+            .slice(markerIndex + marker.length)
+            .split(/\r?\n/, 1)[0]
+            .trim();
+          if (jsonLine) {
+            try {
+              data = JSON.parse(jsonLine);
+            } catch {
+              data = undefined;
+            }
+          }
+        }
+        const parsedError = data && typeof data === "object" && data.error ? String(data.error) : undefined;
+        resolve({
+          success: code === 0,
+          data,
+          exitCode: code ?? undefined,
+          stdout,
+          stderr,
+          error: code !== 0 ? (parsedError ?? PythonBridgeService.cleanRStderr(stderr)) || "执行失败" : undefined,
         });
       });
 

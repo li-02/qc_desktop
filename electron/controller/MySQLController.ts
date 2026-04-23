@@ -158,13 +158,22 @@ export class MySQLController extends BaseController {
   /**
    * 解析某个站点当前生效的规则上下文
    */
-  async resolveBEONSiteContext(
-    args: { siteCode: string; connectionProfileId?: number },
-    event: IpcMainInvokeEvent
-  ) {
+  async resolveBEONSiteContext(args: { siteCode: string; connectionProfileId?: number }, event: IpcMainInvokeEvent) {
     return this.handleAsync(async () => {
       if (!args?.siteCode?.trim()) throw new Error("siteCode 不能为空");
       const result = this.mysqlService.resolveBEONSiteContext(args.siteCode, args.connectionProfileId);
+      if (!result.success) throw new Error(result.error);
+      return result.data;
+    });
+  }
+
+  /**
+   * 从远程 MySQL 查询 sites 表中的有效站点
+   */
+  async queryBEONSites(args: { connectionProfileId: number }, event: IpcMainInvokeEvent) {
+    return this.handleAsync(async () => {
+      if (!args?.connectionProfileId) throw new Error("connectionProfileId 不能为空");
+      const result = await this.mysqlService.queryBEONSites(args.connectionProfileId);
       if (!result.success) throw new Error(result.error);
       return result.data;
     });

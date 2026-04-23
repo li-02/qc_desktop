@@ -5,7 +5,10 @@
 // ==================== 枚举类型 ====================
 
 /** 工作流节点类型 */
-export type WorkflowNodeType = "OUTLIER_DETECTION" | "IMPUTATION" | "FLUX_PARTITIONING" | "EXPORT";
+export type WorkflowNodeType = "OUTLIER_DETECTION" | "IMPUTATION" | "FLUX_PARTITIONING" | "EXPORT" | "BEON_QC_PIPELINE";
+
+/** BEON QC 数据类型 */
+export type BEONDataType = "flux" | "sapflow" | "aqi" | "nai";
 
 /** 工作流状态 */
 export type WorkflowStatus = "DRAFT" | "READY" | "RUNNING" | "COMPLETED" | "FAILED";
@@ -188,6 +191,90 @@ export interface ExportNodeConfig {
   fileNameTemplate?: string;
 }
 
+/** BEON QC 管线节点配置 */
+export interface BEONQCPipelineNodeConfig {
+  /** 要处理的数据类型列表，默认全部 */
+  dataTypes: BEONDataType[];
+
+  /** 站点信息 */
+  siteId: number;
+  siteCode: string;
+  longitude: number;
+  latitude: number;
+  timezone: number;
+
+  /** MySQL 连接配置（profile id，运行时拿连接信息） */
+  connectionProfileId: number;
+
+  /** 时间范围 */
+  startTime: string;
+  endTime: string;
+
+  /** QC flag 过滤（保留的 flag 列表，默认 ["0","1","2"]） */
+  qcFlagList: string[];
+
+  /** 是否做存储项修正 */
+  useStrg: boolean;
+
+  /** despiking 系数（默认 4） */
+  despikingZ: number;
+
+  /** 阈值配置（JSON: { column: { lower, upper } }） */
+  thresholdsJson?: string;
+
+  /** 站点特例规则 JSON */
+  localRulesJson?: string;
+
+  /** gapfill 指标列表（指定哪些指标需要 gapfill） */
+  gapfillIndicators?: string[];
+
+  /** ===== Flux 专用列映射 ===== */
+  fluxColumnMapping?: {
+    co2FluxCol: string;
+    h2oFluxCol?: string;
+    leCol?: string;
+    hCol?: string;
+    qcCo2FluxCol?: string;
+    qcH2oFluxCol?: string;
+    qcLeCol?: string;
+    qcHCol?: string;
+    ppfdCol: string;
+    rgRawCol: string;
+    tairRawCol: string;
+    rhRawCol: string;
+    vpdRawCol?: string;
+    ustarRawCol: string;
+    co2StrgCol?: string;
+    h2oStrgCol?: string;
+    leStrgCol?: string;
+    hStrgCol?: string;
+    shortUpCol?: string;
+    rh12mCol?: string;
+    rh10mCol?: string;
+    ta12mCol?: string;
+  };
+
+  /** ===== 高级参数（可选） ===== */
+  /** despiking 窗口天数（默认 13） */
+  despikingWindowDays?: number;
+  /** PPFD 昼夜判断阈值（默认 5） */
+  ppfdDayNightThreshold?: number;
+  /** sapflow 标准差窗口大小（默认 480） */
+  sapflowStdWindow?: number;
+  /** sapflow 标准差步长（默认 96） */
+  sapflowStdStep?: number;
+
+  /** ===== MySQL 数据表名 ===== */
+  /** Flux 数据表名 */
+  fluxTableName?: string;
+  /** Sapflow 数据表名 */
+  sapflowTableName?: string;
+  /** AQI 数据表名 */
+  aqiTableName?: string;
+  /** NAI 数据表名 */
+  naiTableName?: string;
+}
+
 // ==================== 节点类型元信息 ====================
 
 /** 节点类型元信息 */
@@ -223,6 +310,12 @@ export const NODE_TYPE_META: Record<WorkflowNodeType, NodeTypeMeta> = {
     icon: "📤",
     producesVersion: false,
     description: "将数据导出为文件",
+  },
+  BEON_QC_PIPELINE: {
+    label: "BEON QC 管线",
+    icon: "🔬",
+    producesVersion: true,
+    description: "BEON 通量/非通量数据质量控制与 REddyProc 插补全流程",
   },
 };
 
@@ -305,4 +398,72 @@ export interface WorkflowNodeExecutionRow {
   result_json: string | null;
   error_message: string | null;
   created_at: string;
+}
+
+// ==================== BEON 批量任务类型 ====================
+
+/** BEON QC 批量任务状态 */
+export type BEONBatchTaskStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
+
+/** BEON QC 单项任务（一个站点+一种数据类型） */
+export interface BEONBatchLogEntry {
+  time: string;
+  level: "info" | "warn" | "error";
+  text: string;
+}
+
+export interface BEONBatchItem {
+  id: string;
+  siteCode: string;
+  dataType: BEONDataType;
+  status: BEONBatchTaskStatus;
+  startedAt: string | null;
+  finishedAt: string | null;
+  progress: number;
+  message: string;
+  error?: string;
+  logs: BEONBatchLogEntry[];
+  resultData?: Record<string, any>;
+}
+
+/** BEON QC 批量任务请求 */
+export interface BEONBatchRequest {
+  /** 要处理的站点列表 */
+  sites: Array<{
+    siteId: number;
+    siteCode: string;
+    longitude: number;
+    latitude: number;
+    timezone: number;
+    fluxTableName?: string;
+    sapflowTableName?: string;
+    aqiTableName?: string;
+    naiTableName?: string;
+  }>;
+  /** 要处理的数据类型（默认全部） */
+  dataTypes: BEONDataType[];
+  /** 时间范围 */
+  startTime: string;
+  endTime: string;
+  /** MySQL 连接配置 profile ID */
+  connectionProfileId: number;
+  /** 输出文件保存目录 */
+  outputDir: string;
+  /** 共享的 QC 参数 */
+  qcFlagList: string[];
+  useStrg: boolean;
+  despikingZ: number;
+  thresholdsJson?: string;
+  localRulesJson?: string;
+  gapfillIndicators?: string[];
+  fluxColumnMapping?: BEONQCPipelineNodeConfig["fluxColumnMapping"];
+}
+
+/** BEON 批量任务进度事件 */
+export interface BEONBatchProgressEvent {
+  batchId: string;
+  totalItems: number;
+  completedItems: number;
+  currentItem: BEONBatchItem | null;
+  items: BEONBatchItem[];
 }

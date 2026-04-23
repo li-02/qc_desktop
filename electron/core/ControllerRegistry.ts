@@ -1,5 +1,6 @@
 // electron/core/ControllerRegistry.ts
 
+import { dialog, shell } from "electron";
 import { IPCManager } from "./IPCManager";
 import { CategoryController } from "../controller/CategoryController";
 import { DatasetController } from "../controller/DatasetController";
@@ -15,11 +16,14 @@ import { WorkflowRepository } from "../repository/WorkflowRepository";
 import { WorkflowService } from "../service/WorkflowService";
 import { MySQLController } from "../controller/MySQLController";
 import { MySQLService } from "../service/MySQLService";
+import { PythonBridgeService } from "../service/PythonBridgeService";
+import { BEONBatchService } from "../service/BEONBatchService";
 import {
   OutlierDetectionExecutor,
   ImputationExecutor,
   FluxPartitioningExecutor,
   ExportExecutor,
+  BEONQCPipelineExecutor,
 } from "../service/workflow-executors";
 
 // 引入新的分层架构
@@ -66,6 +70,8 @@ export class ControllerRegistry {
   private workflowController!: WorkflowController;
   private mysqlService!: MySQLService;
   private mysqlController!: MySQLController;
+  private beonBatchService!: BEONBatchService;
+  private mainWindow: Electron.BrowserWindow | null = null;
 
   constructor(projectsDir: string) {
     this.initializeDependencies(projectsDir);
@@ -102,6 +108,8 @@ export class ControllerRegistry {
         this.settingsRepository
       );
       console.log("✓ DatasetService 初始化完成");
+
+      this.mysqlService = new MySQLService(this.datasetService);
 
       this.importQueueService = new ImportQueueService(this.datasetService);
       console.log("✓ ImportQueueService 初始化完成");
@@ -150,13 +158,16 @@ export class ControllerRegistry {
       this.workflowService.registerExecutor(new ImputationExecutor(this.imputationController));
       this.workflowService.registerExecutor(new FluxPartitioningExecutor(this.fluxPartitioningController));
       this.workflowService.registerExecutor(new ExportExecutor(this.exportService));
+      this.workflowService.registerExecutor(
+        new BEONQCPipelineExecutor(PythonBridgeService.getInstance(), this.mysqlService, this.datasetService)
+      );
       console.log("✓ WorkflowService 初始化完成（含节点执行器）");
 
       this.workflowController = new WorkflowController(this.workflowService, null);
       console.log("✓ WorkflowController 初始化完成");
 
-      this.mysqlService = new MySQLService(this.datasetService);
-      console.log("✓ MySQLService 初始化完成");
+      this.beonBatchService = new BEONBatchService(PythonBridgeService.getInstance(), this.mysqlService);
+      console.log("✓ BEONBatchService 初始化完成");
 
       this.mysqlController = new MySQLController(this.mysqlService);
       console.log("✓ MySQLController 初始化完成");
@@ -183,6 +194,8 @@ export class ControllerRegistry {
       this.registerExportRoutes();
       this.registerWorkflowRoutes();
       this.registerMySQLRoutes();
+      this.registerBEONBatchRoutes();
+      this.registerShellRoutes();
 
       console.log("所有控制器路由已注册");
       console.log("已注册路由:", IPCManager.getRegisteredRoutes());
@@ -628,6 +641,7 @@ export class ControllerRegistry {
    * 设置主窗口引用（用于工作流进度推送）
    */
   setMainWindow(mainWindow: Electron.BrowserWindow) {
+    this.mainWindow = mainWindow;
     this.workflowController.setMainWindow(mainWindow);
   }
 
@@ -660,6 +674,12 @@ export class ControllerRegistry {
       if (this.fileController) {
         this.fileController.cleanup();
         console.log("✓ FileController 资源清理完成");
+      }
+
+      // 关闭所有 MySQL 连接池
+      if (this.mysqlService) {
+        this.mysqlService.closeAllPools().catch(() => {});
+        console.log("✓ MySQL 连接池清理完成");
       }
 
       // 清理其他资源
@@ -715,6 +735,11 @@ export class ControllerRegistry {
         description: "获取 BEON 站点规则",
       },
       {
+        path: "mysql/query-beon-sites",
+        handler: this.mysqlController.queryBEONSites.bind(this.mysqlController),
+        description: "从远程 MySQL 查询 sites 表中的有效站点",
+      },
+      {
         path: "mysql/save-beon-site-rule",
         handler: this.mysqlController.saveBEONSiteRule.bind(this.mysqlController),
         description: "保存 BEON 站点规则",
@@ -737,6 +762,91 @@ export class ControllerRegistry {
     });
 
     console.log(`MySQL 导入路由注册完成，共 ${routes.length} 个路由`);
+  }
+
+  /**
+   * 注册 BEON QC 批量任务相关路由
+   */
+  private registerBEONBatchRoutes() {
+    const routes = [
+      {
+        path: "beon-batch/start",
+        handler: async (args: any) => this.beonBatchService.startBatch(args, this.mainWindow),
+        description: "启动 BEON QC 批量任务",
+      },
+      {
+        path: "beon-batch/cancel",
+        handler: async (args: any) => this.beonBatchService.cancelBatch(args.batchId),
+        description: "取消 BEON QC 批量任务",
+      },
+      {
+        path: "beon-batch/status",
+        handler: async (args: any) => this.beonBatchService.getBatchStatus(args.batchId),
+        description: "获取 BEON QC 批量任务状态",
+      },
+    ];
+
+    routes.forEach(route => {
+      IPCManager.registerRoute(route.path, route.handler);
+      console.log(`✓ 注册路由: ${route.path} - ${route.description}`);
+    });
+
+    console.log(`BEON 批量任务路由注册完成，共 ${routes.length} 个路由`);
+  }
+
+  /**
+   * 注册系统对话框和 Shell 相关路由
+   */
+  private registerShellRoutes() {
+    const routes = [
+      {
+        path: "dialog/open-directory",
+        handler: async (args: { title?: string; defaultPath?: string }) => {
+          const win = this.mainWindow || undefined;
+          const result = win
+            ? await dialog.showOpenDialog(win, {
+                title: args?.title || "选择文件夹",
+                defaultPath: args?.defaultPath || undefined,
+                properties: ["openDirectory", "createDirectory"],
+              })
+            : await dialog.showOpenDialog({
+                title: args?.title || "选择文件夹",
+                defaultPath: args?.defaultPath || undefined,
+                properties: ["openDirectory", "createDirectory"],
+              });
+          if (result.canceled || !result.filePaths.length) {
+            return { success: true, data: null };
+          }
+          return { success: true, data: result.filePaths[0] };
+        },
+        description: "打开系统文件夹选择对话框",
+      },
+      {
+        path: "shell/show-in-folder",
+        handler: async (args: { path: string }) => {
+          if (!args?.path) return { success: false, error: "缺少 path 参数" };
+          shell.showItemInFolder(args.path);
+          return { success: true };
+        },
+        description: "在系统文件管理器中显示文件",
+      },
+      {
+        path: "shell/open-path",
+        handler: async (args: { path: string }) => {
+          if (!args?.path) return { success: false, error: "缺少 path 参数" };
+          await shell.openPath(args.path);
+          return { success: true };
+        },
+        description: "用系统默认程序打开路径",
+      },
+    ];
+
+    routes.forEach(route => {
+      IPCManager.registerRoute(route.path, route.handler);
+      console.log(`✓ 注册路由: ${route.path} - ${route.description}`);
+    });
+
+    console.log(`Shell 路由注册完成，共 ${routes.length} 个路由`);
   }
 
   // #region 临时兼容性方法

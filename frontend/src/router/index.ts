@@ -33,6 +33,11 @@ const routes: Array<RouteRecordRaw> = [
         name: "Workflow",
         component: () => import("../views/workflow/index.vue"),
       },
+      {
+        path: "workflow/beon-qc",
+        name: "BeonQC",
+        component: () => import("../views/workflow/beon-qc/index.vue"),
+      },
     ],
   },
   // 404 页面

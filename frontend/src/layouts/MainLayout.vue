@@ -532,6 +532,14 @@ onUnmounted(() => {
           <span class="nav-icon">🔌</span>
           <span class="nav-text">数据源管理</span>
         </button>
+        <button
+          class="sidebar-nav-btn"
+          :class="{ active: $route.path === '/workflow/beon-qc' }"
+          @click="router.push('/workflow/beon-qc')"
+          title="BEON QC 管线">
+          <span class="nav-icon">🔬</span>
+          <span class="nav-text">BEON QC</span>
+        </button>
       </div>
     </div>
 
@@ -564,6 +572,7 @@ onUnmounted(() => {
             categoryStore.currentCategory ||
             $route.path === '/' ||
             $route.path === '/workflow' ||
+            $route.path.startsWith('/workflow/') ||
             $route.path === '/data-source'
           " />
         <div v-else class="content-empty">

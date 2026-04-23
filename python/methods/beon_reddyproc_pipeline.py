@@ -24,6 +24,7 @@ from reddyproc_flux_pipeline import (
     calc_vpd_from_rh_tair,
     check_r_environment,
     merge_results,
+    regularize_half_hourly,
     run_despiking,
     run_flux_pipeline_r,
     run_par_gapfill_r,
@@ -362,7 +363,7 @@ def apply_threshold_limit(
             result[suffix] = pd.to_numeric(result[column_name], errors="coerce")
 
     if time_col in result.columns and "co2_flux_add_strg" in result.columns and "co2_flux_threshold_limit" in result.columns:
-        time_series = pd.to_datetime(result[time_col], errors="coerce")
+        time_series = pd.to_datetime(result[time_col], format="ISO8601", errors="coerce")
         month_day = time_series.dt.strftime("%m-%d")
         condition = (~month_day.between("04-20", "10-31")) & (pd.to_numeric(result["co2_flux_add_strg"], errors="coerce") < -0.2)
         result.loc[condition, "co2_flux_threshold_limit"] = np.nan
@@ -386,7 +387,7 @@ def prepare_beon_standard_dataframe(
     ustar_raw_col: str,
 ) -> pd.DataFrame:
     working = pd.DataFrame()
-    working["DateTime"] = pd.to_datetime(df[time_col], errors="raise").dt.tz_localize(None)
+    working["DateTime"] = pd.to_datetime(df[time_col], format="ISO8601", errors="raise").dt.tz_localize(None)
     working["NEE"] = pd.to_numeric(df["co2_flux_threshold_limit"], errors="coerce")
     working["Par"] = pd.to_numeric(df[f"{ppfd_col}_threshold_limit"], errors="coerce")
     working["Rg"] = pd.to_numeric(df[f"{rg_raw_col}_threshold_limit"], errors="coerce")
@@ -421,6 +422,7 @@ def prepare_beon_standard_dataframe(
         )
 
     ensure_numeric(working, [column for column in working.columns if column != "DateTime"])
+    working = regularize_half_hourly(working, "DateTime")
     return working
 
 
@@ -691,6 +693,7 @@ def main() -> None:
         despiked_df,
         par_result_df,
         flux_result_df,
+        original_time_col=args.time_col,
     )
     output_df.to_csv(args.output, index=False)
 

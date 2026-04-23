@@ -154,6 +154,42 @@ def ensure_numeric(df: pd.DataFrame, columns: Iterable[str]) -> None:
             df[column] = pd.to_numeric(df[column], errors="coerce")
 
 
+def regularize_half_hourly(df: pd.DataFrame, datetime_col: str = "DateTime") -> pd.DataFrame:
+    """将 DataFrame 正则化为严格等间距的半小时时间序列。
+
+    REddyProc 的 fCheckHHTimeSeries 要求每两行间隔恰好 1800 秒，
+    不允许缺行，也不允许重复时间戳。本函数：
+      1. 将时间戳对齐到最近的半小时整点 (00/30)
+      2. 去除重复时间戳（保留第一条）
+      3. 生成完整的半小时时间网格并 reindex，缺失行用 NaN 填充
+    """
+    result = df.copy()
+    result[datetime_col] = pd.to_datetime(result[datetime_col], errors="coerce")
+    # 对齐到最近的半小时整点
+    result[datetime_col] = result[datetime_col].dt.round("30min")
+    # 排序并去重
+    result = result.sort_values(datetime_col).drop_duplicates(subset=[datetime_col], keep="first")
+    result = result.set_index(datetime_col)
+
+    # 生成完整的半小时网格
+    start = result.index.min()
+    end = result.index.max()
+    full_index = pd.date_range(start=start, end=end, freq="30min")
+    result = result.reindex(full_index)
+    result.index.name = datetime_col
+    result = result.reset_index()
+
+    # 确保时区信息被去除（REddyProc 不接受带时区的时间戳）
+    result[datetime_col] = result[datetime_col].dt.tz_localize(None)
+
+    n_original = len(df)
+    n_regularized = len(result)
+    if n_regularized != n_original:
+        print(f"  时间序列正则化: {n_original} -> {n_regularized} 行 (补齐 {n_regularized - n_original} 个缺失半小时)")
+
+    return result
+
+
 def prepare_flux_dataframe(
     df: pd.DataFrame,
     *,
@@ -203,11 +239,41 @@ def prepare_flux_dataframe(
         )
 
     ensure_numeric(working, [c for c in working.columns if c != "DateTime"])
+    working = regularize_half_hourly(working, "DateTime")
     return working
+
+
+def _suppress_r_console_noise() -> None:
+    """Install rpy2 callback to suppress REddyProc progress dots and trivial R output.
+
+    REddyProc prints thousands of '.' characters during LUT/MDC gap-filling.
+    rpy2 forwards each as a separate ``R[write to console]`` message, polluting logs.
+    This replaces the default ``consolewrite_print`` callback with a filter that:
+      - Drops messages consisting only of dots, spaces, and newlines.
+      - Passes through meaningful R warnings/errors/messages.
+    """
+    try:
+        import re
+        import rpy2.rinterface_lib.callbacks as rpy2_callbacks
+
+        _dot_pattern = re.compile(r"^[\s.]+$")
+
+        def _quiet_console_write(msg: str) -> None:
+            if _dot_pattern.match(msg):
+                return
+            # Still print meaningful messages (warnings, errors, etc.)
+            sys.stderr.write(msg)
+
+        rpy2_callbacks.consolewrite_print = _quiet_console_write
+        rpy2_callbacks.consolewrite_warnerror = _quiet_console_write
+    except Exception:
+        pass  # Non-critical — if callback setup fails, just proceed with noisy output
 
 
 def build_r_helpers() -> Tuple[object, object]:
     import rpy2.robjects as ro
+
+    _suppress_r_console_noise()
 
     ro.r(
         """
@@ -454,39 +520,79 @@ def merge_results(
     working_df: pd.DataFrame,
     par_result_df: pd.DataFrame,
     flux_result_df: pd.DataFrame,
+    *,
+    original_time_col: str = "DateTime",
 ) -> Tuple[pd.DataFrame, Dict[str, Optional[str]]]:
-    output_df = original_df.copy()
-
     par_normalized = normalize_export_columns(par_result_df)
     flux_normalized = normalize_export_columns(flux_result_df)
 
-    if "par_f" in par_normalized.columns:
-        output_df["par_f"] = par_normalized["par_f"].to_numpy()
-    if "par_fqc" in par_normalized.columns:
-        output_df["par_fqc"] = par_normalized["par_fqc"].to_numpy()
+    # Build the regularized output grid from working_df (complete 30-min timestamps).
+    # This ensures the output covers every half-hour slot, which is the point of
+    # gap-filling.  Original raw columns are joined in by DateTime so no data is lost.
+    output_df = working_df[["DateTime"]].copy()
 
+    # --- merge original raw columns by DateTime ---
+    orig = original_df.copy()
+    orig["_merge_dt"] = pd.to_datetime(orig[original_time_col], errors="coerce").dt.tz_localize(None).dt.round("30min")
+    # Drop the time column from the merge payload to avoid duplicates
+    orig_cols = [c for c in orig.columns if c not in ("_merge_dt", original_time_col, "DateTime")]
+    if orig_cols:
+        orig_dedup = orig.drop_duplicates(subset=["_merge_dt"], keep="first")
+        output_df = output_df.merge(
+            orig_dedup[["_merge_dt"] + orig_cols],
+            left_on="DateTime",
+            right_on="_merge_dt",
+            how="left",
+        )
+        if "_merge_dt" in output_df.columns:
+            output_df.drop(columns=["_merge_dt"], inplace=True)
+
+    # --- PAR fill results ---
+    if "DateTime" in par_normalized.columns:
+        par_key = par_normalized[["DateTime"]].copy()
+        par_key["DateTime"] = pd.to_datetime(par_key["DateTime"], errors="coerce").dt.tz_localize(None)
+    else:
+        par_key = output_df[["DateTime"]].copy()
+
+    for col_name in ("par_f", "par_fqc"):
+        if col_name in par_normalized.columns:
+            if len(par_normalized) == len(output_df):
+                output_df[col_name] = par_normalized[col_name].to_numpy()
+            else:
+                par_merge = par_key.copy()
+                par_merge[col_name] = par_normalized[col_name].to_numpy()
+                output_df = output_df.merge(par_merge[["DateTime", col_name]], on="DateTime", how="left")
+
+    # --- despiking columns ---
     for despiking_column in ["co2_despiking", "h2o_despiking", "le_despiking", "h_despiking"]:
         if despiking_column in working_df.columns:
-            output_df[despiking_column] = working_df[despiking_column].to_numpy()
+            if len(working_df) == len(output_df):
+                output_df[despiking_column] = working_df[despiking_column].to_numpy()
+            else:
+                wk_merge = working_df[["DateTime", despiking_column]].copy()
+                output_df = output_df.merge(wk_merge, on="DateTime", how="left")
 
+    # --- flux fill results ---
     base_columns = {
-        "datetime",
-        "nee",
-        "rg",
-        "tair",
-        "rh",
-        "r_h",
-        "vpd",
-        "par",
-        "ustar",
-        "h2o",
-        "le",
-        "h",
+        "datetime", "nee", "rg", "tair", "rh", "r_h", "vpd", "par", "ustar", "h2o", "le", "h",
     }
-    for column in flux_normalized.columns:
-        if column in base_columns:
-            continue
-        output_df[column] = flux_normalized[column].to_numpy()
+    flux_cols_to_add = [c for c in flux_normalized.columns if c not in base_columns]
+
+    if flux_cols_to_add:
+        if "DateTime" in flux_normalized.columns:
+            flux_key = flux_normalized[["DateTime"]].copy()
+            flux_key["DateTime"] = pd.to_datetime(flux_key["DateTime"], errors="coerce").dt.tz_localize(None)
+        else:
+            flux_key = output_df[["DateTime"]].copy()
+
+        if len(flux_normalized) == len(output_df):
+            for col_name in flux_cols_to_add:
+                output_df[col_name] = flux_normalized[col_name].to_numpy()
+        else:
+            flux_merge = flux_key.copy()
+            for col_name in flux_cols_to_add:
+                flux_merge[col_name] = flux_normalized[col_name].to_numpy()
+            output_df = output_df.merge(flux_merge[["DateTime"] + flux_cols_to_add], on="DateTime", how="left")
 
     representatives = {
         "nee": select_representative_column(
@@ -634,6 +740,7 @@ def main() -> None:
         despiked_df,
         par_result_df,
         flux_result_df,
+        original_time_col=args.time_col,
     )
     output_df.to_csv(args.output, index=False)
 

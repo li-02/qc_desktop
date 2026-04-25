@@ -1192,6 +1192,158 @@ export class PythonBridgeService {
   }
 
   /**
+   * 执行 iTransformer 模型推理插补任务
+   */
+  async runITransformerImputation(
+    params: {
+      modelPath: string;
+      metadataPath?: string;
+      inputFile: string;
+      outputFile: string;
+      targetColumn: string;
+      timeColumn?: string;
+      seqLen?: number;
+      batchSize?: number;
+      device?: string;
+      nLayers?: number;
+      dModel?: number;
+      nHeads?: number;
+      dK?: number;
+      dV?: number;
+      dFfn?: number;
+      dropout?: number;
+      attnDropout?: number;
+      ortWeight?: number;
+      mitWeight?: number;
+      columnMapping?: string;
+    },
+    progressCallback?: ProgressCallback
+  ): Promise<PythonTaskResult> {
+    if (!this.pythonPath) {
+      await this.detectPython();
+    }
+    if (!this.pythonPath) {
+      return { success: false, error: "Python 环境未找到" };
+    }
+
+    const scriptPath = path.join(this.pythonDir, "methods", "itransformer_impute.py");
+    if (!fs.existsSync(scriptPath)) {
+      return { success: false, error: `脚本文件不存在: ${scriptPath}` };
+    }
+
+    if (!fs.existsSync(params.modelPath)) {
+      return { success: false, error: `模型文件不存在: ${params.modelPath}` };
+    }
+
+    if (params.metadataPath && !fs.existsSync(params.metadataPath)) {
+      return { success: false, error: `模型 metadata 文件不存在: ${params.metadataPath}` };
+    }
+
+    const args: string[] = [
+      scriptPath,
+      "--model",
+      params.modelPath,
+      "--file",
+      params.inputFile,
+      "--target",
+      params.targetColumn,
+      "--output",
+      params.outputFile,
+    ];
+
+    if (params.metadataPath) args.push("--metadata", params.metadataPath);
+    if (params.timeColumn) args.push("--time-col", params.timeColumn);
+    if (params.seqLen) args.push("--seq-len", params.seqLen.toString());
+    if (params.batchSize) args.push("--batch-size", params.batchSize.toString());
+    if (params.device) args.push("--device", params.device);
+    if (params.nLayers) args.push("--n-layers", params.nLayers.toString());
+    if (params.dModel) args.push("--d-model", params.dModel.toString());
+    if (params.nHeads) args.push("--n-heads", params.nHeads.toString());
+    if (params.dK) args.push("--d-k", params.dK.toString());
+    if (params.dV) args.push("--d-v", params.dV.toString());
+    if (params.dFfn) args.push("--d-ffn", params.dFfn.toString());
+    if (params.dropout !== undefined) args.push("--dropout", params.dropout.toString());
+    if (params.attnDropout !== undefined) args.push("--attn-dropout", params.attnDropout.toString());
+    if (params.ortWeight !== undefined) args.push("--ort-weight", params.ortWeight.toString());
+    if (params.mitWeight !== undefined) args.push("--mit-weight", params.mitWeight.toString());
+    if (params.columnMapping) args.push("--column-mapping", params.columnMapping);
+
+    const taskId = `itransformer_impute_${Date.now()}`;
+
+    return new Promise(resolve => {
+      progressCallback?.({ stage: "starting", progress: 0, message: "正在启动 iTransformer 模型推理..." });
+
+      const proc = spawn(this.pythonPath!, args, {
+        cwd: this.pythonDir,
+        env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" },
+      });
+
+      this.runningProcesses.set(taskId, proc);
+
+      let stdout = "";
+      let stderr = "";
+
+      proc.stdout.on("data", data => {
+        const text = data.toString();
+        stdout += text;
+
+        if (text.includes("[1/5]")) {
+          progressCallback?.({ stage: "loading", progress: 10, message: "正在加载数据和 metadata..." });
+        } else if (text.includes("[2/5]")) {
+          progressCallback?.({ stage: "loading_model", progress: 25, message: "正在加载 iTransformer 模型..." });
+        } else if (text.includes("[3/5]")) {
+          progressCallback?.({ stage: "preparing", progress: 45, message: "正在构建 iTransformer 输入序列..." });
+        } else if (text.includes("[4/5]")) {
+          progressCallback?.({ stage: "imputing", progress: 65, message: "正在执行 iTransformer 插补..." });
+        } else if (text.includes("[5/5]")) {
+          progressCallback?.({ stage: "saving", progress: 85, message: "正在保存结果..." });
+        } else if (text.includes("插补完成")) {
+          progressCallback?.({ stage: "completed", progress: 100, message: "iTransformer 插补完成" });
+        }
+      });
+
+      proc.stderr.on("data", data => {
+        stderr += data.toString();
+      });
+
+      proc.on("close", code => {
+        this.runningProcesses.delete(taskId);
+        let resultData: any;
+        const marker = "__RESULT_JSON__:";
+        const markerIndex = stdout.lastIndexOf(marker);
+        if (markerIndex >= 0) {
+          const jsonLine = stdout
+            .slice(markerIndex + marker.length)
+            .split(/\r?\n/, 1)[0]
+            .trim();
+          if (jsonLine) {
+            try {
+              resultData = JSON.parse(jsonLine);
+            } catch {
+              resultData = undefined;
+            }
+          }
+        }
+        const parsedError =
+          resultData && typeof resultData === "object" && resultData.error ? String(resultData.error) : undefined;
+        resolve({
+          success: code === 0,
+          data: resultData,
+          exitCode: code ?? undefined,
+          stdout,
+          stderr,
+          error: code !== 0 ? (parsedError ?? PythonBridgeService.cleanRStderr(stderr)) || "执行失败" : undefined,
+        });
+      });
+
+      proc.on("error", err => {
+        this.runningProcesses.delete(taskId);
+        resolve({ success: false, error: err.message });
+      });
+    });
+  }
+
+  /**
    * 执行 KNN 插补任务（无需预训练模型）
    */
   async runKNNImputation(

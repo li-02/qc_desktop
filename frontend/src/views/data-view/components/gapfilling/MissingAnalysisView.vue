@@ -1,14 +1,13 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, onUnmounted, computed, toRaw } from "vue";
-import { BarChart2, Calendar } from "lucide-vue-next";
 import * as echarts from "echarts";
 import { useGapFillingStore } from "@/stores/useGapFillingStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
+import MissingOverviewCharts from "./MissingOverviewCharts.vue";
 
 const store = useGapFillingStore();
 const datasetStore = useDatasetStore();
-const activeTab = ref("temporal");
 const heatmapViewMode = ref<"weekly" | "calendar">("weekly");
 
 // ==================== Value Heatmap Column Selector ====================
@@ -23,6 +22,86 @@ const selectedValueColumn = ref<string>("");
 // 已加载的列数据：Record<"YYYY-MM-DD HH", avgValue>
 const valueHeatmapRaw = ref<Record<string, number>>({});
 const valueHeatmapLoading = ref(false);
+
+type MissingTemporalDistribution = {
+  monthly: Record<string, number>;
+  hourly: Record<string, number>;
+  heatmap: Record<string, number>;
+};
+
+const selectedMissingColumn = ref<string>("");
+const missingTemporalLoading = ref(false);
+const missingTemporalDistribution = ref<MissingTemporalDistribution | null>(null);
+
+const selectedMissingColumnLabel = computed(() => selectedMissingColumn.value || "未选择列");
+
+const isMissingValue = (value: unknown, markers: string[]) => {
+  if (value === null || value === undefined) return true;
+  if (typeof value === "number") return Number.isNaN(value);
+  if (typeof value !== "string") return false;
+
+  const raw = value;
+  const trimmed = raw.trim();
+  const lower = trimmed.toLowerCase();
+  return markers.includes(raw) || markers.includes(trimmed) || lower === "nan" || lower === "na";
+};
+
+const createEmptyDistribution = (): MissingTemporalDistribution => ({
+  monthly: {},
+  hourly: {},
+  heatmap: {},
+});
+
+const getMissingAxisMax = (values: number[]) => (values.some(value => value > 0) ? undefined : 1);
+
+const loadMissingColumnDistribution = async (columnName: string) => {
+  if (!columnName) return;
+  const filePath = datasetStore.currentVersion?.filePath || datasetStore.currentDataset?.originalFile?.filePath;
+  if (!filePath) return;
+
+  missingTemporalLoading.value = true;
+  try {
+    const missingValueTypes = toRaw(datasetStore.currentDataset?.missingValueTypes) || [];
+    const markers = Array.from(new Set([...(store.missingStats?.missingMarkers || []), ...missingValueTypes]));
+    const result = await (window as any).electronAPI.invoke(API_ROUTES.FILES.READ_CSV_DATA, {
+      filePath: String(filePath),
+      columnName: String(columnName),
+      missingValueTypes,
+    });
+    if (!result?.success || !result?.data?.tableData) {
+      missingTemporalDistribution.value = createEmptyDistribution();
+      return;
+    }
+
+    const distribution = createEmptyDistribution();
+    for (const row of result.data.tableData) {
+      const epochMs: number | null = row._epochMs;
+      if (epochMs === null || epochMs === undefined) continue;
+
+      const d = new Date(epochMs);
+      if (Number.isNaN(d.getTime())) continue;
+
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const dateKey = `${monthKey}-${String(d.getDate()).padStart(2, "0")}`;
+      const hourKey = String(d.getHours()).padStart(2, "0");
+      const heatmapKey = `${dateKey} ${hourKey}`;
+
+      distribution.monthly[monthKey] = distribution.monthly[monthKey] || 0;
+      distribution.hourly[hourKey] = distribution.hourly[hourKey] || 0;
+      distribution.heatmap[heatmapKey] = distribution.heatmap[heatmapKey] || 0;
+
+      if (isMissingValue(row[columnName], markers)) {
+        distribution.monthly[monthKey] += 1;
+        distribution.hourly[hourKey] += 1;
+        distribution.heatmap[heatmapKey] += 1;
+      }
+    }
+
+    missingTemporalDistribution.value = distribution;
+  } finally {
+    missingTemporalLoading.value = false;
+  }
+};
 
 // 加载选中列的时序数据并聚合成 "YYYY-MM-DD HH" → avgValue
 const loadValueColumnData = async (columnName: string) => {
@@ -98,12 +177,6 @@ const calendarChartRef = ref<HTMLElement | null>(null);
 const monthlyChartRef = ref<HTMLElement | null>(null);
 const hourlyChartRef = ref<HTMLElement | null>(null);
 
-// Pattern Charts (Features + Profile)
-const matrixChartRef = ref<HTMLElement | null>(null);
-const rankingChartRef = ref<HTMLElement | null>(null);
-const durationChartRef = ref<HTMLElement | null>(null);
-const profileChartRef = ref<HTMLElement | null>(null);
-
 // Chart Instances
 let trendChart: echarts.ECharts | null = null;
 let timelineChart: echarts.ECharts | null = null;
@@ -111,15 +184,11 @@ let heatmapInstance: echarts.ECharts | null = null;
 let calendarInstance: echarts.ECharts | null = null;
 let monthlyInstance: echarts.ECharts | null = null;
 let hourlyInstance: echarts.ECharts | null = null;
-let matrixChart: echarts.ECharts | null = null;
-let rankingChart: echarts.ECharts | null = null;
-let durationChart: echarts.ECharts | null = null;
-let profileChart: echarts.ECharts | null = null;
 
 // ==================== Data Generators ====================
 // 生成趋势数据
 const generateTrendData = () => {
-  const heatmap = store.missingStats?.timeDistribution?.heatmap || {};
+  const heatmap = missingTemporalDistribution.value?.heatmap || store.missingStats?.timeDistribution?.heatmap || {};
   const daily: Record<string, number> = {};
   Object.entries(heatmap).forEach(([key, count]) => {
     const date = key.split(" ")[0];
@@ -128,15 +197,7 @@ const generateTrendData = () => {
   const sortedDates = Object.keys(daily).sort();
 
   if (sortedDates.length === 0) {
-    const dates = [];
-    const data = [];
-    let base = new Date();
-    for (let i = 30; i >= 0; i--) {
-      const d = new Date(base.getTime() - i * 24 * 3600 * 1000);
-      dates.push(d.toISOString().split("T")[0]);
-      data.push(Math.floor(Math.random() * 100));
-    }
-    return { dates, data };
+    return { dates: [], data: [] };
   }
   return { dates: sortedDates, data: sortedDates.map(d => daily[d]) };
 };
@@ -163,89 +224,42 @@ const generateTimelineData = () => {
   return { columns, data };
 };
 
-// 生成缺失率排行数据
-const generateRankingData = () => {
-  const stats = store.missingStats?.columnStats || [];
-  // 按缺失率升序（为了水平条形图从上到下是降序）
-  const sorted = [...stats].sort((a, b) => a.missingRate - b.missingRate);
-  if (sorted.length === 0) return { columns: ["Var 1"], rates: [0] };
-  return {
-    columns: sorted.map(c => c.columnName),
-    rates: sorted.map(c => Number(c.missingRate.toFixed(2))),
-  };
-};
-
-// 生成缺口类型画像数据
-const generateProfileData = () => {
-  const columns = store.missingStats?.columnStats?.map(c => c.columnName).slice(0, 10) || ["Var 1"];
-  const categories = ["<1小时\n(闪断)", "1-6小时\n(短断流)", "6-24小时\n(日内停机)", ">24小时\n(长宕机)"];
-  const data: any[] = [];
-
-  columns.forEach((_col, i) => {
-    categories.forEach((_cat, j) => {
-      let val = 0;
-      if (Math.random() > 0.4) {
-        val = Math.floor(Math.random() * (100 / (j + 1)));
-      }
-      data.push([j, i, val]);
-    });
-  });
-  return { columns, categories, data };
-};
-
-const generateMatrixData = () => {
-  const columns = store.missingStats?.columnStats?.map(c => c.columnName) || [];
-  const timeBins = 50;
-  const data = [];
-
-  for (let i = 0; i < columns.length; i++) {
-    for (let j = 0; j < timeBins; j++) {
-      const missingRate = store.missingStats?.columnStats?.[i]?.missingRate || 0;
-      const isMissing = Math.random() * 100 < missingRate ? 1 : 0;
-      data.push([j, i, isMissing]);
-    }
-  }
-  return { columns, data, timeBins };
-};
-
-const generateDurationData = () => {
-  return [
-    { name: "1小时", value: Math.floor(Math.random() * 500) + 100 },
-    { name: "2-6小时", value: Math.floor(Math.random() * 300) + 50 },
-    { name: "6-24小时", value: Math.floor(Math.random() * 100) + 20 },
-    { name: ">24小时", value: Math.floor(Math.random() * 50) + 5 },
-  ];
-};
-
 // ==================== Temporal Analysis (Real Data) ====================
 const updateTemporalCharts = async () => {
   if (!store.missingStats?.timeDistribution) return;
 
   await nextTick();
-  const { monthly, hourly, heatmap } = store.missingStats.timeDistribution;
+  const temporalDistribution = missingTemporalDistribution.value || store.missingStats.timeDistribution;
+  const { monthly, hourly, heatmap } = temporalDistribution;
 
   // --- 1. Trend Chart (Missingness Trend Over Time) ---
   if (trendChartRef.value) {
     if (!trendChart) trendChart = echarts.init(trendChartRef.value);
     const { dates, data } = generateTrendData();
+    const trendAxisMax = getMissingAxisMax(data);
 
     trendChart.setOption({
-      title: { text: "缺失数量时间演变趋势", left: "center", textStyle: { fontSize: 14, fontWeight: "normal" } },
+      title: {
+        text: `缺失数量时间演变趋势 — ${selectedMissingColumnLabel.value}`,
+        left: "center",
+        textStyle: { fontSize: 14, fontWeight: "normal" },
+      },
       tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-      grid: { top: 40, bottom: 30, left: 50, right: 30 },
+      grid: { top: 40, bottom: 82, left: 50, right: 30 },
       xAxis: {
         type: "category",
         data: dates,
-        axisLabel: { color: "#6b7280" },
+        axisLabel: { color: "#6b7280", margin: 12 },
         axisLine: { lineStyle: { color: "#d1d5db" } },
       },
       yAxis: {
         type: "value",
         name: "每日缺失总数",
+        max: trendAxisMax,
         nameTextStyle: { color: "#6b7280" },
         splitLine: { lineStyle: { color: "#f3f4f6", type: "dashed" } },
       },
-      dataZoom: [{ type: "inside" }, { type: "slider", height: 20, bottom: 5 }],
+      dataZoom: [{ type: "inside" }, { type: "slider", height: 22, bottom: 8 }],
       series: [
         {
           data: data,
@@ -350,10 +364,11 @@ const updateTemporalCharts = async () => {
     if (!monthlyInstance) monthlyInstance = echarts.init(monthlyChartRef.value);
     const months = Object.keys(monthly).sort();
     const monthlyCounts = months.map(m => monthly[m]);
+    const monthlyAxisMax = getMissingAxisMax(monthlyCounts);
 
     monthlyInstance.setOption({
       title: {
-        text: "月度缺失分布",
+        text: `月度缺失分布 — ${selectedMissingColumnLabel.value}`,
         left: "center",
         textStyle: { fontSize: 14, fontWeight: "normal" },
       },
@@ -378,6 +393,7 @@ const updateTemporalCharts = async () => {
       yAxis: {
         type: "value",
         name: "缺失数",
+        max: monthlyAxisMax,
         nameTextStyle: { color: "#6b7280" },
         axisLine: { show: false },
         axisTick: { show: false },
@@ -407,10 +423,11 @@ const updateTemporalCharts = async () => {
     if (!hourlyInstance) hourlyInstance = echarts.init(hourlyChartRef.value);
     const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, "0"));
     const hourlyCounts = hours.map(h => hourly[h] || 0);
+    const hourlyAxisMax = getMissingAxisMax(hourlyCounts);
 
     hourlyInstance.setOption({
       title: {
-        text: "每小时缺失分布 (昼夜模式)",
+        text: `每小时缺失分布 — ${selectedMissingColumnLabel.value}`,
         left: "center",
         textStyle: { fontSize: 14, fontWeight: "normal" },
       },
@@ -435,6 +452,7 @@ const updateTemporalCharts = async () => {
       yAxis: {
         type: "value",
         name: "缺失数",
+        max: hourlyAxisMax,
         nameTextStyle: { color: "#6b7280" },
         axisLine: { show: false },
         axisTick: { show: false },
@@ -497,7 +515,6 @@ const updateTemporalCharts = async () => {
     let yAxisRowCount: number;
     let tooltipFormatter: (params: any) => string;
     let yAxisName: string;
-    let chartTitle: string;
     // 每格存均值（从 valueData 直接取，不再累加）
     const heatmapData: [number, number, number][] = [];
 
@@ -544,7 +561,6 @@ const updateTemporalCharts = async () => {
       });
 
       yAxisName = "月";
-      chartTitle = `数据值热力图 (月 × 小时) — ${selectedValueColumn.value || ""}`;
       tooltipFormatter = (params: any) => {
         const hour = hours[params.data[0]];
         const bucket = dayBuckets[params.data[1]];
@@ -584,7 +600,6 @@ const updateTemporalCharts = async () => {
       });
 
       yAxisName = "周";
-      chartTitle = `数据值热力图 (周 × 小时) — ${selectedValueColumn.value || ""}`;
       tooltipFormatter = (params: any) => {
         const hour = hours[params.data[0]];
         const weekNum = yAxisData[params.data[1]];
@@ -779,161 +794,9 @@ const updateTemporalCharts = async () => {
   }
 };
 
-// ==================== Structural Analysis (Mock/Future Data) ====================
-const updateStructuralCharts = async () => {
-  await nextTick();
-
-  // 1. Matrix Chart
-  if (matrixChartRef.value) {
-    if (!matrixChart) matrixChart = echarts.init(matrixChartRef.value);
-    const { columns, data, timeBins } = generateMatrixData();
-
-    matrixChart.setOption({
-      title: { text: "缺失矩阵 (Global Pattern)", left: "center", textStyle: { fontSize: 14 } },
-      tooltip: { position: "top" },
-      grid: { top: 40, bottom: 20, left: 100, right: 20 },
-      xAxis: {
-        type: "category",
-        data: Array.from({ length: timeBins }, (_, i) => i + 1),
-        name: "Time",
-        axisLine: { show: false },
-        axisTick: { show: false },
-        axisLabel: { show: false },
-      },
-      yAxis: {
-        type: "category",
-        data: columns,
-        axisLabel: { width: 90, overflow: "truncate" },
-      },
-      visualMap: {
-        min: 0,
-        max: 1,
-        show: false,
-        inRange: { color: ["#f3f4f6", "#ef4444"] },
-      },
-      series: [
-        {
-          name: "Missing Status",
-          type: "heatmap",
-          data: data,
-          itemStyle: { borderColor: "#fff", borderWidth: 1 },
-        },
-      ],
-    });
-  }
-
-  // 2. Ranking Chart (Missing Rate Ranking)
-  if (rankingChartRef.value) {
-    if (!rankingChart) rankingChart = echarts.init(rankingChartRef.value);
-    const { columns, rates } = generateRankingData();
-
-    rankingChart.setOption({
-      title: { text: "各变量缺失率排行 (%)", left: "center", textStyle: { fontSize: 14, fontWeight: "normal" } },
-      tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-      grid: { top: 40, bottom: 20, left: 80, right: 40 },
-      xAxis: { type: "value", max: 100, splitLine: { lineStyle: { type: "dashed" } } },
-      yAxis: { type: "category", data: columns, axisLabel: { interval: 0 } },
-      series: [
-        {
-          type: "bar",
-          data: rates,
-          label: { show: true, position: "right", formatter: "{c}%", color: "#6b7280" },
-          itemStyle: {
-            color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [
-              { offset: 0, color: "#f87171" },
-              { offset: 1, color: "#fca5a5" },
-            ]),
-            borderRadius: [0, 4, 4, 0],
-          },
-        },
-      ],
-    });
-  }
-
-  // 3. Duration Chart
-  if (durationChartRef.value) {
-    if (!durationChart) durationChart = echarts.init(durationChartRef.value);
-    const data = generateDurationData();
-
-    durationChart.setOption({
-      title: { text: "总体缺失时长占比", left: "center", textStyle: { fontSize: 14, fontWeight: "normal" } },
-      tooltip: { trigger: "item" },
-      legend: { bottom: "5%", left: "center" },
-      series: [
-        {
-          name: "缺失时长",
-          type: "pie",
-          radius: ["40%", "70%"],
-          center: ["50%", "45%"],
-          avoidLabelOverlap: false,
-          itemStyle: { borderRadius: 10, borderColor: "#fff", borderWidth: 2 },
-          label: { show: false },
-          data: data,
-        },
-      ],
-    });
-  }
-
-  // 4. Profile Chart (Gap Size Profile)
-  if (profileChartRef.value) {
-    if (!profileChart) profileChart = echarts.init(profileChartRef.value);
-    const { columns, categories, data } = generateProfileData();
-
-    profileChart.setOption({
-      title: { text: "各变量缺失缺口特征画像", left: "center", textStyle: { fontSize: 14, fontWeight: "normal" } },
-      tooltip: {
-        position: "top",
-        formatter: (params: any) =>
-          `${columns[params.value[1]]}<br/>${categories[params.value[0]].replace("\n", "")}: ${params.value[2]} 次`,
-      },
-      grid: { top: 50, bottom: 40, left: 100, right: 30 },
-      xAxis: {
-        type: "category",
-        data: categories,
-        axisLabel: { color: "#6b7280" },
-        splitArea: { show: true },
-      },
-      yAxis: {
-        type: "category",
-        data: columns,
-        splitArea: { show: true },
-      },
-      visualMap: {
-        min: 0,
-        max: Math.max(...data.map(d => d[2])) || 1,
-        calculable: true,
-        orient: "horizontal",
-        left: "center",
-        bottom: 0,
-        itemWidth: 10,
-        itemHeight: 80,
-        text: ["高频", "低频"],
-        inRange: { color: ["#fef2f2", "#fca5a5", "#ef4444", "#b91c1c"] },
-        show: false,
-      },
-      series: [
-        {
-          type: "heatmap",
-          data: data,
-          label: {
-            show: true,
-            color: "#fff",
-            formatter: (params: any) => (params.value[2] > 0 ? params.value[2] : ""),
-          },
-          itemStyle: { borderColor: "#fff", borderWidth: 2 },
-        },
-      ],
-    });
-  }
-};
-
 // ==================== Lifecycle & Watchers ====================
 const initCharts = () => {
-  if (activeTab.value === "temporal") {
-    updateTemporalCharts();
-  } else {
-    updateStructuralCharts();
-  }
+  updateTemporalCharts();
 };
 
 watch(
@@ -943,10 +806,6 @@ watch(
   },
   { deep: true }
 );
-
-watch(activeTab, () => {
-  setTimeout(initCharts, 100);
-});
 
 watch(heatmapViewMode, () => {
   setTimeout(initCharts, 100);
@@ -961,6 +820,11 @@ watch(
       await loadValueColumnData(cols[0]);
       updateTemporalCharts();
     }
+    if (cols.length > 0 && !selectedMissingColumn.value) {
+      selectedMissingColumn.value = cols[0];
+      await loadMissingColumnDistribution(cols[0]);
+      updateTemporalCharts();
+    }
   },
   { immediate: true }
 );
@@ -973,6 +837,13 @@ watch(selectedValueColumn, async col => {
   }
 });
 
+watch(selectedMissingColumn, async col => {
+  if (col) {
+    await loadMissingColumnDistribution(col);
+    updateTemporalCharts();
+  }
+});
+
 const handleResize = () => {
   trendChart?.resize();
   timelineChart?.resize();
@@ -980,10 +851,6 @@ const handleResize = () => {
   calendarInstance?.resize();
   monthlyInstance?.resize();
   hourlyInstance?.resize();
-  matrixChart?.resize();
-  rankingChart?.resize();
-  durationChart?.resize();
-  profileChart?.resize();
 };
 
 onMounted(() => {
@@ -999,101 +866,72 @@ onUnmounted(() => {
   calendarInstance?.dispose();
   monthlyInstance?.dispose();
   hourlyInstance?.dispose();
-  matrixChart?.dispose();
-  rankingChart?.dispose();
-  durationChart?.dispose();
-  profileChart?.dispose();
 });
 </script>
 
 <template>
   <div class="analysis-view-container">
-    <el-tabs v-model="activeTab" class="analysis-tabs">
-      <!-- Tab 1: Temporal Distribution -->
-      <el-tab-pane name="temporal">
-        <template #label>
-          <span class="custom-tab-label">
-            <Calendar :size="14" />
-            <span>时序演变 (Temporal)</span>
-          </span>
-        </template>
+    <div class="temporal-charts-grid">
+      <div class="temporal-group-title">数值时序模式</div>
 
-        <div class="temporal-charts-grid">
-          <!-- Row 1: Heatmap -->
-          <div class="chart-wrapper full-width-chart heatmap-container">
-            <div class="heatmap-controls">
-              <span class="heatmap-title">{{ heatmapChartTitle }}</span>
-              <div class="heatmap-controls-right">
-                <el-select
-                  v-if="heatmapViewMode === 'weekly' && valueColumnOptions.length > 0"
-                  v-model="selectedValueColumn"
-                  size="small"
-                  placeholder="选择列"
-                  style="width: 160px"
-                  :loading="valueHeatmapLoading">
-                  <el-option v-for="col in valueColumnOptions" :key="col" :label="col" :value="col" />
-                </el-select>
-                <el-radio-group v-model="heatmapViewMode" size="small">
-                  <el-radio-button value="weekly">{{ heatmapWeeklyLabel }}</el-radio-button>
-                  <el-radio-button value="calendar">日历视图</el-radio-button>
-                </el-radio-group>
-              </div>
-            </div>
-            <div v-show="heatmapViewMode === 'weekly'" ref="heatmapChartRef" class="chart-div heatmap-chart-div"></div>
-            <div
-              v-show="heatmapViewMode === 'calendar'"
-              ref="calendarChartRef"
-              class="chart-div heatmap-chart-div"></div>
-          </div>
-
-          <!-- Row 2: Monthly & Hourly -->
-          <div class="split-charts-row">
-            <div class="chart-wrapper half-width">
-              <div ref="monthlyChartRef" class="chart-div"></div>
-            </div>
-            <div class="chart-wrapper half-width">
-              <div ref="hourlyChartRef" class="chart-div"></div>
-            </div>
-          </div>
-
-          <!-- Row 3: Trend Over Time (bottom) -->
-          <div class="chart-wrapper full-width-chart">
-            <div class="chart-desc-floating">缺失趋势：观察数据质量随时间的动态演变，识别季节性或突发性劣化。</div>
-            <div ref="trendChartRef" class="chart-div"></div>
+      <!-- Row 1: Heatmap -->
+      <div class="chart-wrapper full-width-chart heatmap-container">
+        <div class="heatmap-controls">
+          <span class="heatmap-title">{{ heatmapChartTitle }}</span>
+          <div class="heatmap-controls-right">
+            <el-select
+              v-if="heatmapViewMode === 'weekly' && valueColumnOptions.length > 0"
+              v-model="selectedValueColumn"
+              size="small"
+              placeholder="选择列"
+              style="width: 160px"
+              :loading="valueHeatmapLoading">
+              <el-option v-for="col in valueColumnOptions" :key="col" :label="col" :value="col" />
+            </el-select>
+            <el-radio-group v-model="heatmapViewMode" size="small">
+              <el-radio-button value="weekly">{{ heatmapWeeklyLabel }}</el-radio-button>
+              <el-radio-button value="calendar">日历视图</el-radio-button>
+            </el-radio-group>
           </div>
         </div>
-      </el-tab-pane>
+        <div v-show="heatmapViewMode === 'weekly'" ref="heatmapChartRef" class="chart-div heatmap-chart-div"></div>
+        <div v-show="heatmapViewMode === 'calendar'" ref="calendarChartRef" class="chart-div heatmap-chart-div"></div>
+      </div>
 
-      <!-- Tab 2: Multidimensional Patterns -->
-      <el-tab-pane name="patterns">
-        <template #label>
-          <span class="custom-tab-label">
-            <BarChart2 :size="14" />
-            <span>特征与模式 (Profiles)</span>
-          </span>
-        </template>
+      <MissingOverviewCharts />
 
-        <div class="patterns-grid">
-          <!-- Row 1: Matrix (Full Width) -->
-          <div class="chart-wrapper full-width-chart matrix-chart">
-            <div class="chart-desc-inline">缺失矩阵：可视化全局缺失模式，直观识别多传感器同时失效的系统性问题。</div>
-            <div ref="matrixChartRef" class="chart-div"></div>
-          </div>
-
-          <!-- Row 2: Ranking & Duration -->
-          <div class="split-charts-row">
-            <div class="chart-wrapper half-width">
-              <div class="chart-desc-inline">缺失排行：量化对比，精准定位数据质量最差的变量。</div>
-              <div ref="rankingChartRef" class="chart-div"></div>
-            </div>
-            <div class="chart-wrapper half-width">
-              <div class="chart-desc-inline">总体时长分布：评估整体数据集的缺口连续性特征。</div>
-              <div ref="durationChartRef" class="chart-div"></div>
-            </div>
-          </div>
+      <div class="temporal-group-toolbar">
+        <div class="temporal-group-title">缺失时序模式</div>
+        <div class="temporal-column-control">
+          <span class="temporal-column-label">分析列</span>
+          <el-select
+            v-model="selectedMissingColumn"
+            size="small"
+            placeholder="选择缺失分析列"
+            style="width: 180px"
+            filterable
+            :loading="missingTemporalLoading">
+            <el-option v-for="col in valueColumnOptions" :key="col" :label="col" :value="col" />
+          </el-select>
         </div>
-      </el-tab-pane>
-    </el-tabs>
+      </div>
+
+      <!-- Row 2: Monthly & Hourly -->
+      <div class="split-charts-row">
+        <div class="chart-wrapper half-width">
+          <div ref="monthlyChartRef" class="chart-div"></div>
+        </div>
+        <div class="chart-wrapper half-width">
+          <div ref="hourlyChartRef" class="chart-div"></div>
+        </div>
+      </div>
+
+      <!-- Row 3: Trend Over Time (bottom) -->
+      <div class="chart-wrapper full-width-chart">
+        <div class="chart-desc-floating">缺失趋势：观察数据质量随时间的动态演变，识别季节性或突发性劣化。</div>
+        <div ref="trendChartRef" class="chart-div trend-chart-div"></div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -1102,13 +940,6 @@ onUnmounted(() => {
   padding: 10px;
   background: var(--bg-color-overlay);
   border-radius: var(--radius-panel);
-}
-
-.custom-tab-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--text-md);
 }
 
 .chart-wrapper {
@@ -1125,6 +956,49 @@ onUnmounted(() => {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
+.temporal-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 10px;
+  color: var(--c-text-primary);
+  font-size: var(--text-md);
+  font-weight: 700;
+}
+
+.temporal-group-title::before {
+  content: "";
+  width: 4px;
+  height: 16px;
+  border-radius: var(--radius-sm);
+  background: var(--c-brand);
+}
+
+.temporal-group-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 4px 0 10px;
+}
+
+.temporal-group-toolbar .temporal-group-title {
+  margin: 0;
+}
+
+.temporal-column-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.temporal-column-label {
+  color: var(--c-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
 .chart-div {
   width: 100%;
   height: 300px;
@@ -1138,12 +1012,8 @@ onUnmounted(() => {
   height: 400px !important;
 }
 
-.matrix-chart .chart-div {
-  height: 350px;
-}
-
-.profile-chart .chart-div {
-  height: 350px;
+.trend-chart-div {
+  height: 360px !important;
 }
 
 .split-charts-row {

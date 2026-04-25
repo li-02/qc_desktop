@@ -201,11 +201,8 @@ const loadCsvData = async () => {
     }
 
     console.log("读取到的数据:", result.data);
-
-    ElMessage.success(`已读取 ${selectedColumn.value} 的数据`);
   } catch (error: any) {
     console.error("读取数据失败:", error);
-    ElMessage.error(error.message || "读取数据失败，请重试");
     csvData.value = null;
     columnStatistics.value = null;
   } finally {
@@ -391,7 +388,7 @@ onMounted(() => {
             </div>
 
             <div class="stat-card warning">
-              <div class="stat-icon missing">⚠️</div>
+              <div class="stat-icon missing">🔴</div>
               <div class="stat-info">
                 <div class="stat-value">{{ missingValueCount.toLocaleString() }}</div>
                 <div class="stat-label">缺失值</div>
@@ -399,7 +396,7 @@ onMounted(() => {
             </div>
 
             <div class="stat-card" :class="totalOutlierCount > 0 ? 'danger' : 'info'">
-              <div class="stat-icon outlier">🔴</div>
+              <div class="stat-icon outlier">⚠️</div>
               <div class="stat-info">
                 <div class="stat-value">{{ latestOutlierResult ? totalOutlierCount.toLocaleString() : "-" }}</div>
                 <div class="stat-label">异常值</div>
@@ -486,10 +483,10 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 数据分布可视化区域 -->
+      <!-- 时间序列趋势图区域 -->
       <div class="visualization-section">
         <div class="section-header">
-          <div class="section-title">📈 数据分布可视化</div>
+          <div class="section-title">📈 时间序列趋势图</div>
           <div class="viz-controls">
             <el-select v-model="selectedColumn" placeholder="选择指标列" size="small" class="column-select" filterable>
               <el-option v-for="col in numericColumns" :key="col.name" :label="col.name" :value="col.name" />
@@ -543,10 +540,10 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 缺失分析区域 -->
+      <!-- 缺失概览区域 -->
       <div class="missing-analysis-section">
         <div class="section-header">
-          <div class="section-title">🔍 缺失分析</div>
+          <div class="section-title">🔍 缺失概览</div>
           <div class="missing-controls">
             <el-button
               type="primary"
@@ -602,7 +599,7 @@ onMounted(() => {
         <div v-if="!gapFillingStore.hasStats" class="missing-empty-state">
           <Search :size="18" class="missing-empty-icon" :class="{ 'is-loading': gapFillingStore.loading }" />
           <span class="missing-empty-text">
-            {{ gapFillingStore.loading ? "正在检测缺失值..." : "暂无缺失分析数据，请点击「重新检测」" }}
+            {{ gapFillingStore.loading ? "正在检测缺失值..." : "暂无缺失概览数据，请点击「重新检测」" }}
           </span>
         </div>
 
@@ -1445,13 +1442,15 @@ onMounted(() => {
 }
 
 .chart-container {
-  height: 500px;
+  height: 680px;
   background: var(--c-bg-surface);
   border-radius: var(--radius-panel);
   border: 1px solid var(--c-border);
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   padding: 16px;
   position: relative;
+  box-sizing: border-box;
+  display: flex;
 }
 
 /* 统计摘要 - 新样式 */
@@ -1590,7 +1589,7 @@ onMounted(() => {
   background: var(--c-brand-active);
 }
 
-/* ==================== 缺失分析区域 ==================== */
+/* ==================== 缺失概览区域 ==================== */
 .missing-analysis-section {
   background: var(--c-bg-surface);
   border: 1px solid var(--c-border);

@@ -562,7 +562,6 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
   if (timeData.length === 0) return null;
 
   // 对大数据集进行采样以提高性能
-  const originalLength = timeData.length;
   const sampledData = timeData.length > SAMPLING_CONFIG.MAX_POINTS ? sampleTimeSeriesData(timeData) : timeData;
 
   // 性能优化说明：
@@ -613,18 +612,10 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
   return {
     title: {
       text: `${props.selectedColumn} 时间序列趋势图`,
-      subtext:
-        originalLength > SAMPLING_CONFIG.MAX_POINTS
-          ? `显示 ${sampledData.length} / ${originalLength} 个数据点 (已优化采样)`
-          : `${sampledData.length} 个数据点`,
       left: "center",
       textStyle: {
         fontSize: 16,
         fontWeight: "bold",
-      },
-      subtextStyle: {
-        fontSize: 12,
-        color: "#666",
       },
     },
     tooltip: {
@@ -708,7 +699,7 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
         xAxisIndex: [0],
         start: 0,
         end: 100,
-        bottom: "10px",
+        bottom: 24,
         height: 20,
         showDetail: false,
         throttle: 100, // 限制缩放频率
@@ -739,8 +730,8 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
     grid: {
       left: "12%", // 为Y轴滑动条留出空间
       right: "8%",
-      bottom: "15%", // 为X轴滑动条留出空间
-      top: "15%",
+      bottom: 96, // 为X轴滑动条留出空间
+      top: 72,
       containLabel: true,
     },
     xAxis: {
@@ -1440,7 +1431,7 @@ onBeforeUnmount(() => {
 .chart-visualization {
   width: 100%;
   height: 100%;
-  min-height: 500px;
+  min-height: 620px;
   position: relative;
   display: flex;
   align-items: center;
@@ -1474,7 +1465,7 @@ onBeforeUnmount(() => {
 .chart-container {
   width: 100%;
   height: 100%;
-  min-height: 500px;
+  min-height: 620px;
   border-radius: var(--radius-panel);
   overflow: hidden;
 }

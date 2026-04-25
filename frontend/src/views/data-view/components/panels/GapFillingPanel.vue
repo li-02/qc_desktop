@@ -96,7 +96,6 @@ const versionNameMap = computed(() => {
 
 const imputationResults = ref<ImputationResult[]>([]);
 const currentResultId = ref<number | null>(null);
-const showArchivedHistory = ref(false); // 是否显示已归档(已应用)的历史记录
 
 // 重命名状态
 const editingResultId = ref<number | null>(null);
@@ -107,11 +106,7 @@ const dragIndex = ref<number | null>(null);
 const dragOverIndex = ref<number | null>(null);
 
 const visibleImputationResults = computed(() => {
-  if (showArchivedHistory.value) {
-    return imputationResults.value;
-  }
-  // 默认隐藏已应用的记录，只显示草稿/失败/进行中的记录
-  return imputationResults.value.filter(r => r.status !== "APPLIED");
+  return imputationResults.value;
 });
 
 // ==================== 方法选择状态 ====================
@@ -2017,7 +2012,7 @@ onUnmounted(() => {
           </div>
           <div class="history-list">
             <div v-if="visibleImputationResults.length === 0" class="history-empty">
-              <span>暂无草稿记录</span>
+              <span>暂无操作记录</span>
             </div>
             <div
               v-for="(result, index) in visibleImputationResults"

@@ -1021,6 +1021,7 @@ export class DatabaseManager {
     // 插入方法参数定义
     this.insertDefaultMethodParams();
     this.seedBuiltinSAITSModels();
+    this.seedBuiltinITransformerModels();
   }
 
   private cleanupObsoleteImputationMethods(activeMethodIds: string[]): void {
@@ -1908,6 +1909,24 @@ export class DatabaseManager {
     const toRelativePythonPath = (absolutePath: string): string =>
       path.relative(this.getPythonDir(), absolutePath).replace(/\\/g, "/");
 
+    const resolveMissingDays = (fileName: string): number => {
+      const match = fileName.match(/masks(\d+)/i);
+      return match ? Number(match[1]) : 1;
+    };
+
+    const resolveSeqLen = (missingDays: number): number => {
+      if (missingDays === 1) return 192;
+      if (missingDays === 7) return 768;
+      if (missingDays === 15) return 1440;
+      if (missingDays === 30) return 2880;
+      return 192;
+    };
+
+    const resolveMetricLabel = (targetColumn: string): string => {
+      if (targetColumn === "co2_flux") return "NEE";
+      return targetColumn.toUpperCase();
+    };
+
     const findStmt = this.db.prepare(`
       SELECT id FROM biz_imputation_model
       WHERE dataset_id IS NULL AND method_id = 'SAITS' AND target_column = ? AND model_path = ? AND is_del = 0
@@ -1954,10 +1973,13 @@ export class DatabaseManager {
 
         const modelPath = toRelativePythonPath(absoluteModelPath);
         const metadataPath = toRelativePythonPath(absoluteMetadataPath);
+        const missingDays = resolveMissingDays(modelFile);
         const modelParams = {
           metadata_path: metadataPath,
           framework: "pypots",
           pypots_version: "1.1",
+          missing_days: missingDays,
+          seq_len: resolveSeqLen(missingDays),
           n_layers: 2,
           d_model: 128,
           n_heads: 8,
@@ -1975,13 +1997,195 @@ export class DatabaseManager {
         const featureColumns = JSON.stringify(config.featureColumns);
         const modelParamsJson = JSON.stringify(modelParams);
         const existing = findStmt.get(config.targetColumn, modelPath) as { id: number } | undefined;
-        const modelName = `${config.displayName} SAITS插补模型`;
+        const modelName = `${resolveMetricLabel(config.targetColumn)} 适合缺失${missingDays}天`;
 
         if (existing) {
           updateStmt.run(modelName, modelParamsJson, featureColumns, featureColumns, existing.id);
         } else {
           insertStmt.run(modelName, modelPath, modelParamsJson, config.targetColumn, featureColumns, featureColumns);
         }
+      }
+    }
+  }
+
+  private seedBuiltinITransformerModels(): void {
+    if (!this.db) return;
+
+    const modelsRoot = path.join(this.getPythonDir(), "models", "ITRANSFORMER");
+    if (!fs.existsSync(modelsRoot)) return;
+
+    const targetConfigs: Record<
+      string,
+      {
+        targetColumn: string;
+        displayName: string;
+        featureColumns: string[];
+      }
+    > = {
+      FCH4: {
+        targetColumn: "FCH4",
+        displayName: "FCH4",
+        featureColumns: ["ta_1_2_1", "vpd", "swin", "ws_1_2_1", "par", "rh_1_2_1"],
+      },
+      NAI: {
+        targetColumn: "nai",
+        displayName: "NAI",
+        featureColumns: ["rh", "vpd", "rg", "ppfd", "ta", "pm2_5", "pm10"],
+      },
+      "NEE/BEON": {
+        targetColumn: "nee",
+        displayName: "NEE BEON",
+        featureColumns: ["rg_1_1_2", "rn_1_1_1", "ta_1_2_1", "vpd", "rh_1_1_1", "swc_1_1_1", "ts_1_1_1"],
+      },
+      "NEE/FLUXNET": {
+        targetColumn: "co2_flux",
+        displayName: "NEE Fluxnet",
+        featureColumns: ["rg_1_1_2", "rn_1_1_1", "ta_1_2_1", "vpd", "rh_1_1_1", "swc_1_1_1", "ts_1_1_1"],
+      },
+    };
+
+    const toRelativePythonPath = (absolutePath: string): string =>
+      path.relative(this.getPythonDir(), absolutePath).replace(/\\/g, "/");
+
+    const collectModelFiles = (dir: string): string[] => {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      const files: string[] = [];
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          files.push(...collectModelFiles(fullPath));
+        } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".pypots")) {
+          files.push(fullPath);
+        }
+      }
+      return files;
+    };
+
+    const resolveConfig = (absoluteModelPath: string) => {
+      const relativeDir = path
+        .relative(modelsRoot, path.dirname(absoluteModelPath))
+        .replace(/\\/g, "/")
+        .toUpperCase();
+      return targetConfigs[relativeDir];
+    };
+
+    const resolveMissingDays = (fileName: string): number => {
+      const match = fileName.match(/masks(\d+)/i);
+      return match ? Number(match[1]) : 1;
+    };
+
+    const resolveSeqLen = (missingDays: number): number => {
+      if (missingDays === 1) return 192;
+      if (missingDays === 7) return 768;
+      if (missingDays === 15) return 1440;
+      if (missingDays === 30) return 2880;
+      return 192;
+    };
+
+    const resolveDimensions = (
+      config: { targetColumn: string },
+      missingDays: number
+    ): { dModel: number; dFfn: number; dK: number; dV: number } => {
+      // FCH4/NAI checkpoints were trained with 128 hidden units for all missing-day classes.
+      const usesFixed128 = config.targetColumn === "FCH4" || config.targetColumn === "nai";
+      const dModel = usesFixed128 ? 128 : missingDays === 1 ? 128 : missingDays === 7 ? 256 : 512;
+      return { dModel, dFfn: dModel, dK: dModel / 8, dV: dModel / 8 };
+    };
+
+    const resolveModelLabel = (fileName: string): string => {
+      const missingDays = resolveMissingDays(fileName);
+      return `适合缺失${missingDays}天`;
+    };
+
+    const resolveMetricLabel = (targetColumn: string): string => {
+      if (targetColumn === "co2_flux") return "NEE";
+      return targetColumn.toUpperCase();
+    };
+
+    const resolveTimestamp = (fileName: string): string | null => {
+      const match = fileName.match(/_(\d{8})_(\d{6})\.pypots$/i);
+      if (!match) return null;
+      const date = match[1];
+      const time = match[2];
+      return `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)} ${time.slice(0, 2)}:${time.slice(2, 4)}:${time.slice(4, 6)}`;
+    };
+
+    const findStmt = this.db.prepare(`
+      SELECT id FROM biz_imputation_model
+      WHERE dataset_id IS NULL AND method_id = 'ITRANSFORMER' AND target_column = ? AND model_path = ? AND is_del = 0
+      LIMIT 1
+    `);
+
+    const insertStmt = this.db.prepare(`
+      INSERT INTO biz_imputation_model
+        (dataset_id, method_id, model_name, model_path, model_params,
+         target_column, feature_columns, time_column, training_columns,
+         is_active, trained_at)
+      VALUES
+        (NULL, 'ITRANSFORMER', ?, ?, ?, ?, ?, 'record_time', ?, 1, COALESCE(?, CURRENT_TIMESTAMP))
+    `);
+
+    const updateStmt = this.db.prepare(`
+      UPDATE biz_imputation_model
+      SET model_name = ?,
+          model_params = ?,
+          feature_columns = ?,
+          training_columns = ?,
+          is_active = 1,
+          trained_at = COALESCE(?, trained_at),
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+
+    for (const absoluteModelPath of collectModelFiles(modelsRoot)) {
+      const config = resolveConfig(absoluteModelPath);
+      if (!config) continue;
+
+      const metadataFile = absoluteModelPath.replace(/\.pypots$/i, "_metadata.joblib");
+      if (!fs.existsSync(metadataFile)) continue;
+
+      const modelPath = toRelativePythonPath(absoluteModelPath);
+      const metadataPath = toRelativePythonPath(metadataFile);
+      const missingDays = resolveMissingDays(path.basename(absoluteModelPath));
+      const dimensions = resolveDimensions(config, missingDays);
+      const modelParams = {
+        model_path: modelPath,
+        metadata_path: metadataPath,
+        framework: "pypots",
+        pypots_version: "1.1",
+        missing_days: missingDays,
+        seq_len: resolveSeqLen(missingDays),
+        n_layers: 2,
+        d_model: dimensions.dModel,
+        n_heads: 8,
+        d_k: dimensions.dK,
+        d_v: dimensions.dV,
+        d_ffn: dimensions.dFfn,
+        dropout: 0.1,
+        attn_dropout: 0,
+        ort_weight: 1,
+        mit_weight: 1,
+        batch_size: 4,
+        use_gpu: false,
+      };
+      const featureColumns = JSON.stringify(config.featureColumns);
+      const modelParamsJson = JSON.stringify(modelParams);
+      const trainedAt = resolveTimestamp(path.basename(absoluteModelPath));
+      const modelName = `${resolveMetricLabel(config.targetColumn)} ${resolveModelLabel(path.basename(absoluteModelPath))}`;
+      const existing = findStmt.get(config.targetColumn, modelPath) as { id: number } | undefined;
+
+      if (existing) {
+        updateStmt.run(modelName, modelParamsJson, featureColumns, featureColumns, trainedAt, existing.id);
+      } else {
+        insertStmt.run(
+          modelName,
+          modelPath,
+          modelParamsJson,
+          config.targetColumn,
+          featureColumns,
+          featureColumns,
+          trainedAt
+        );
       }
     }
   }

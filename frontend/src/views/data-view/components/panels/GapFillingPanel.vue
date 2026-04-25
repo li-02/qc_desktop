@@ -854,6 +854,28 @@ const findBestMatchingModel = (models: ImputationModel[]): ImputationModel | nul
   const userCols = availableColumns.value.map(c => c.name);
   const userColsLower = userCols.map(c => c.toLowerCase());
 
+  const getMissingDays = (model: ImputationModel): number => {
+    const fromParams = Number(model.modelParams?.missing_days ?? model.modelParams?.missingDays ?? 0);
+    if (fromParams > 0) return fromParams;
+    const match = String(model.modelPath || "").match(/masks(\d+)_/i);
+    return match ? Number(match[1]) : 999;
+  };
+
+  const isBetterModel = (
+    candidate: ImputationModel,
+    candidateScore: number,
+    current: ImputationModel | null,
+    currentScore: number
+  ): boolean => {
+    if (!current) return true;
+    if (candidateScore !== currentScore) return candidateScore > currentScore;
+    const candidateDays = getMissingDays(candidate);
+    const currentDays = getMissingDays(current);
+    if (candidateDays !== currentDays) return candidateDays < currentDays;
+    if (candidate.isActive !== current.isActive) return candidate.isActive;
+    return false;
+  };
+
   // 对每个模型计算匹配分数：0=不匹配，1=包含匹配，2=忽略大小写精确匹配，3=精确匹配
   let bestModel: ImputationModel | null = null;
   let bestScore = 0;
@@ -865,7 +887,7 @@ const findBestMatchingModel = (models: ImputationModel[]): ImputationModel | nul
 
     // 3 分：精确匹配（大小写完全一致）
     if (userCols.includes(model.targetColumn)) {
-      if (3 > bestScore || (3 === bestScore && model.isActive)) {
+      if (isBetterModel(model, 3, bestModel, bestScore)) {
         bestModel = model;
         bestScore = 3;
       }
@@ -874,7 +896,7 @@ const findBestMatchingModel = (models: ImputationModel[]): ImputationModel | nul
 
     // 2 分：忽略大小写的精确匹配（如 nee → NEE）
     if (userColsLower.includes(targetLower)) {
-      if (2 > bestScore || (2 === bestScore && model.isActive)) {
+      if (isBetterModel(model, 2, bestModel, bestScore)) {
         bestModel = model;
         bestScore = 2;
       }
@@ -884,7 +906,7 @@ const findBestMatchingModel = (models: ImputationModel[]): ImputationModel | nul
     // 1 分：包含匹配（数据集列名包含模型目标列名，如 NEE_VUT_REF 包含 nee）
     const hasContainMatch = userColsLower.some(col => col.includes(targetLower));
     if (hasContainMatch) {
-      if (1 > bestScore || (1 === bestScore && model.isActive)) {
+      if (isBetterModel(model, 1, bestModel, bestScore)) {
         bestModel = model;
         bestScore = 1;
       }

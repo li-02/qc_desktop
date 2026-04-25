@@ -415,12 +415,28 @@ export class ImputationRepository {
    */
   getModelsByDataset(datasetId: number, methodId?: string): any[] {
     if (methodId) {
+      const orderBy =
+        methodId === "ITRANSFORMER" || methodId === "SAITS"
+          ? `
+          ORDER BY
+            target_column COLLATE NOCASE,
+            CASE
+              WHEN lower(model_path) GLOB '*masks1_*' THEN 1
+              WHEN lower(model_path) GLOB '*masks7_*' THEN 7
+              WHEN lower(model_path) GLOB '*masks15_*' THEN 15
+              WHEN lower(model_path) GLOB '*masks30_*' THEN 30
+              ELSE 999
+            END,
+            trained_at DESC
+        `
+          : "ORDER BY trained_at DESC";
+
       return this.db
         .prepare(
           `
           SELECT * FROM biz_imputation_model 
           WHERE (dataset_id = ? OR dataset_id IS NULL) AND method_id = ? AND is_del = 0
-          ORDER BY trained_at DESC
+          ${orderBy}
         `
         )
         .all(datasetId, methodId);

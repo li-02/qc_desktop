@@ -1,7 +1,6 @@
 import { ImputationRepository } from "../repository/ImputationRepository";
 import { DatabaseManager } from "../core/DatabaseManager";
 import { PythonBridgeService, type PythonTaskResult } from "./PythonBridgeService";
-import { MySQLService } from "./MySQLService";
 import type {
   ImputationMethod,
   ImputationMethodParam,
@@ -19,12 +18,6 @@ import type {
   CustomModelConfig,
 } from "@shared/types/imputation";
 import type { DatasetVersion } from "@shared/types/database";
-import type {
-  BEONResolvedSiteContext,
-  BEONSiteRule,
-  DatabaseConnectionProfile,
-  MySQLConnectionConfig,
-} from "@shared/types/mysqlInterface";
 import * as fs from "fs";
 import * as path from "path";
 import * as Papa from "papaparse";
@@ -35,7 +28,6 @@ type ProgressCallback = (event: ImputationProgressEvent) => void;
 export class ImputationService {
   private repository: ImputationRepository;
   private db = DatabaseManager.getInstance().getDatabase();
-  private mysqlService = new MySQLService();
   private progressCallbacks: Map<number, ProgressCallback> = new Map();
 
   constructor() {
@@ -94,104 +86,6 @@ export class ImputationService {
       | { time_column?: string }
       | undefined;
     return dataset?.time_column || "TIMESTAMP";
-  }
-
-  private normalizeBEONSiteCode(value: unknown): string {
-    return String(value ?? "")
-      .trim()
-      .toLowerCase();
-  }
-
-  private normalizeBEONTimeKey(value: unknown): string {
-    if (value === null || value === undefined) return "";
-
-    if (value instanceof Date) {
-      return this.formatDateToLocalSecond(value);
-    }
-
-    const raw = String(value).trim();
-    if (!raw) return "";
-
-    const parsed = new Date(raw);
-    if (!Number.isNaN(parsed.getTime())) {
-      return this.formatDateToLocalSecond(parsed);
-    }
-
-    return raw.replace("T", " ").replace(/Z$/i, "");
-  }
-
-  private formatDateToLocalSecond(date: Date): string {
-    const pad = (num: number) => String(num).padStart(2, "0");
-    return (
-      [date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join("-") +
-      " " +
-      [pad(date.getHours()), pad(date.getMinutes()), pad(date.getSeconds())].join(":")
-    );
-  }
-
-  private parseBEONRuleConfig(rule: BEONSiteRule): Record<string, any> {
-    return rule.ruleConfig && typeof rule.ruleConfig === "object" ? rule.ruleConfig : {};
-  }
-
-  private toOptionalConnectionProfileId(value: unknown): number | undefined {
-    if (value === null || value === undefined) return undefined;
-    if (typeof value === "string" && value.trim().length === 0) return undefined;
-
-    const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
-    return parsed;
-  }
-
-  private getBEONResolvedSiteContext(siteCode: string, connectionProfileId?: number): BEONResolvedSiteContext | null {
-    const normalizedSiteCode = this.normalizeBEONSiteCode(siteCode);
-    if (!normalizedSiteCode) return null;
-
-    const result = this.mysqlService.resolveBEONSiteContext(normalizedSiteCode, connectionProfileId);
-    if (!result.success) {
-      throw new Error(result.error || `解析站点规则失败: ${normalizedSiteCode}`);
-    }
-    return result.data || null;
-  }
-
-  private getBEONRuleProvidedTargets(rules: BEONSiteRule[]): Set<string> {
-    const targets = new Set<string>();
-
-    for (const rule of rules) {
-      const config = this.parseBEONRuleConfig(rule);
-
-      const targetMapping = config.target_mapping;
-      if (targetMapping && typeof targetMapping === "object") {
-        for (const target of Object.values(targetMapping)) {
-          const columnName = String(target ?? "").trim();
-          if (columnName) targets.add(columnName);
-        }
-      }
-
-      const copyColumns = Array.isArray(config.copy_columns) ? config.copy_columns : [];
-      for (const item of copyColumns) {
-        if (!item || typeof item !== "object") continue;
-        const target = String((item as Record<string, any>).target ?? "").trim();
-        if (target) targets.add(target);
-      }
-
-      const vpdFormula = config.vpd_formula;
-      if (vpdFormula && typeof vpdFormula === "object") {
-        const target = String((vpdFormula as Record<string, any>).target ?? "").trim();
-        if (target) targets.add(target);
-      }
-    }
-
-    return targets;
-  }
-
-  private toMySQLConnectionConfig(profile: DatabaseConnectionProfile): MySQLConnectionConfig {
-    return {
-      host: profile.host,
-      port: profile.port,
-      user: profile.user,
-      password: profile.password,
-      database: profile.database,
-    };
   }
 
   private isMissingParamValue(paramType: ImputationMethodParam["paramType"], value: unknown): boolean {
@@ -255,76 +149,6 @@ export class ImputationService {
       if (!columnName) continue;
       if (!availableColumns.includes(columnName)) {
         throw new Error(`无法执行 REddyProc：配置的${mapping.label}列不存在: ${columnName}`);
-      }
-    }
-  }
-
-  private validateBEONREddyProcParams(
-    datasetId: number,
-    availableColumns: string[],
-    params: Record<string, any>
-  ): void {
-    const timeColumn = this.getDatasetTimeColumn(datasetId);
-    if (!availableColumns.includes(timeColumn)) {
-      throw new Error(`无法执行 BEON-REddyProc：缺少时间列 ${timeColumn}`);
-    }
-
-    const requireColumn = (key: string, label: string): string => {
-      const columnName = String(params[key] ?? "").trim();
-      if (!columnName || !availableColumns.includes(columnName)) {
-        throw new Error(`无法执行 BEON-REddyProc：缺少${label}列 ${columnName || `(${key})`}`);
-      }
-      return columnName;
-    };
-
-    requireColumn("co2_flux_col", "CO2通量");
-    requireColumn("ppfd_col", "PPFD");
-    requireColumn("ustar_raw_col", "u*原始");
-
-    const siteCode = this.normalizeBEONSiteCode(params.site_code);
-    const connectionProfileId = this.toOptionalConnectionProfileId(params.connection_profile_id);
-    const context = siteCode ? this.getBEONResolvedSiteContext(siteCode, connectionProfileId) : null;
-    const providedTargets = context
-      ? this.getBEONRuleProvidedTargets([...(context.fallbackRules || []), ...(context.localOverrideRules || [])])
-      : new Set<string>();
-
-    const requireDirectOrRuleProvided = (key: string, label: string): void => {
-      const columnName = String(params[key] ?? "").trim();
-      if (!columnName) {
-        throw new Error(`无法执行 BEON-REddyProc：缺少${label}列 (${key})`);
-      }
-      if (availableColumns.includes(columnName) || providedTargets.has(columnName)) {
-        return;
-      }
-      throw new Error(`无法执行 BEON-REddyProc：缺少${label}列 ${columnName}`);
-    };
-
-    requireDirectOrRuleProvided("rg_raw_col", "Rg原始");
-    requireDirectOrRuleProvided("tair_raw_col", "Tair原始");
-    requireDirectOrRuleProvided("rh_raw_col", "rH原始");
-
-    if (siteCode && context?.fallbackRules?.length && !context.connectionProfile) {
-      throw new Error(`无法执行 BEON-REddyProc：站点 ${siteCode} 命中了补站规则，但没有可用的数据库连接配置`);
-    }
-
-    const optionalColumnMappings: Array<{ key: string; label: string }> = [
-      { key: "h2o_flux_col", label: "H2O通量" },
-      { key: "le_col", label: "LE" },
-      { key: "h_col", label: "H" },
-      { key: "vpd_raw_col", label: "VPD原始" },
-      { key: "qc_co2_flux_col", label: "CO2 QC" },
-      { key: "qc_h2o_flux_col", label: "H2O QC" },
-      { key: "qc_le_col", label: "LE QC" },
-      { key: "qc_h_col", label: "H QC" },
-    ];
-
-    for (const mapping of optionalColumnMappings) {
-      const rawValue = params[mapping.key];
-      if (rawValue === null || rawValue === undefined) continue;
-      const columnName = String(rawValue).trim();
-      if (!columnName) continue;
-      if (!availableColumns.includes(columnName) && !providedTargets.has(columnName)) {
-        throw new Error(`无法执行 BEON-REddyProc：配置的${mapping.label}列不存在: ${columnName}`);
       }
     }
   }
@@ -445,168 +269,6 @@ export class ImputationService {
     };
   }
 
-  private async applyBEONFallbackRules(
-    data: Record<string, any>[],
-    timeColumn: string,
-    context: BEONResolvedSiteContext,
-    onProgress: (progress: number, message: string, currentColumn?: string) => void
-  ): Promise<Record<string, any>[]> {
-    if (!context.fallbackRules.length) {
-      return data;
-    }
-    if (!context.connectionProfile) {
-      throw new Error(`站点 ${context.siteCode} 命中了补站规则，但没有可用的数据库连接配置`);
-    }
-
-    const preparedData = data.map(row => ({ ...row }));
-    const connectionConfig = this.toMySQLConnectionConfig(context.connectionProfile);
-    const validTimeValues = preparedData
-      .map(row => row[timeColumn])
-      .filter(value => value !== null && value !== undefined && String(value).trim().length > 0);
-
-    if (validTimeValues.length === 0) {
-      throw new Error(`无法执行 BEON-REddyProc：时间列 ${timeColumn} 为空，无法按时间范围补站`);
-    }
-
-    const startTime = this.normalizeBEONTimeKey(validTimeValues[0]);
-    const endTime = this.normalizeBEONTimeKey(validTimeValues[validTimeValues.length - 1]);
-
-    for (const rule of context.fallbackRules) {
-      const config = this.parseBEONRuleConfig(rule);
-      const sourceTable = String(rule.sourceTable || config.source_table || "").trim();
-      if (!sourceTable) {
-        throw new Error(`站点 ${context.siteCode} 的补站规则 ${rule.ruleName} 缺少 source_table`);
-      }
-
-      const matchTimeColumn = String(rule.matchTimeColumn || config.match_time_column || "record_time").trim();
-      const selectColumns = Array.isArray(config.select_columns)
-        ? config.select_columns.map((item: unknown) => String(item ?? "").trim()).filter(Boolean)
-        : [];
-      const queryColumns = selectColumns.filter(column => column !== matchTimeColumn);
-      const targetMapping =
-        config.target_mapping && typeof config.target_mapping === "object"
-          ? (config.target_mapping as Record<string, string>)
-          : queryColumns.reduce(
-              (acc, column) => {
-                acc[column] = column;
-                return acc;
-              },
-              {} as Record<string, string>
-            );
-      const dropLocalColumns = Array.isArray(config.drop_local_columns)
-        ? config.drop_local_columns.map((item: unknown) => String(item ?? "").trim()).filter(Boolean)
-        : [];
-      const requiredColumns = Array.isArray(config.required_columns)
-        ? config.required_columns.map((item: unknown) => String(item ?? "").trim()).filter(Boolean)
-        : [];
-      const requireAll = config.require_all === true;
-
-      onProgress(12, `正在从数据库补取站点 ${context.siteCode} 的规则数据: ${rule.ruleName}`);
-      const rowsResult = await this.mysqlService.getRowsByTimeRange(
-        connectionConfig,
-        sourceTable,
-        queryColumns,
-        matchTimeColumn,
-        startTime,
-        endTime
-      );
-
-      if (!rowsResult.success) {
-        throw new Error(`补站数据读取失败(${rule.ruleName}): ${rowsResult.error}`);
-      }
-
-      const fetchedRows = rowsResult.data || [];
-      if (requireAll && fetchedRows.length === 0) {
-        throw new Error(`补站规则 ${rule.ruleName} 未返回任何数据，无法继续执行`);
-      }
-
-      const rowsByTime = new Map<string, Record<string, any>>();
-      for (const row of fetchedRows) {
-        const timeKey = this.normalizeBEONTimeKey(row[matchTimeColumn]);
-        if (!timeKey) continue;
-        rowsByTime.set(timeKey, row);
-      }
-
-      for (const row of preparedData) {
-        for (const columnName of dropLocalColumns) {
-          delete row[columnName];
-        }
-
-        const timeKey = this.normalizeBEONTimeKey(row[timeColumn]);
-        if (!timeKey) continue;
-        const matchedRow = rowsByTime.get(timeKey);
-        if (!matchedRow) continue;
-
-        for (const [sourceColumn, targetColumn] of Object.entries(targetMapping)) {
-          if (!targetColumn) continue;
-          if (Object.prototype.hasOwnProperty.call(matchedRow, sourceColumn)) {
-            row[targetColumn] = matchedRow[sourceColumn];
-          }
-        }
-      }
-
-      if (requireAll && requiredColumns.length > 0) {
-        const unresolved = requiredColumns.filter(requiredColumn => {
-          const targetColumn = targetMapping[requiredColumn] || requiredColumn;
-          return !preparedData.some(
-            row =>
-              row[targetColumn] !== null && row[targetColumn] !== undefined && String(row[targetColumn]).trim() !== ""
-          );
-        });
-
-        if (unresolved.length > 0) {
-          throw new Error(`补站规则 ${rule.ruleName} 未能生成所需列: ${unresolved.join(", ")}`);
-        }
-      }
-    }
-
-    return preparedData;
-  }
-
-  private async buildBEONExecutionInput(
-    resultId: number,
-    data: Record<string, any>[],
-    params: Record<string, any>,
-    version: { file_path: string; dataset_id: number },
-    timeColumn: string,
-    onProgress: (progress: number, message: string, currentColumn?: string) => void
-  ): Promise<{
-    inputFile: string;
-    context: BEONResolvedSiteContext | null;
-    localRulesJson: string;
-    cleanupInputFile: boolean;
-  }> {
-    const siteCode = this.normalizeBEONSiteCode(params.site_code);
-    const connectionProfileId = this.toOptionalConnectionProfileId(params.connection_profile_id);
-    const context = siteCode ? this.getBEONResolvedSiteContext(siteCode, connectionProfileId) : null;
-    const localRulesJson =
-      context && context.localOverrideRules.length > 0 ? JSON.stringify(context.localOverrideRules) : "";
-
-    if (!context || context.fallbackRules.length === 0) {
-      return {
-        inputFile: version.file_path,
-        context,
-        localRulesJson,
-        cleanupInputFile: false,
-      };
-    }
-
-    onProgress(8, `正在解析站点 ${siteCode} 的数据库补站规则...`);
-    const preparedData = await this.applyBEONFallbackRules(data, timeColumn, context, onProgress);
-
-    const versionDir = path.dirname(version.file_path);
-    const versionExt = path.extname(version.file_path) || ".csv";
-    const versionName = path.basename(version.file_path, versionExt);
-    const inputFile = path.join(versionDir, `${versionName}_beon_input_${resultId}.csv`);
-    fs.writeFileSync(inputFile, Papa.unparse(preparedData), "utf-8");
-
-    return {
-      inputFile,
-      context,
-      localRulesJson,
-      cleanupInputFile: true,
-    };
-  }
 
   // ==================== 执行插补 ====================
 
@@ -647,8 +309,6 @@ export class ImputationService {
     this.validateRequiredMethodParams(request.methodId, methodParams);
     if (this.isDirectREddyProcMethod(request.methodId)) {
       this.validateREddyProcParams(request.datasetId, availableColumns, methodParams);
-    } else if (this.isBEONREddyProcMethod(request.methodId)) {
-      this.validateBEONREddyProcParams(request.datasetId, availableColumns, methodParams);
     }
 
     // 创建结果记录
@@ -709,25 +369,6 @@ export class ImputationService {
         columnStats = result.columnStats;
       } else if (this.isDirectREddyProcMethod(request.methodId)) {
         const result = await this.performREddyProcImputation(
-          resultId,
-          data,
-          targetColumns,
-          methodParams,
-          { file_path: version.file_path, dataset_id: request.datasetId },
-          (progress, message, currentColumn) => {
-            this.emitProgress(resultId, {
-              resultId,
-              stage: "imputing",
-              progress: 20 + progress * 0.6,
-              message,
-              currentColumn,
-            });
-          }
-        );
-        imputedData = result.imputedData;
-        columnStats = result.columnStats;
-      } else if (this.isBEONREddyProcMethod(request.methodId)) {
-        const result = await this.performBEONREddyProcImputation(
           resultId,
           data,
           targetColumns,
@@ -1063,10 +704,6 @@ export class ImputationService {
     return methodId === "MDS_REDDYPROC";
   }
 
-  private isBEONREddyProcMethod(methodId: ImputationMethodId): boolean {
-    return methodId === "BEON_REDDYPROC";
-  }
-
   private isCustomMethod(methodId: ImputationMethodId): boolean {
     return typeof methodId === "string" && methodId.startsWith("CUSTOM_");
   }
@@ -1184,147 +821,6 @@ export class ImputationService {
 
     onProgress(100, "REddyProc 通量流程完成");
     return { imputedData: outputData, columnStats };
-  }
-
-  /**
-   * 执行 BEON 原项目风格 REddyProc 插补
-   */
-  private async performBEONREddyProcImputation(
-    resultId: number,
-    data: Record<string, any>[],
-    targetColumns: string[],
-    params: Record<string, any>,
-    version: { file_path: string; dataset_id: number },
-    onProgress: (progress: number, message: string, currentColumn?: string) => void
-  ): Promise<{
-    imputedData: Record<string, any>[];
-    columnStats: Array<any>;
-  }> {
-    const pythonBridge = PythonBridgeService.getInstance();
-    let cleanupInputFilePath: string | null = null;
-
-    try {
-      onProgress(5, "正在检查 Python/R 环境...");
-      const pythonStatus = await pythonBridge.detectPython();
-      if (!pythonStatus.available) {
-        throw new Error("Python 环境未找到。BEON-REddyProc 方法需要: Python 3.8+, R 4.0+, rpy2==3.5.16, REddyProc R包");
-      }
-
-      const timeColumn = this.getDatasetTimeColumn(version.dataset_id);
-      const availableColumns = Object.keys(data[0] || {});
-      this.validateBEONREddyProcParams(version.dataset_id, availableColumns, params);
-
-      const preparedInput = await this.buildBEONExecutionInput(resultId, data, params, version, timeColumn, onProgress);
-      if (preparedInput.cleanupInputFile) {
-        cleanupInputFilePath = preparedInput.inputFile;
-      }
-
-      const thresholdColumns = [
-        String(params.co2_flux_col || ""),
-        String(params.h2o_flux_col || ""),
-        String(params.le_col || ""),
-        String(params.h_col || ""),
-        String(params.ppfd_col || ""),
-        String(params.rg_raw_col || ""),
-        String(params.tair_raw_col || ""),
-        String(params.rh_raw_col || ""),
-        String(params.vpd_raw_col || ""),
-        String(params.ustar_raw_col || ""),
-      ].filter(Boolean);
-      const thresholdsJson = JSON.stringify(this.getDatasetThresholdMap(version.dataset_id, thresholdColumns));
-
-      const versionDir = path.dirname(version.file_path);
-      const versionExt = path.extname(version.file_path) || ".csv";
-      const versionName = path.basename(version.file_path, versionExt);
-      const outputFile = path.join(versionDir, `${versionName}_beon_reddyproc_result_${resultId}.csv`);
-
-      onProgress(10, "正在执行 BEON 原项目风格 REddyProc 流程...");
-      const result = await pythonBridge.runBEONREddyProcImputation(
-        {
-          inputFile: preparedInput.inputFile,
-          outputFile,
-          timeColumn,
-          latDeg: Number(params.lat_deg),
-          longDeg: Number(params.long_deg),
-          timezoneHour: Number(params.timezone_hour),
-          siteCode: params.site_code ? String(params.site_code) : "",
-          allowedQcFlags: String(params.allowed_qc_flags ?? "0,1,2"),
-          useStrg: params.use_strg === true,
-          co2FluxCol: String(params.co2_flux_col),
-          h2oFluxCol: params.h2o_flux_col ? String(params.h2o_flux_col) : "",
-          leCol: params.le_col ? String(params.le_col) : "",
-          hCol: params.h_col ? String(params.h_col) : "",
-          qcCo2FluxCol: params.qc_co2_flux_col ? String(params.qc_co2_flux_col) : "",
-          qcH2oFluxCol: params.qc_h2o_flux_col ? String(params.qc_h2o_flux_col) : "",
-          qcLeCol: params.qc_le_col ? String(params.qc_le_col) : "",
-          qcHCol: params.qc_h_col ? String(params.qc_h_col) : "",
-          ppfdCol: String(params.ppfd_col),
-          rgRawCol: String(params.rg_raw_col),
-          tairRawCol: String(params.tair_raw_col),
-          rhRawCol: String(params.rh_raw_col),
-          vpdRawCol: params.vpd_raw_col ? String(params.vpd_raw_col) : "",
-          ustarRawCol: String(params.ustar_raw_col),
-          co2StrgCol: params.co2_strg_col ? String(params.co2_strg_col) : "",
-          h2oStrgCol: params.h2o_strg_col ? String(params.h2o_strg_col) : "",
-          leStrgCol: params.le_strg_col ? String(params.le_strg_col) : "",
-          hStrgCol: params.h_strg_col ? String(params.h_strg_col) : "",
-          shortUpCol: params.short_up_col ? String(params.short_up_col) : "",
-          rh12mCol: params.rh_12m_col ? String(params.rh_12m_col) : "",
-          rh10mCol: params.rh_10m_col ? String(params.rh_10m_col) : "",
-          ta12mCol: params.ta_12m_col ? String(params.ta_12m_col) : "",
-          despikingZ: Number(params.despiking_z ?? 4),
-          fillAll: params.fill_all !== false,
-          thresholdsJson,
-          localRulesJson: preparedInput.localRulesJson,
-        },
-        pythonProgress => {
-          onProgress(pythonProgress.progress, pythonProgress.message);
-        }
-      );
-
-      if (!result.success) {
-        throw new Error(`BEON-REddyProc 流程失败: ${result.error}`);
-      }
-
-      if (!fs.existsSync(outputFile)) {
-        throw new Error(`BEON-REddyProc 输出文件未生成: ${outputFile}`);
-      }
-
-      const outputData = await this.readDataFile(outputFile);
-      if (outputData.length !== data.length) {
-        throw new Error(`BEON-REddyProc 输出行数异常: 期望 ${data.length}，实际 ${outputData.length}`);
-      }
-
-      this.repository.updateResultOutputFile(resultId, outputFile);
-
-      const representatives = (result.data?.representatives || {}) as Record<string, string | null>;
-      const statMappings = [
-        { sourceColumn: String(params.co2_flux_col), outputColumn: representatives.nee },
-        { sourceColumn: params.h2o_flux_col ? String(params.h2o_flux_col) : "", outputColumn: representatives.h2o },
-        { sourceColumn: params.le_col ? String(params.le_col) : "", outputColumn: representatives.le },
-        { sourceColumn: params.h_col ? String(params.h_col) : "", outputColumn: representatives.h },
-      ].filter(mapping => mapping.sourceColumn && outputData[0] && targetColumns.includes(mapping.sourceColumn));
-
-      const missingRepresentative = statMappings.find(
-        mapping => !mapping.outputColumn || !(mapping.outputColumn in outputData[0])
-      );
-      if (missingRepresentative) {
-        throw new Error(`BEON-REddyProc 结果缺少代表输出列: ${missingRepresentative.sourceColumn}`);
-      }
-
-      const columnStats = statMappings.map(mapping =>
-        this.buildREddyProcColumnStat(resultId, data, outputData, mapping.sourceColumn, mapping.outputColumn!)
-      );
-
-      onProgress(100, "BEON-REddyProc 流程完成");
-      return { imputedData: outputData, columnStats };
-    } finally {
-      if (cleanupInputFilePath && fs.existsSync(cleanupInputFilePath)) {
-        try {
-          fs.unlinkSync(cleanupInputFilePath);
-        } catch (_) {}
-      }
-    }
   }
 
   /**

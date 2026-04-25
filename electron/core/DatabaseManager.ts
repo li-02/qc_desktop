@@ -885,19 +885,6 @@ export class DatabaseManager {
         icon: "🌿",
       },
       {
-        method_id: "BEON_REDDYPROC",
-        method_name: "BEON-REddyProc",
-        category: "statistical",
-        description:
-          "按 BEON 原项目链路执行 QC flag、存储项、threshold_limit、PAR 预插补、despiking、u* 阈值处理、NEE gap filling 与分割",
-        requires_python: 1,
-        estimated_time: "medium",
-        accuracy: "high",
-        priority: 84,
-        applicable_data_types: JSON.stringify(["numeric"]),
-        icon: "🌲",
-      },
-      {
         method_id: "SPLINE",
         method_name: "样条插值",
         category: "statistical",
@@ -1018,8 +1005,33 @@ export class DatabaseManager {
       );
     }
 
+    this.cleanupObsoleteImputationMethods(defaultMethods.map(method => method.method_id));
+
     // 插入方法参数定义
     this.insertDefaultMethodParams();
+  }
+
+  private cleanupObsoleteImputationMethods(activeMethodIds: string[]): void {
+    if (!this.db) return;
+
+    const activeSet = new Set(activeMethodIds);
+    const obsoleteMethodIds = (
+      this.db
+        .prepare("SELECT method_id FROM conf_imputation_method WHERE method_id NOT LIKE 'CUSTOM_%'")
+        .all() as Array<{ method_id: string }>
+    )
+      .map(row => row.method_id)
+      .filter(methodId => !activeSet.has(methodId));
+
+    if (obsoleteMethodIds.length === 0) return;
+
+    const deleteParamsStmt = this.db.prepare("DELETE FROM conf_imputation_method_params WHERE method_id = ?");
+    const deleteMethodStmt = this.db.prepare("DELETE FROM conf_imputation_method WHERE method_id = ?");
+
+    for (const methodId of obsoleteMethodIds) {
+      deleteParamsStmt.run(methodId);
+      deleteMethodStmt.run(methodId);
+    }
   }
 
   /**
@@ -1297,373 +1309,6 @@ export class DatabaseManager {
         is_required: false,
         is_advanced: true,
         param_order: 16,
-      },
-
-      // BEON-REddyProc 参数 - 位置信息
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "lat_deg",
-        param_name: "纬度 (°)",
-        param_type: "number",
-        default_value: "39.0",
-        min_value: -90,
-        max_value: 90,
-        step_value: 0.01,
-        tooltip: "站点纬度，范围 -90 到 90",
-        is_required: true,
-        is_advanced: false,
-        param_order: 1,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "long_deg",
-        param_name: "经度 (°)",
-        param_type: "number",
-        default_value: "116.0",
-        min_value: -180,
-        max_value: 180,
-        step_value: 0.01,
-        tooltip: "站点经度，范围 -180 到 180",
-        is_required: true,
-        is_advanced: false,
-        param_order: 2,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "timezone_hour",
-        param_name: "时区 (小时)",
-        param_type: "number",
-        default_value: "8",
-        min_value: -12,
-        max_value: 14,
-        step_value: 1,
-        tooltip: "站点时区，相对于UTC的小时偏移",
-        is_required: true,
-        is_advanced: false,
-        param_order: 3,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "site_code",
-        param_name: "站点代码",
-        param_type: "string",
-        default_value: "",
-        tooltip: "可选。用于套用 BEON 站点特例逻辑，如 aosen、badaling",
-        is_required: false,
-        is_advanced: false,
-        param_order: 4,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "connection_profile_id",
-        param_name: "数据库连接",
-        param_type: "string",
-        default_value: "",
-        tooltip: "留空时按规则绑定连接或默认连接自动选择；如需固定某个 MySQL 连接，请在 BEON 数据源区域中选择",
-        is_required: false,
-        is_advanced: false,
-        param_order: 31,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "allowed_qc_flags",
-        param_name: "允许的QC标记",
-        param_type: "string",
-        default_value: "0,1,2",
-        tooltip: "按原项目口径设置保留的 QC flag，多个值用英文逗号分隔，如 0,1,2",
-        is_required: true,
-        is_advanced: false,
-        param_order: 5,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "use_strg",
-        param_name: "启用存储项修正",
-        param_type: "boolean",
-        default_value: "false",
-        tooltip: "按原项目链路决定是否将 flux 与 strg 列相加",
-        is_required: false,
-        is_advanced: false,
-        param_order: 6,
-      },
-
-      // BEON-REddyProc 参数 - 原始 flux 列
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "co2_flux_col",
-        param_name: "CO2通量列",
-        param_type: "string",
-        default_value: "co2_flux",
-        tooltip: "原项目原始列名，对应 co2_flux",
-        is_required: true,
-        is_advanced: false,
-        param_order: 7,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "h2o_flux_col",
-        param_name: "H2O通量列",
-        param_type: "string",
-        default_value: "h2o_flux",
-        tooltip: "原项目原始列名，对应 h2o_flux。Campbell 站点可留空并由 LE 反推",
-        is_required: false,
-        is_advanced: false,
-        param_order: 8,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "le_col",
-        param_name: "LE列",
-        param_type: "string",
-        default_value: "le",
-        tooltip: "原项目原始列名，对应 le",
-        is_required: false,
-        is_advanced: false,
-        param_order: 9,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "h_col",
-        param_name: "H列",
-        param_type: "string",
-        default_value: "h",
-        tooltip: "原项目原始列名，对应 h",
-        is_required: false,
-        is_advanced: false,
-        param_order: 10,
-      },
-
-      // BEON-REddyProc 参数 - QC 标记列
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "qc_co2_flux_col",
-        param_name: "CO2 QC列",
-        param_type: "string",
-        default_value: "qc_co2_flux",
-        tooltip: "原项目 QC 标记列，对应 qc_co2_flux",
-        is_required: false,
-        is_advanced: false,
-        param_order: 11,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "qc_h2o_flux_col",
-        param_name: "H2O QC列",
-        param_type: "string",
-        default_value: "qc_h2o_flux",
-        tooltip: "原项目 QC 标记列，对应 qc_h2o_flux",
-        is_required: false,
-        is_advanced: false,
-        param_order: 12,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "qc_le_col",
-        param_name: "LE QC列",
-        param_type: "string",
-        default_value: "qc_le",
-        tooltip: "原项目 QC 标记列，对应 qc_le",
-        is_required: false,
-        is_advanced: false,
-        param_order: 13,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "qc_h_col",
-        param_name: "H QC列",
-        param_type: "string",
-        default_value: "qc_h",
-        tooltip: "原项目 QC 标记列，对应 qc_h",
-        is_required: false,
-        is_advanced: false,
-        param_order: 14,
-      },
-
-      // BEON-REddyProc 参数 - 原始气象与驱动列
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "ppfd_col",
-        param_name: "PPFD列",
-        param_type: "string",
-        default_value: "ppfd_1_1_1",
-        tooltip: "原项目原始列名，对应 ppfd_1_1_1，后续映射为 Par",
-        is_required: true,
-        is_advanced: false,
-        param_order: 15,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "rg_raw_col",
-        param_name: "Rg原始列",
-        param_type: "string",
-        default_value: "rg_1_1_2",
-        tooltip: "原项目原始列名，对应 rg_1_1_2",
-        is_required: true,
-        is_advanced: false,
-        param_order: 16,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "tair_raw_col",
-        param_name: "Tair原始列",
-        param_type: "string",
-        default_value: "ta_1_2_1",
-        tooltip: "原项目原始列名，对应 ta_1_2_1",
-        is_required: true,
-        is_advanced: false,
-        param_order: 17,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "rh_raw_col",
-        param_name: "rH原始列",
-        param_type: "string",
-        default_value: "rh",
-        tooltip: "原项目原始列名，对应 rh",
-        is_required: true,
-        is_advanced: false,
-        param_order: 18,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "vpd_raw_col",
-        param_name: "VPD原始列",
-        param_type: "string",
-        default_value: "vpd",
-        tooltip: "原项目原始列名，对应 vpd。可为空，缺失时将按 rH + Tair 重算",
-        is_required: false,
-        is_advanced: false,
-        param_order: 19,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "ustar_raw_col",
-        param_name: "u*原始列",
-        param_type: "string",
-        default_value: "u_",
-        tooltip: "原项目原始列名，对应 u_。threshold_limit 后会生成 u__threshold_limit",
-        is_required: true,
-        is_advanced: false,
-        param_order: 20,
-      },
-
-      // BEON-REddyProc 参数 - 存储项列
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "co2_strg_col",
-        param_name: "CO2存储项列",
-        param_type: "string",
-        default_value: "co2_flux_strg",
-        tooltip: "原项目存储项列，对应 co2_flux_strg",
-        is_required: false,
-        is_advanced: true,
-        param_order: 21,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "h2o_strg_col",
-        param_name: "H2O存储项列",
-        param_type: "string",
-        default_value: "h2o_flux_strg",
-        tooltip: "原项目存储项列，对应 h2o_flux_strg",
-        is_required: false,
-        is_advanced: true,
-        param_order: 22,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "le_strg_col",
-        param_name: "LE存储项列",
-        param_type: "string",
-        default_value: "le_strg",
-        tooltip: "原项目存储项列，对应 le_strg",
-        is_required: false,
-        is_advanced: true,
-        param_order: 23,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "h_strg_col",
-        param_name: "H存储项列",
-        param_type: "string",
-        default_value: "h_strg",
-        tooltip: "原项目存储项列，对应 h_strg",
-        is_required: false,
-        is_advanced: true,
-        param_order: 24,
-      },
-
-      // BEON-REddyProc 参数 - Campbell 站点辅助列
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "short_up_col",
-        param_name: "短波上行列",
-        param_type: "string",
-        default_value: "short_up_avg",
-        tooltip: "站点特例辅助列。aosen/badaling 可用它重建 rg_1_1_2",
-        is_required: false,
-        is_advanced: true,
-        param_order: 25,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "rh_12m_col",
-        param_name: "12m相对湿度列",
-        param_type: "string",
-        default_value: "rh_12m_avg",
-        tooltip: "站点特例辅助列。aosen 可用它重建 rh",
-        is_required: false,
-        is_advanced: true,
-        param_order: 26,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "rh_10m_col",
-        param_name: "10m相对湿度列",
-        param_type: "string",
-        default_value: "rh_10m_avg",
-        tooltip: "站点特例辅助列。badaling 可用它重建 rh",
-        is_required: false,
-        is_advanced: true,
-        param_order: 27,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "ta_12m_col",
-        param_name: "12m气温列",
-        param_type: "string",
-        default_value: "ta_12m_avg",
-        tooltip: "站点特例辅助列。aosen 可用它重建 tair/vpd",
-        is_required: false,
-        is_advanced: true,
-        param_order: 28,
-      },
-
-      // BEON-REddyProc 参数 - 流程参数
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "despiking_z",
-        param_name: "Despiking阈值",
-        param_type: "number",
-        default_value: "4",
-        min_value: 1,
-        max_value: 10,
-        step_value: 1,
-        tooltip: "原项目默认值为 4。用于 MAD despiking 阈值",
-        is_required: false,
-        is_advanced: true,
-        param_order: 29,
-      },
-      {
-        method_id: "BEON_REDDYPROC",
-        param_key: "fill_all",
-        param_name: "填充所有值",
-        param_type: "boolean",
-        default_value: "true",
-        tooltip: "传递给 REddyProc FillAll 参数",
-        is_required: false,
-        is_advanced: true,
-        param_order: 30,
       },
 
       // iTransformer 参数

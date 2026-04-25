@@ -16,7 +16,6 @@ export type ImputationMethodId =
   | "POLYNOMIAL"
   | "SEASONAL"
   | "MDS_REDDYPROC"
-  | "BEON_REDDYPROC"
   | "XGBOOST"
   | "ITRANSFORMER"
   | "SAITS"

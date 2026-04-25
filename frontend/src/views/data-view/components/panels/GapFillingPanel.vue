@@ -35,11 +35,6 @@ import type {
   ImputationProgressEvent,
   ImputationColumnStat,
 } from "@shared/types/imputation";
-import type {
-  BEONResolvedSiteContext,
-  DatabaseConnectionProfile,
-  MySQLConnectionConfig,
-} from "@shared/types/mysqlInterface";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import { useGapFillingStore } from "@/stores/useGapFillingStore";
@@ -245,28 +240,6 @@ const columnMapping = ref<Record<string, string>>({});
 // 折叠面板状态：控制「列名映射」和「模型超参数」区域的展开/折叠
 const modelConfigCollapse = ref<string[]>([]);
 
-const beonConnectionProfiles = ref<DatabaseConnectionProfile[]>([]);
-const beonResolvedContext = ref<BEONResolvedSiteContext | null>(null);
-const beonContextLoading = ref(false);
-const beonContextError = ref("");
-const showBEONConnectionDialog = ref(false);
-const beonConnectionTestStatus = ref<"idle" | "testing" | "success" | "failed">("idle");
-const beonConnectionTestMessage = ref("");
-
-const createEmptyBEONConnectionForm = () => ({
-  id: null as number | null,
-  profileName: "",
-  host: "127.0.0.1",
-  port: 3306,
-  user: "",
-  password: "",
-  database: "",
-  isDefault: false,
-});
-
-const beonConnectionForm = ref(createEmptyBEONConnectionForm());
-let beonContextRefreshTimer: ReturnType<typeof setTimeout> | null = null;
-
 // ==================== 执行状态 ====================
 const isExecuting = ref<boolean>(false);
 const progressInfo = ref<ImputationProgressEvent | null>(null);
@@ -321,7 +294,7 @@ const selectedMethod = computed<ImputationMethod | null>(() => {
   return imputationMethods.value.find(m => m.methodId === selectedMethodId.value) || null;
 });
 
-const isBEONMethod = computed(() => selectedMethodId.value === "BEON_REDDYPROC");
+const isReddyProcMDSMethod = computed(() => selectedMethodId.value === "MDS_REDDYPROC");
 
 // 判断当前方法是否需要模型（ML/DL/自定义 类方法）
 const isModelBasedMethod = computed(() => {
@@ -495,17 +468,60 @@ const missingRequiredParams = computed(() => {
 });
 
 // 高级参数
-const isCustomRenderedParam = (param: ImputationMethodParam) => {
-  return isBEONMethod.value && param.paramKey === "connection_profile_id";
+const isReddyProcGeoParam = (param: ImputationMethodParam) => {
+  const key = param.paramKey.toLowerCase();
+  const name = param.paramName.toLowerCase();
+  return (
+    /latitude|lat|纬度/.test(key) ||
+    /latitude|lat|纬度/.test(name) ||
+    /longitude|lon|lng|经度/.test(key) ||
+    /longitude|lon|lng|经度/.test(name) ||
+    /timezone|time_zone|tz|时区/.test(key) ||
+    /timezone|time\s*zone|tz|时区/.test(name)
+  );
+};
+
+const isReddyProcMappingParam = (param: ImputationMethodParam) => {
+  if (!isReddyProcMDSMethod.value || isReddyProcGeoParam(param)) return false;
+  const key = param.paramKey.toLowerCase();
+  const name = param.paramName.toLowerCase();
+  return param.paramType === "string" && (/_col$|_column$/.test(key) || /列|column/.test(name));
+};
+
+const getReddyProcMappingExpectedLabel = (param: ImputationMethodParam) => {
+  const fallback = param.paramName.replace(/列/g, "").trim();
+  return String(param.defaultValue ?? "").trim() || fallback || param.paramKey;
+};
+
+const isReddyProcMappingConfigured = (param: ImputationMethodParam) => {
+  return String(paramValues.value[param.paramKey] ?? "").trim().length > 0;
 };
 
 const advancedParams = computed(() => {
-  return currentMethodParams.value.filter(p => p.isAdvanced && !isCustomRenderedParam(p));
+  return currentMethodParams.value.filter(p => p.isAdvanced);
 });
 
 // 普通参数
 const basicParams = computed(() => {
-  return currentMethodParams.value.filter(p => !p.isAdvanced && !isCustomRenderedParam(p));
+  return currentMethodParams.value.filter(p => !p.isAdvanced);
+});
+
+const reddyProcGeoParams = computed(() => {
+  return basicParams.value.filter(isReddyProcGeoParam);
+});
+
+const reddyProcMappingParams = computed(() => {
+  return basicParams.value.filter(isReddyProcMappingParam);
+});
+
+const reddyProcGeneralParams = computed(() => {
+  return basicParams.value.filter(param => !isReddyProcGeoParam(param) && !isReddyProcMappingParam(param));
+});
+
+const reddyProcMappingSummary = computed(() => {
+  const total = reddyProcMappingParams.value.length;
+  const mapped = reddyProcMappingParams.value.filter(isReddyProcMappingConfigured).length;
+  return { total, mapped, complete: total === 0 || mapped === total };
 });
 
 // 是否有高级参数
@@ -836,15 +852,6 @@ const initMethodParams = async (method: ImputationMethod) => {
   }
 };
 
-const toOptionalConnectionProfileId = (value: unknown): number | undefined => {
-  if (value === null || value === undefined) return undefined;
-  if (typeof value === "string" && value.trim().length === 0) return undefined;
-
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
-  return parsed;
-};
-
 // 根据模型 targetColumn 与当前数据集列名进行模糊匹配，选出最佳模型
 const findBestMatchingModel = (models: ImputationModel[]): ImputationModel | null => {
   if (!models.length) return null;
@@ -1010,165 +1017,6 @@ const saveColumnMapping = async () => {
   } catch (e) {
     console.error("保存列映射失败:", e);
   }
-};
-
-const resetBEONConnectionForm = (profile?: DatabaseConnectionProfile) => {
-  beonConnectionForm.value = profile
-    ? {
-        id: profile.id,
-        profileName: profile.profileName,
-        host: profile.host,
-        port: profile.port,
-        user: profile.user,
-        password: profile.password || "",
-        database: profile.database,
-        isDefault: profile.isDefault,
-      }
-    : createEmptyBEONConnectionForm();
-  beonConnectionTestStatus.value = "idle";
-  beonConnectionTestMessage.value = "";
-};
-
-const openBEONConnectionDialog = async () => {
-  showBEONConnectionDialog.value = true;
-  await loadBEONConnectionProfiles();
-
-  const currentProfileId = toOptionalConnectionProfileId(paramValues.value.connection_profile_id);
-  const currentProfile = currentProfileId
-    ? beonConnectionProfiles.value.find(profile => profile.id === currentProfileId)
-    : undefined;
-  resetBEONConnectionForm(currentProfile);
-};
-
-const buildBEONConnectionConfig = (): MySQLConnectionConfig => ({
-  host: beonConnectionForm.value.host.trim(),
-  port: Number(beonConnectionForm.value.port),
-  user: beonConnectionForm.value.user.trim(),
-  password: beonConnectionForm.value.password,
-  database: beonConnectionForm.value.database.trim(),
-});
-
-const testBEONConnection = async () => {
-  beonConnectionTestStatus.value = "testing";
-  beonConnectionTestMessage.value = "正在连接...";
-
-  try {
-    const result = await window.electronAPI.invoke(API_ROUTES.MYSQL.TEST_CONNECTION, {
-      connection: buildBEONConnectionConfig(),
-    });
-    if (!result.success) {
-      throw new Error(result.error || "连接失败");
-    }
-    beonConnectionTestStatus.value = "success";
-    beonConnectionTestMessage.value = `连接成功 (${result.data?.serverVersion || "MySQL"})`;
-  } catch (error: any) {
-    beonConnectionTestStatus.value = "failed";
-    beonConnectionTestMessage.value = error.message || "连接失败";
-  }
-};
-
-const saveBEONConnectionProfile = async () => {
-  try {
-    const result = await window.electronAPI.invoke(API_ROUTES.MYSQL.SAVE_CONNECTION_PROFILE, {
-      id: beonConnectionForm.value.id || undefined,
-      profileName: beonConnectionForm.value.profileName.trim(),
-      connection: buildBEONConnectionConfig(),
-      isDefault: beonConnectionForm.value.isDefault,
-    });
-    if (!result.success) {
-      throw new Error(result.error || "保存数据库连接失败");
-    }
-
-    const savedId = result.data?.id;
-    await loadBEONConnectionProfiles();
-    if (savedId) {
-      paramValues.value.connection_profile_id = savedId;
-      const savedProfile = beonConnectionProfiles.value.find(profile => profile.id === savedId);
-      resetBEONConnectionForm(savedProfile);
-    }
-    ElMessage.success("数据库连接已保存");
-    scheduleBEONContextRefresh();
-  } catch (error: any) {
-    ElMessage.error(error.message || "保存数据库连接失败");
-  }
-};
-
-const deleteBEONConnectionProfile = async (profile: DatabaseConnectionProfile) => {
-  try {
-    await ElMessageBox.confirm(`确定删除连接“${profile.profileName}”吗？`, "删除连接", {
-      type: "warning",
-      confirmButtonText: "删除",
-      cancelButtonText: "取消",
-    });
-
-    const result = await window.electronAPI.invoke(API_ROUTES.MYSQL.DELETE_CONNECTION_PROFILE, { id: profile.id });
-    if (!result.success) {
-      throw new Error(result.error || "删除数据库连接失败");
-    }
-
-    if (toOptionalConnectionProfileId(paramValues.value.connection_profile_id) === profile.id) {
-      paramValues.value.connection_profile_id = "";
-    }
-    await loadBEONConnectionProfiles();
-    resetBEONConnectionForm();
-    ElMessage.success("数据库连接已删除");
-    scheduleBEONContextRefresh();
-  } catch (error: any) {
-    if (error === "cancel") return;
-    ElMessage.error(error.message || "删除数据库连接失败");
-  }
-};
-
-const deleteCurrentBEONConnectionProfile = async () => {
-  const profile = beonConnectionProfiles.value.find(item => item.id === beonConnectionForm.value.id);
-  if (!profile) return;
-  await deleteBEONConnectionProfile(profile);
-};
-
-const refreshBEONResolvedContext = async () => {
-  if (!isBEONMethod.value) {
-    beonResolvedContext.value = null;
-    beonContextError.value = "";
-    return;
-  }
-
-  const siteCode = String(paramValues.value.site_code ?? "").trim();
-  if (!siteCode) {
-    beonResolvedContext.value = null;
-    beonContextError.value = "";
-    return;
-  }
-
-  beonContextLoading.value = true;
-  beonContextError.value = "";
-
-  try {
-    const result = await window.electronAPI.invoke(API_ROUTES.MYSQL.RESOLVE_BEON_SITE_CONTEXT, {
-      siteCode,
-      connectionProfileId: toOptionalConnectionProfileId(paramValues.value.connection_profile_id),
-    });
-    if (!result.success) {
-      throw new Error(result.error || "解析站点规则失败");
-    }
-    beonResolvedContext.value = result.data || null;
-  } catch (error: any) {
-    beonResolvedContext.value = null;
-    beonContextError.value = error.message || "解析站点规则失败";
-  } finally {
-    beonContextLoading.value = false;
-  }
-};
-
-const scheduleBEONContextRefresh = () => {
-  if (beonContextRefreshTimer) {
-    clearTimeout(beonContextRefreshTimer);
-    beonContextRefreshTimer = null;
-  }
-  if (!isBEONMethod.value) return;
-
-  beonContextRefreshTimer = setTimeout(() => {
-    refreshBEONResolvedContext();
-  }, 200);
 };
 
 // ==================== 执行插补 ====================
@@ -2088,22 +1936,8 @@ watch(
 
 watch(
   () => selectedMethodId.value,
-  async methodId => {
-    if (methodId === "BEON_REDDYPROC") {
-      await loadBEONConnectionProfiles();
-      scheduleBEONContextRefresh();
-      return;
-    }
-
-    beonResolvedContext.value = null;
-    beonContextError.value = "";
-  }
-);
-
-watch(
-  () => [String(paramValues.value.site_code ?? ""), String(paramValues.value.connection_profile_id ?? "")],
   () => {
-    scheduleBEONContextRefresh();
+    // 保持选择方法后的参数初始化逻辑集中在方法切换上
   }
 );
 
@@ -2118,10 +1952,6 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  if (beonContextRefreshTimer) {
-    clearTimeout(beonContextRefreshTimer);
-    beonContextRefreshTimer = null;
-  }
   disposeChart();
 });
 </script>
@@ -2626,9 +2456,216 @@ onUnmounted(() => {
                   :mode="columnSelectionMode"
                   @update:mode="columnSelectionMode = $event" />
 
-                <!-- 指标列 + 参数配置 并排布局（非模型方法时使用） -->
+                <!-- REddyProc MDS：目标列单独占一行，参数配置另起一行 -->
+                <template v-if="isReddyProcMDSMethod">
+                  <TargetColumnSelector
+                    v-model="selectedColumns"
+                    :columns="availableColumns"
+                    :mode="columnSelectionMode"
+                    @update:mode="columnSelectionMode = $event" />
+
+                  <div v-if="selectedMethod" class="method-params method-params--reddyproc">
+                    <h4 class="params-title">{{ selectedMethod.methodName }} 参数</h4>
+
+                    <div v-if="reddyProcGeneralParams.length > 0" class="params-form">
+                      <div v-for="param in reddyProcGeneralParams" :key="param.paramKey" class="param-item">
+                        <label class="param-label">
+                          {{ param.paramName }}
+                          <el-tooltip v-if="param.tooltip" :content="param.tooltip" placement="top">
+                            <Info :size="13" class="param-tooltip-icon" />
+                          </el-tooltip>
+                        </label>
+
+                        <el-input-number
+                          v-if="param.paramType === 'number'"
+                          v-model="paramValues[param.paramKey]"
+                          :min="param.minValue"
+                          :max="param.maxValue"
+                          :step="param.stepValue || 1"
+                          :precision="getNumberPrecision(param)"
+                          size="small"
+                          class="param-input-number" />
+
+                        <el-select
+                          v-else-if="param.paramType === 'select'"
+                          v-model="paramValues[param.paramKey]"
+                          size="small"
+                          class="param-select">
+                          <el-option
+                            v-for="option in getParamOptions(param)"
+                            :key="option.value"
+                            :label="option.label"
+                            :value="option.value" />
+                        </el-select>
+
+                        <el-switch
+                          v-else-if="param.paramType === 'boolean'"
+                          v-model="paramValues[param.paramKey]"
+                          size="small" />
+
+                        <el-slider
+                          v-else-if="param.paramType === 'range'"
+                          v-model="paramValues[param.paramKey]"
+                          :min="param.minValue"
+                          :max="param.maxValue"
+                          :step="param.stepValue || 1"
+                          show-input
+                          size="small" />
+
+                        <el-input
+                          v-else-if="param.paramType === 'string'"
+                          v-model="paramValues[param.paramKey]"
+                          :placeholder="param.tooltip || '请输入'"
+                          size="small"
+                          class="param-input-text" />
+                      </div>
+                    </div>
+
+                    <div v-if="reddyProcGeoParams.length > 0" class="reddyproc-geo-grid">
+                      <div v-for="param in reddyProcGeoParams" :key="param.paramKey" class="param-item">
+                        <label class="param-label">
+                          {{ param.paramName }}
+                          <el-tooltip v-if="param.tooltip" :content="param.tooltip" placement="top">
+                            <Info :size="13" class="param-tooltip-icon" />
+                          </el-tooltip>
+                        </label>
+
+                        <el-input-number
+                          v-if="param.paramType === 'number'"
+                          v-model="paramValues[param.paramKey]"
+                          :min="param.minValue"
+                          :max="param.maxValue"
+                          :step="param.stepValue || 1"
+                          :precision="getNumberPrecision(param)"
+                          size="small"
+                          class="param-input-number" />
+
+                        <el-input
+                          v-else
+                          v-model="paramValues[param.paramKey]"
+                          :placeholder="param.tooltip || '请输入'"
+                          size="small"
+                          class="param-input-text" />
+                      </div>
+                    </div>
+
+                    <div v-if="reddyProcMappingParams.length > 0" class="reddyproc-mapping-section">
+                      <div class="reddyproc-mapping-header">
+                        <div>
+                          <div class="reddyproc-mapping-title">列名映射配置</div>
+                          <div class="reddyproc-mapping-hint">将您数据文件中的列映射到方法执行时使用的列名</div>
+                        </div>
+                        <span
+                          :class="[
+                            'collapse-title-badge',
+                            reddyProcMappingSummary.complete
+                              ? 'collapse-title-badge--ok'
+                              : 'collapse-title-badge--warn',
+                          ]">
+                          {{ reddyProcMappingSummary.mapped }}/{{ reddyProcMappingSummary.total }} 已映射
+                        </span>
+                      </div>
+
+                      <div class="column-mapping-table column-mapping-table--reddyproc">
+                        <div class="column-mapping-row column-mapping-row--header">
+                          <span>模型期望列名</span>
+                          <span>对应您文件中的列</span>
+                          <span>状态</span>
+                        </div>
+                        <div v-for="param in reddyProcMappingParams" :key="param.paramKey" class="column-mapping-row">
+                          <span class="mapping-model-col">{{ getReddyProcMappingExpectedLabel(param) }}</span>
+                          <el-select
+                            v-model="paramValues[param.paramKey]"
+                            size="small"
+                            clearable
+                            placeholder="请选择列"
+                            class="mapping-user-col-select">
+                            <el-option
+                              v-for="userCol in availableColumns"
+                              :key="userCol.name"
+                              :label="userCol.name"
+                              :value="userCol.name" />
+                          </el-select>
+                          <span
+                            :class="[
+                              'mapping-status',
+                              isReddyProcMappingConfigured(param) ? 'mapping-status--ok' : 'mapping-status--missing',
+                            ]">
+                            {{ isReddyProcMappingConfigured(param) ? "已映射" : "未映射" }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div v-if="missingRequiredParams.length > 0" class="params-warning">
+                      还需填写必填参数：{{ missingRequiredParams.map(param => param.paramName).join("、") }}
+                    </div>
+
+                    <div v-if="currentMethodParams.length === 0" class="no-params">
+                      <p>此方法无需额外参数配置</p>
+                    </div>
+
+                    <el-collapse v-if="hasAdvancedParams" class="advanced-params-collapse">
+                      <el-collapse-item title="高级参数" name="advanced">
+                        <div v-for="param in advancedParams" :key="param.paramKey" class="param-item">
+                          <label class="param-label">
+                            {{ param.paramName }}
+                            <el-tooltip v-if="param.tooltip" :content="param.tooltip" placement="top">
+                              <Info :size="13" class="param-tooltip-icon" />
+                            </el-tooltip>
+                          </label>
+
+                          <el-input-number
+                            v-if="param.paramType === 'number'"
+                            v-model="paramValues[param.paramKey]"
+                            :min="param.minValue"
+                            :max="param.maxValue"
+                            :step="param.stepValue || 1"
+                            :precision="getNumberPrecision(param)"
+                            size="small"
+                            class="param-input-number" />
+
+                          <el-select
+                            v-else-if="param.paramType === 'select'"
+                            v-model="paramValues[param.paramKey]"
+                            size="small"
+                            class="param-select">
+                            <el-option
+                              v-for="option in getParamOptions(param)"
+                              :key="option.value"
+                              :label="option.label"
+                              :value="option.value" />
+                          </el-select>
+
+                          <el-switch
+                            v-else-if="param.paramType === 'boolean'"
+                            v-model="paramValues[param.paramKey]"
+                            size="small" />
+
+                          <el-slider
+                            v-else-if="param.paramType === 'range'"
+                            v-model="paramValues[param.paramKey]"
+                            :min="param.minValue"
+                            :max="param.maxValue"
+                            :step="param.stepValue || 1"
+                            show-input
+                            size="small" />
+
+                          <el-input
+                            v-else-if="param.paramType === 'string'"
+                            v-model="paramValues[param.paramKey]"
+                            :placeholder="param.tooltip || '请输入'"
+                            size="small"
+                            class="param-input-text" />
+                        </div>
+                      </el-collapse-item>
+                    </el-collapse>
+                  </div>
+                </template>
+
+                <!-- 指标列 + 参数配置 并排布局（非模型方法且非 REddyProc MDS 时使用） -->
                 <div
-                  v-if="!(isModelBasedMethod && selectedModel && selectedModelParamKeys.length > 0)"
+                  v-else-if="!(isModelBasedMethod && selectedModel && selectedModelParamKeys.length > 0)"
                   class="columns-params-row">
                   <!-- 列选择（左侧） -->
                   <TargetColumnSelector
@@ -2699,178 +2736,81 @@ onUnmounted(() => {
                           size="small"
                           class="param-input-text" />
                       </div>
-
-                      <div v-if="missingRequiredParams.length > 0" class="params-warning">
-                        还需填写必填参数：{{ missingRequiredParams.map(param => param.paramName).join("、") }}
-                      </div>
-
-                      <!-- 无参数提示 -->
-                      <div v-if="currentMethodParams.length === 0" class="no-params">
-                        <p>此方法无需额外参数配置</p>
-                      </div>
-
-                      <!-- 高级参数折叠 -->
-                      <el-collapse v-if="hasAdvancedParams" class="advanced-params-collapse">
-                        <el-collapse-item title="高级参数" name="advanced">
-                          <div v-for="param in advancedParams" :key="param.paramKey" class="param-item">
-                            <label class="param-label">
-                              {{ param.paramName }}
-                              <el-tooltip v-if="param.tooltip" :content="param.tooltip" placement="top">
-                                <Info :size="13" class="param-tooltip-icon" />
-                              </el-tooltip>
-                            </label>
-
-                            <!-- 数字输入 -->
-                            <el-input-number
-                              v-if="param.paramType === 'number'"
-                              v-model="paramValues[param.paramKey]"
-                              :min="param.minValue"
-                              :max="param.maxValue"
-                              :step="param.stepValue || 1"
-                              :precision="getNumberPrecision(param)"
-                              size="small"
-                              class="param-input-number" />
-
-                            <!-- 选择框 -->
-                            <el-select
-                              v-else-if="param.paramType === 'select'"
-                              v-model="paramValues[param.paramKey]"
-                              size="small"
-                              class="param-select">
-                              <el-option
-                                v-for="option in getParamOptions(param)"
-                                :key="option.value"
-                                :label="option.label"
-                                :value="option.value" />
-                            </el-select>
-
-                            <!-- 开关 -->
-                            <el-switch
-                              v-else-if="param.paramType === 'boolean'"
-                              v-model="paramValues[param.paramKey]"
-                              size="small" />
-
-                            <!-- 范围滑块 -->
-                            <el-slider
-                              v-else-if="param.paramType === 'range'"
-                              v-model="paramValues[param.paramKey]"
-                              :min="param.minValue"
-                              :max="param.maxValue"
-                              :step="param.stepValue || 1"
-                              show-input
-                              size="small" />
-
-                            <!-- 文本输入 (用于列名等字符串参数) -->
-                            <el-input
-                              v-else-if="param.paramType === 'string'"
-                              v-model="paramValues[param.paramKey]"
-                              :placeholder="param.tooltip || '请输入'"
-                              size="small"
-                              class="param-input-text" />
-                          </div>
-                        </el-collapse-item>
-                      </el-collapse>
                     </div>
+
+                    <div v-if="missingRequiredParams.length > 0" class="params-warning">
+                      还需填写必填参数：{{ missingRequiredParams.map(param => param.paramName).join("、") }}
+                    </div>
+
+                    <!-- 无参数提示 -->
+                    <div v-if="currentMethodParams.length === 0" class="no-params">
+                      <p>此方法无需额外参数配置</p>
+                    </div>
+
+                    <!-- 高级参数折叠 -->
+                    <el-collapse v-if="hasAdvancedParams" class="advanced-params-collapse">
+                      <el-collapse-item title="高级参数" name="advanced">
+                        <div v-for="param in advancedParams" :key="param.paramKey" class="param-item">
+                          <label class="param-label">
+                            {{ param.paramName }}
+                            <el-tooltip v-if="param.tooltip" :content="param.tooltip" placement="top">
+                              <Info :size="13" class="param-tooltip-icon" />
+                            </el-tooltip>
+                          </label>
+
+                          <!-- 数字输入 -->
+                          <el-input-number
+                            v-if="param.paramType === 'number'"
+                            v-model="paramValues[param.paramKey]"
+                            :min="param.minValue"
+                            :max="param.maxValue"
+                            :step="param.stepValue || 1"
+                            :precision="getNumberPrecision(param)"
+                            size="small"
+                            class="param-input-number" />
+
+                          <!-- 选择框 -->
+                          <el-select
+                            v-else-if="param.paramType === 'select'"
+                            v-model="paramValues[param.paramKey]"
+                            size="small"
+                            class="param-select">
+                            <el-option
+                              v-for="option in getParamOptions(param)"
+                              :key="option.value"
+                              :label="option.label"
+                              :value="option.value" />
+                          </el-select>
+
+                          <!-- 开关 -->
+                          <el-switch
+                            v-else-if="param.paramType === 'boolean'"
+                            v-model="paramValues[param.paramKey]"
+                            size="small" />
+
+                          <!-- 范围滑块 -->
+                          <el-slider
+                            v-else-if="param.paramType === 'range'"
+                            v-model="paramValues[param.paramKey]"
+                            :min="param.minValue"
+                            :max="param.maxValue"
+                            :step="param.stepValue || 1"
+                            show-input
+                            size="small" />
+
+                          <!-- 文本输入 (用于列名等字符串参数) -->
+                          <el-input
+                            v-else-if="param.paramType === 'string'"
+                            v-model="paramValues[param.paramKey]"
+                            :placeholder="param.tooltip || '请输入'"
+                            size="small"
+                            class="param-input-text" />
+                        </div>
+                      </el-collapse-item>
+                    </el-collapse>
                   </div>
                 </div>
 
-                <div v-if="isBEONMethod" class="beon-datasource-section">
-                  <div class="beon-datasource-header">
-                    <h4 class="params-title">
-                      <Link :size="15" />
-                      BEON 数据源
-                    </h4>
-                    <div class="beon-datasource-actions">
-                      <el-button size="small" text @click="loadBEONConnectionProfiles">
-                        <RefreshCw :size="14" />
-                        刷新
-                      </el-button>
-                      <el-button size="small" type="primary" plain @click="openBEONConnectionDialog">
-                        管理连接
-                      </el-button>
-                    </div>
-                  </div>
-
-                  <div class="param-item">
-                    <label class="param-label">数据库连接</label>
-                    <el-select
-                      v-model="paramValues.connection_profile_id"
-                      clearable
-                      placeholder="自动选择（规则绑定连接 / 默认连接）"
-                      size="small"
-                      class="param-select">
-                      <el-option label="自动选择（规则绑定连接 / 默认连接）" value="" />
-                      <el-option
-                        v-for="profile in beonConnectionProfiles"
-                        :key="profile.id"
-                        :label="profile.isDefault ? `${profile.profileName}（默认）` : profile.profileName"
-                        :value="profile.id" />
-                    </el-select>
-                  </div>
-
-                  <div v-if="beonContextLoading" class="beon-context-card">
-                    <div class="beon-context-status">正在解析站点规则...</div>
-                  </div>
-
-                  <div v-else-if="beonContextError" class="beon-context-card beon-context-card--error">
-                    <div class="beon-context-status">{{ beonContextError }}</div>
-                  </div>
-
-                  <div v-else-if="String(paramValues.site_code || '').trim()" class="beon-context-card">
-                    <div class="beon-context-summary">
-                      <div class="beon-summary-item">
-                        <span class="beon-summary-label">命中连接</span>
-                        <span class="beon-summary-value">
-                          {{
-                            beonResolvedContext?.connectionProfile
-                              ? `${beonResolvedContext.connectionProfile.profileName} (${beonResolvedContext.connectionProfile.host}:${beonResolvedContext.connectionProfile.port})`
-                              : "未命中数据库连接"
-                          }}
-                        </span>
-                      </div>
-                      <div class="beon-summary-item">
-                        <span class="beon-summary-label">补站规则</span>
-                        <span class="beon-summary-value">{{ beonResolvedContext?.fallbackRules?.length || 0 }} 条</span>
-                      </div>
-                      <div class="beon-summary-item">
-                        <span class="beon-summary-label">本地覆盖规则</span>
-                        <span class="beon-summary-value"
-                          >{{ beonResolvedContext?.localOverrideRules?.length || 0 }} 条</span
-                        >
-                      </div>
-                    </div>
-
-                    <div v-if="(beonResolvedContext?.fallbackRules?.length || 0) > 0" class="beon-rule-group">
-                      <div class="beon-rule-group-title">补站规则</div>
-                      <div class="beon-rule-tags">
-                        <el-tag
-                          v-for="rule in beonResolvedContext?.fallbackRules || []"
-                          :key="rule.id"
-                          size="small"
-                          type="warning">
-                          {{ rule.ruleName }}<template v-if="rule.sourceTable"> · {{ rule.sourceTable }}</template>
-                        </el-tag>
-                      </div>
-                    </div>
-
-                    <div v-if="(beonResolvedContext?.localOverrideRules?.length || 0) > 0" class="beon-rule-group">
-                      <div class="beon-rule-group-title">本地覆盖规则</div>
-                      <div class="beon-rule-tags">
-                        <el-tag
-                          v-for="rule in beonResolvedContext?.localOverrideRules || []"
-                          :key="rule.id"
-                          size="small"
-                          type="success">
-                          {{ rule.ruleName }}
-                        </el-tag>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div v-else class="beon-context-card">
-                    <div class="beon-context-status">填写站点代码后可预览命中的数据库补站规则和本地覆盖规则。</div>
-                  </div>
-                </div>
 
                 <!-- 执行按钮 -->
                 <div class="action-buttons">
@@ -3142,77 +3082,6 @@ onUnmounted(() => {
         @switch-version="handleVersionSwitchFromManager"
         @close="showVersionDrawer = false" />
     </el-drawer>
-
-    <el-dialog v-model="showBEONConnectionDialog" title="管理 BEON MySQL 连接" width="720px" destroy-on-close>
-      <div class="beon-connection-dialog">
-        <div class="beon-connection-list">
-          <div class="beon-connection-list-title">已保存连接</div>
-          <div
-            v-for="profile in beonConnectionProfiles"
-            :key="profile.id"
-            class="beon-connection-card"
-            :class="{ 'beon-connection-card--active': beonConnectionForm.id === profile.id }"
-            @click="resetBEONConnectionForm(profile)">
-            <div class="beon-connection-card-name">
-              {{ profile.profileName }}
-              <el-tag v-if="profile.isDefault" size="small" type="success">默认</el-tag>
-            </div>
-            <div class="beon-connection-card-meta">{{ profile.host }}:{{ profile.port }} / {{ profile.database }}</div>
-          </div>
-          <el-empty v-if="beonConnectionProfiles.length === 0" description="暂无保存的连接" :image-size="80" />
-        </div>
-
-        <div class="beon-connection-form">
-          <div class="beon-connection-form-title">
-            {{ beonConnectionForm.id ? "编辑连接" : "新增连接" }}
-          </div>
-
-          <el-form label-position="top">
-            <el-form-item label="连接名称">
-              <el-input v-model="beonConnectionForm.profileName" placeholder="例如：BEON 生产库" />
-            </el-form-item>
-            <div class="beon-connection-grid">
-              <el-form-item label="主机">
-                <el-input v-model="beonConnectionForm.host" placeholder="127.0.0.1" />
-              </el-form-item>
-              <el-form-item label="端口">
-                <el-input-number v-model="beonConnectionForm.port" :min="1" :max="65535" class="beon-port-input" />
-              </el-form-item>
-            </div>
-            <div class="beon-connection-grid">
-              <el-form-item label="用户名">
-                <el-input v-model="beonConnectionForm.user" />
-              </el-form-item>
-              <el-form-item label="密码">
-                <el-input v-model="beonConnectionForm.password" type="password" show-password />
-              </el-form-item>
-            </div>
-            <el-form-item label="数据库名">
-              <el-input v-model="beonConnectionForm.database" />
-            </el-form-item>
-            <el-form-item>
-              <el-checkbox v-model="beonConnectionForm.isDefault">设为默认连接</el-checkbox>
-            </el-form-item>
-          </el-form>
-
-          <div
-            v-if="beonConnectionTestMessage"
-            class="beon-connection-test"
-            :class="`beon-connection-test--${beonConnectionTestStatus}`">
-            {{ beonConnectionTestMessage }}
-          </div>
-
-          <div class="beon-connection-actions">
-            <el-button @click="resetBEONConnectionForm()">新建</el-button>
-            <el-button @click="testBEONConnection">测试连接</el-button>
-            <el-button type="primary" @click="saveBEONConnectionProfile">保存连接</el-button>
-            <el-button v-if="beonConnectionForm.id" type="danger" plain @click="deleteCurrentBEONConnectionProfile">
-              删除
-            </el-button>
-          </div>
-        </div>
-      </div>
-    </el-dialog>
 
     <!-- 自定义模型注册对话框 -->
     <CustomModelDialog v-model:visible="showCustomModelDialog" @registered="onCustomModelRegistered" />
@@ -4581,6 +4450,10 @@ onUnmounted(() => {
   gap: 6px;
 }
 
+.column-mapping-table--reddyproc {
+  gap: 8px;
+}
+
 .column-mapping-row {
   display: grid;
   grid-template-columns: 1fr 1fr 80px;
@@ -4654,6 +4527,12 @@ onUnmounted(() => {
   padding: 14px;
 }
 
+.method-params--reddyproc {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 /* 未选择方法 / 无参数时的占位提示 */
 .method-params--placeholder {
   display: flex;
@@ -4677,6 +4556,37 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.reddyproc-geo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.reddyproc-mapping-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reddyproc-mapping-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reddyproc-mapping-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--c-text-base);
+}
+
+.reddyproc-mapping-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--eco-text-secondary);
 }
 
 .param-row {
@@ -5456,178 +5366,6 @@ onUnmounted(() => {
   color: var(--c-text-secondary);
 }
 
-/* ==================== BEON 数据源 ==================== */
-.beon-datasource-section {
-  margin-top: 16px;
-  padding: 16px;
-  background: var(--c-bg-muted);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-panel);
-}
-
-.beon-datasource-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.beon-datasource-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.beon-context-card {
-  margin-top: 12px;
-  padding: 12px;
-  border-radius: var(--radius-panel);
-  background: var(--c-bg-surface);
-  border: 1px solid #dbeafe;
-}
-
-.beon-context-card--error {
-  border-color: #fecaca;
-  background: #fff7f7;
-}
-
-.beon-context-status {
-  font-size: var(--text-sm);
-  line-height: 1.6;
-  color: var(--c-text-secondary);
-}
-
-.beon-context-summary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px;
-}
-
-.beon-summary-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.beon-summary-label {
-  font-size: var(--text-sm);
-  color: var(--c-text-muted);
-}
-
-.beon-summary-value {
-  font-size: var(--text-sm);
-  color: var(--c-text-base);
-  word-break: break-word;
-}
-
-.beon-rule-group {
-  margin-top: 14px;
-}
-
-.beon-rule-group-title {
-  margin-bottom: 8px;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--c-text-base);
-}
-
-.beon-rule-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.beon-connection-dialog {
-  display: grid;
-  grid-template-columns: 240px 1fr;
-  gap: 16px;
-}
-
-.beon-connection-list {
-  padding-right: 8px;
-  border-right: 1px solid var(--c-border);
-}
-
-.beon-connection-list-title,
-.beon-connection-form-title {
-  margin-bottom: 12px;
-  font-size: var(--text-md);
-  font-weight: 700;
-  color: var(--c-text-base);
-}
-
-.beon-connection-card {
-  margin-bottom: 10px;
-  padding: 12px;
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-panel);
-  cursor: pointer;
-  transition:
-    border-color 0.2s ease,
-    background-color 0.2s ease;
-}
-
-.beon-connection-card:hover,
-.beon-connection-card--active {
-  border-color: var(--eco-moss);
-  background: #f0fdf4;
-}
-
-.beon-connection-card-name {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--c-text-base);
-}
-
-.beon-connection-card-meta {
-  font-size: var(--text-sm);
-  color: var(--c-text-secondary);
-  word-break: break-word;
-}
-
-.beon-connection-grid {
-  display: grid;
-  grid-template-columns: 1fr 180px;
-  gap: 12px;
-}
-
-.beon-port-input {
-  width: 100%;
-}
-
-.beon-connection-test {
-  margin-bottom: 12px;
-  padding: 10px 12px;
-  border-radius: var(--radius-panel);
-  font-size: var(--text-sm);
-}
-
-.beon-connection-test--success {
-  background: #ecfdf5;
-  color: var(--c-brand-active);
-}
-
-.beon-connection-test--failed {
-  background: #fff7f7;
-  color: #b91c1c;
-}
-
-.beon-connection-test--testing {
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-
-.beon-connection-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 /* ==================== 滚动条样式 ==================== */
 ::-webkit-scrollbar {
   width: 6px;
@@ -5655,6 +5393,10 @@ onUnmounted(() => {
 @media (max-width: 1200px) {
   .panel-sidebar {
     width: 240px;
+  }
+
+  .reddyproc-geo-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -5687,21 +5429,15 @@ onUnmounted(() => {
     justify-content: center;
   }
 
-  .beon-datasource-header,
-  .beon-connection-dialog,
-  .beon-connection-grid {
-    grid-template-columns: 1fr;
+  .columns-params-row {
     flex-direction: column;
   }
 
-  .beon-connection-list {
-    padding-right: 0;
-    border-right: 0;
-    border-bottom: 1px solid var(--c-border);
-    padding-bottom: 12px;
+  .column-mapping-row {
+    grid-template-columns: 1fr;
   }
 
-  .columns-params-row {
+  .reddyproc-mapping-header {
     flex-direction: column;
   }
 }

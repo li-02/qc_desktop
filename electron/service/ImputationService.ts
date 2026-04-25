@@ -269,7 +269,6 @@ export class ImputationService {
     };
   }
 
-
   // ==================== 执行插补 ====================
 
   /**
@@ -355,6 +354,7 @@ export class ImputationService {
           request.methodId,
           methodParams,
           { file_path: version.file_path, dataset_id: request.datasetId },
+          request.columnMapping,
           (progress, message, currentColumn) => {
             this.emitProgress(resultId, {
               resultId,
@@ -1012,16 +1012,230 @@ export class ImputationService {
     methodId: ImputationMethodId,
     params: Record<string, any>,
     version: { file_path: string; dataset_id: number },
+    columnMapping: Record<string, string> | undefined,
     onProgress: (progress: number, message: string, currentColumn?: string) => void
   ): Promise<{
     imputedData: Record<string, any>[];
     columnStats: Array<any>;
   }> {
-    if (methodId === "ITRANSFORMER" || methodId === "SAITS" || methodId === "BITS" || methodId === "TIMEMIXER") {
+    if (methodId === "SAITS") {
+      return this.performSAITSImputation(resultId, data, targetColumns, params, version, columnMapping, onProgress);
+    }
+
+    if (methodId === "ITRANSFORMER" || methodId === "BITS" || methodId === "TIMEMIXER") {
       return this.performTimeMixerPPImputation(resultId, data, targetColumns, methodId, params, version, onProgress);
     }
 
     throw new Error(`深度学习方法 ${methodId} 暂未实现`);
+  }
+
+  /**
+   * 执行预训练 SAITS 模型插补。
+   * SAITS 与 XGBoost/随机森林一致：每个目标指标优先匹配自己的内置模型。
+   */
+  private async performSAITSImputation(
+    resultId: number,
+    data: Record<string, any>[],
+    targetColumns: string[],
+    params: Record<string, any>,
+    version: { file_path: string; dataset_id: number },
+    columnMapping: Record<string, string> | undefined,
+    onProgress: (progress: number, message: string, currentColumn?: string) => void
+  ): Promise<{
+    imputedData: Record<string, any>[];
+    columnStats: Array<any>;
+  }> {
+    const pythonBridge = PythonBridgeService.getInstance();
+    const columnStats: Array<any> = [];
+
+    onProgress(5, "正在检查 Python 环境...");
+    const pythonStatus = await pythonBridge.detectPython();
+    if (!pythonStatus.available) {
+      throw new Error("Python 环境未找到，请先安装 Python 3.8+、pypots 1.1、torch、joblib");
+    }
+
+    const userTimeColumn = this.getDatasetTimeColumn(version.dataset_id);
+
+    for (let colIndex = 0; colIndex < targetColumns.length; colIndex++) {
+      const columnName = targetColumns[colIndex];
+      const baseProgress = 10 + (colIndex / targetColumns.length) * 80;
+      onProgress(baseProgress, `正在插补列: ${columnName}`, columnName);
+
+      const missingIndices: number[] = [];
+      const validValues: number[] = [];
+      data.forEach((row, idx) => {
+        const val = row[columnName];
+        if (val === null || val === undefined || val === "" || Number.isNaN(Number(val))) {
+          missingIndices.push(idx);
+        } else {
+          validValues.push(Number(val));
+        }
+      });
+
+      if (missingIndices.length === 0) {
+        columnStats.push({
+          resultId,
+          columnName,
+          missingCount: 0,
+          imputedCount: 0,
+          imputationRate: 0,
+          imputedRowIndices: [],
+          imputedValues: [],
+        });
+        continue;
+      }
+
+      const modelConfig = this.getModelForTargetColumn(version.dataset_id, "SAITS", columnName);
+
+      const meanBefore = this.calculateMean(validValues);
+      const stdBefore = this.calculateStd(validValues, meanBefore);
+
+      const tempDir = path.dirname(version.file_path);
+      const tempInputFile = path.join(tempDir, `saits_input_${resultId}_${colIndex}.csv`);
+      const tempOutputFile = path.join(tempDir, `saits_output_${resultId}_${colIndex}.csv`);
+
+      try {
+        fs.writeFileSync(tempInputFile, Papa.unparse(data), "utf-8");
+
+        const bridgeProgress = (pythonProgress: { progress: number; message: string }) => {
+          const adjusted = baseProgress + (pythonProgress.progress / 100) * (80 / targetColumns.length);
+          onProgress(adjusted, pythonProgress.message, columnName);
+        };
+
+        let result: PythonTaskResult;
+
+        if (modelConfig?.modelPath) {
+          let modelPath = params.model_path || modelConfig.modelPath;
+          if (!path.isAbsolute(modelPath)) {
+            modelPath = path.join(pythonBridge.getPythonDir(), modelPath);
+          }
+
+          const savedModelParams = modelConfig.modelParams || {};
+          let metadataPath = savedModelParams.metadata_path || savedModelParams.metadataPath;
+          if (metadataPath && !path.isAbsolute(metadataPath)) {
+            metadataPath = path.join(pythonBridge.getPythonDir(), metadataPath);
+          }
+
+          const savedSeqLen = Number(savedModelParams.seq_len || savedModelParams.seqLen || 0) || undefined;
+          const savedUseGpu = savedModelParams.use_gpu === true || savedModelParams.use_gpu === "true";
+
+          result = await pythonBridge.runSAITSImputation(
+            {
+              modelPath,
+              metadataPath,
+              inputFile: tempInputFile,
+              outputFile: tempOutputFile,
+              targetColumn: columnName,
+              timeColumn: modelConfig.timeColumn || userTimeColumn || "record_time",
+              seqLen: savedSeqLen,
+              batchSize: Number(params.batch_size || savedModelParams.batch_size || savedModelParams.batchSize || 32),
+              device: params.use_gpu === true || params.use_gpu === "true" || savedUseGpu ? "cuda" : "cpu",
+              nLayers: Number(savedModelParams.n_layers || 2),
+              dModel: Number(savedModelParams.d_model || 128),
+              nHeads: Number(savedModelParams.n_heads || 8),
+              dK: Number(savedModelParams.d_k || 16),
+              dV: Number(savedModelParams.d_v || 16),
+              dFfn: Number(savedModelParams.d_ffn || 128),
+              dropout: Number(savedModelParams.dropout ?? 0.1),
+              attnDropout: Number(savedModelParams.attn_dropout ?? 0),
+              diagonalAttentionMask:
+                savedModelParams.diagonal_attention_mask === undefined ||
+                savedModelParams.diagonal_attention_mask === true ||
+                savedModelParams.diagonal_attention_mask === "true",
+              ortWeight: Number(savedModelParams.ort_weight || 1),
+              mitWeight: Number(savedModelParams.mit_weight || 1),
+              columnMapping:
+                params.column_mapping ||
+                (columnMapping && Object.keys(columnMapping).length > 0 ? JSON.stringify(columnMapping) : undefined) ||
+                (modelConfig.featureColumns && modelConfig.featureColumns.length > 0
+                  ? JSON.stringify(this.buildDefaultModelColumnMapping(modelConfig.featureColumns, data[0] || {}))
+                  : undefined),
+            },
+            bridgeProgress
+          );
+        } else {
+          onProgress(baseProgress, `列 "${columnName}" 无专属 SAITS 模型，使用 KNN 插补`, columnName);
+          result = await pythonBridge.runKNNImputation(
+            {
+              inputFile: tempInputFile,
+              outputFile: tempOutputFile,
+              targetColumn: columnName,
+            },
+            bridgeProgress
+          );
+        }
+
+        if (!result.success) {
+          throw new Error(`SAITS 插补失败 (列: ${columnName}): ${result.error}`);
+        }
+
+        if (!fs.existsSync(tempOutputFile)) {
+          throw new Error(`SAITS 输出文件未生成: ${tempOutputFile}`);
+        }
+
+        const imputedDataRaw = await this.readDataFile(tempOutputFile);
+        const imputedOnlyValues: number[] = [];
+        const imputedRowIndices: number[] = [];
+
+        for (const idx of missingIndices) {
+          const imputedValue = Number(imputedDataRaw[idx]?.[columnName]);
+          if (!Number.isNaN(imputedValue)) {
+            imputedOnlyValues.push(imputedValue);
+            imputedRowIndices.push(idx);
+            data[idx][columnName] = imputedValue;
+          }
+        }
+
+        const allValuesAfter = [...validValues, ...imputedOnlyValues];
+        const meanAfter = this.calculateMean(allValuesAfter);
+        const stdAfter = this.calculateStd(allValuesAfter, meanAfter);
+
+        columnStats.push({
+          resultId,
+          columnName,
+          missingCount: missingIndices.length,
+          imputedCount: imputedOnlyValues.length,
+          imputationRate: imputedOnlyValues.length / missingIndices.length,
+          meanBefore,
+          meanAfter,
+          stdBefore,
+          stdAfter,
+          minImputed: imputedOnlyValues.length > 0 ? Math.min(...imputedOnlyValues) : undefined,
+          maxImputed: imputedOnlyValues.length > 0 ? Math.max(...imputedOnlyValues) : undefined,
+          imputedRowIndices,
+          imputedValues: imputedOnlyValues,
+        });
+      } finally {
+        if (fs.existsSync(tempInputFile)) fs.unlinkSync(tempInputFile);
+        if (fs.existsSync(tempOutputFile)) fs.unlinkSync(tempOutputFile);
+      }
+    }
+
+    onProgress(100, "SAITS 插补完成");
+    return { imputedData: data, columnStats };
+  }
+
+  private buildDefaultModelColumnMapping(
+    featureColumns: string[],
+    sampleRow: Record<string, any>
+  ): Record<string, string> {
+    const availableColumns = Object.keys(sampleRow);
+    const availableLower = availableColumns.map(col => col.toLowerCase());
+    const mapping: Record<string, string> = {};
+
+    for (const modelCol of featureColumns) {
+      if (availableColumns.includes(modelCol)) {
+        mapping[modelCol] = modelCol;
+        continue;
+      }
+
+      const exactIndex = availableLower.indexOf(modelCol.toLowerCase());
+      if (exactIndex >= 0) {
+        mapping[modelCol] = availableColumns[exactIndex];
+      }
+    }
+
+    return mapping;
   }
 
   /**
@@ -1356,6 +1570,28 @@ export class ImputationService {
           `SELECT model_path, model_params, target_column, feature_columns, time_column
            FROM biz_imputation_model
            WHERE dataset_id IS NULL AND method_id = ? AND target_column = ? AND is_active = 1 AND is_del = 0
+           ORDER BY trained_at DESC LIMIT 1`
+        )
+        .get(methodId, targetColumn) as Row | undefined;
+    }
+
+    if (!row) {
+      row = this.db
+        .prepare(
+          `SELECT model_path, model_params, target_column, feature_columns, time_column
+           FROM biz_imputation_model
+           WHERE dataset_id = ? AND method_id = ? AND lower(target_column) = lower(?) AND is_active = 1 AND is_del = 0
+           ORDER BY trained_at DESC LIMIT 1`
+        )
+        .get(datasetId, methodId, targetColumn) as Row | undefined;
+    }
+
+    if (!row) {
+      row = this.db
+        .prepare(
+          `SELECT model_path, model_params, target_column, feature_columns, time_column
+           FROM biz_imputation_model
+           WHERE dataset_id IS NULL AND method_id = ? AND lower(target_column) = lower(?) AND is_active = 1 AND is_del = 0
            ORDER BY trained_at DESC LIMIT 1`
         )
         .get(methodId, targetColumn) as Row | undefined;

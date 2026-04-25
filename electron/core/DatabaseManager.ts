@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import * as path from "path";
 import * as fs from "fs";
+import { app } from "electron";
 
 export class DatabaseManager {
   private static instance: DatabaseManager;
@@ -562,8 +563,6 @@ export class DatabaseManager {
       /* 字段已存在 */
     }
 
-    // 默认模型配置已内置到 qc_metadata.db，无需运行时插入
-
     // 创建索引以提升查询性能
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_imputation_result_dataset
@@ -1021,6 +1020,7 @@ export class DatabaseManager {
 
     // 插入方法参数定义
     this.insertDefaultMethodParams();
+    this.seedBuiltinSAITSModels();
   }
 
   private cleanupObsoleteImputationMethods(activeMethodIds: string[]): void {
@@ -1867,6 +1867,124 @@ export class DatabaseManager {
   // 预训练插补模型配置（TIMEMIXER、RANDOM_FOREST、XGBOOST）已直接内置到 qc_metadata.db 中，
   // model_path 使用相对于 pythonDir 的路径（如 "models/XGBOOST/NEE/XGB_model_xxx.pkl"），
   // ImputationService.performCustomModelImputation 会在运行时将相对路径解析为绝对路径。
+
+  private getPythonDir(): string {
+    return app.isPackaged
+      ? path.join(process.resourcesPath, "python")
+      : path.join(__dirname, "..", "..", "..", "python");
+  }
+
+  private seedBuiltinSAITSModels(): void {
+    if (!this.db) return;
+
+    const modelsRoot = path.join(this.getPythonDir(), "models", "SAITS");
+    if (!fs.existsSync(modelsRoot)) return;
+
+    const targetConfigs: Record<
+      string,
+      {
+        targetColumn: string;
+        displayName: string;
+        featureColumns: string[];
+      }
+    > = {
+      FCH4: {
+        targetColumn: "FCH4",
+        displayName: "FCH4",
+        featureColumns: ["ta_1_2_1", "vpd", "swin", "ws_1_2_1", "par", "rh_1_2_1"],
+      },
+      NAI: {
+        targetColumn: "nai",
+        displayName: "NAI",
+        featureColumns: ["rh", "vpd", "rg", "ppfd", "ta", "pm2_5", "pm10"],
+      },
+      NEE: {
+        targetColumn: "co2_flux",
+        displayName: "NEE",
+        featureColumns: ["co2_flux", "rg_1_1_2", "rn_1_1_1", "ta_1_2_1", "vpd", "rh_1_1_1", "swc_1_1_1", "ts_1_1_1"],
+      },
+    };
+
+    const toRelativePythonPath = (absolutePath: string): string =>
+      path.relative(this.getPythonDir(), absolutePath).replace(/\\/g, "/");
+
+    const findStmt = this.db.prepare(`
+      SELECT id FROM biz_imputation_model
+      WHERE dataset_id IS NULL AND method_id = 'SAITS' AND target_column = ? AND model_path = ? AND is_del = 0
+      LIMIT 1
+    `);
+
+    const insertStmt = this.db.prepare(`
+      INSERT INTO biz_imputation_model
+        (dataset_id, method_id, model_name, model_path, model_params,
+         target_column, feature_columns, time_column, training_columns,
+         is_active, trained_at)
+      VALUES
+        (NULL, 'SAITS', ?, ?, ?, ?, ?, 'record_time', ?, 1, CURRENT_TIMESTAMP)
+    `);
+
+    const updateStmt = this.db.prepare(`
+      UPDATE biz_imputation_model
+      SET model_name = ?,
+          model_params = ?,
+          feature_columns = ?,
+          training_columns = ?,
+          is_active = 1,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+
+    for (const entry of fs.readdirSync(modelsRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+
+      const config = targetConfigs[entry.name.toUpperCase()];
+      if (!config) continue;
+
+      const modelDir = path.join(modelsRoot, entry.name);
+      const modelFiles = fs
+        .readdirSync(modelDir)
+        .filter(file => file.toLowerCase().endsWith(".pypots"))
+        .sort();
+
+      for (const modelFile of modelFiles) {
+        const absoluteModelPath = path.join(modelDir, modelFile);
+        const metadataFile = modelFile.replace(/\.pypots$/i, "_metadata.joblib");
+        const absoluteMetadataPath = path.join(modelDir, metadataFile);
+        if (!fs.existsSync(absoluteMetadataPath)) continue;
+
+        const modelPath = toRelativePythonPath(absoluteModelPath);
+        const metadataPath = toRelativePythonPath(absoluteMetadataPath);
+        const modelParams = {
+          metadata_path: metadataPath,
+          framework: "pypots",
+          pypots_version: "1.1",
+          n_layers: 2,
+          d_model: 128,
+          n_heads: 8,
+          d_k: 16,
+          d_v: 16,
+          d_ffn: 128,
+          dropout: 0.1,
+          attn_dropout: 0,
+          diagonal_attention_mask: true,
+          ort_weight: 1,
+          mit_weight: 1,
+          batch_size: 32,
+          use_gpu: false,
+        };
+        const featureColumns = JSON.stringify(config.featureColumns);
+        const modelParamsJson = JSON.stringify(modelParams);
+        const existing = findStmt.get(config.targetColumn, modelPath) as { id: number } | undefined;
+        const modelName = `${config.displayName} SAITS插补模型`;
+
+        if (existing) {
+          updateStmt.run(modelName, modelParamsJson, featureColumns, featureColumns, existing.id);
+        } else {
+          insertStmt.run(modelName, modelPath, modelParamsJson, config.targetColumn, featureColumns, featureColumns);
+        }
+      }
+    }
+  }
 
   /**
    * 数据库迁移 - 为现有表添加新字段

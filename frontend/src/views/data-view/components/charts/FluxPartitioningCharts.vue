@@ -962,7 +962,7 @@ onBeforeUnmount(() => {
       <!-- 列名不匹配提示 -->
       <div v-if="noValidData" class="chart-placeholder">
         <div class="no-data-hint">
-          <p class="no-data-title">⚠️ 未找到匹配的 GPP / Reco / NEE 列</p>
+          <p class="no-data-title">🔴 未找到匹配的 GPP / Reco / NEE 列</p>
           <p class="no-data-detail">
             数据列: {{ effectiveData.length ? Object.keys(effectiveData[0]).join(", ") : "-" }}
           </p>
@@ -972,7 +972,7 @@ onBeforeUnmount(() => {
       <!-- 列名不匹配提示 -->
       <div v-if="noValidData" class="chart-placeholder">
         <div style="text-align: center; padding: 40px; color: #94a3b8">
-          <p style="font-size: var(--text-md); margin-bottom: 8px">⚠️ 未找到匹配的 GPP / Reco / NEE 列</p>
+          <p style="font-size: var(--text-md); margin-bottom: 8px">🔴 未找到匹配的 GPP / Reco / NEE 列</p>
           <p style="font-size: var(--text-sm); color: #94a3b8">
             数据列: {{ effectiveData.length ? Object.keys(effectiveData[0]).join(", ") : "-" }}
           </p>

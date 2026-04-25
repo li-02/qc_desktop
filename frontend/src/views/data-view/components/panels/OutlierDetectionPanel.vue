@@ -1007,9 +1007,6 @@ onMounted(() => {
                 <div class="methods-section">
                   <div class="section-header-small">
                     <div class="section-title">选择检测方法</div>
-                    <span v-if="selectedMethod" class="selected-method-hint">
-                      当前: <strong>{{ selectedMethod.name }}</strong>
-                    </span>
                   </div>
                   <div class="methods-grid">
                     <div
@@ -1488,11 +1485,19 @@ onMounted(() => {
     <!-- 模板预览对话框 -->
     <el-dialog
       v-model="showTemplatePreview"
-      :title="`模板预览 — ${previewTemplateName}`"
-      width="520px"
+      width="780px"
+      :show-close="false"
       destroy-on-close
       append-to-body
       class="template-preview-dialog">
+      <template #header="{ close, titleId, titleClass }">
+        <div class="template-preview-header">
+          <span :id="titleId" :class="titleClass">模板预览 — {{ previewTemplateName }}</span>
+          <button type="button" class="template-preview-close" aria-label="关闭" @click="close">
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+      </template>
       <div class="template-preview-content">
         <div class="template-preview-summary">
           共 <strong>{{ previewTemplateEntries.length }}</strong> 列配置
@@ -3090,9 +3095,59 @@ onMounted(() => {
   padding: 16px 20px;
   border-radius: var(--radius-overlay) var(--radius-overlay) 0 0;
 }
+.template-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
 .template-preview-dialog .el-dialog__title {
   color: var(--c-text-primary);
   font-weight: 600;
   font-size: var(--text-lg);
+  line-height: 1.2;
+}
+.template-preview-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 6px 16px rgba(64, 122, 95, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: rgba(45, 95, 74, 0.84);
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+.template-preview-close span {
+  display: block;
+  font-size: 26px;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+.template-preview-close:hover {
+  background: rgba(255, 255, 255, 0.24);
+  border-color: rgba(255, 255, 255, 0.45);
+  color: var(--eco-fern);
+  transform: scale(1.04);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 10px 22px rgba(64, 122, 95, 0.12);
+}
+.template-preview-close:focus-visible {
+  outline: 2px solid rgba(126, 211, 168, 0.45);
+  outline-offset: 2px;
 }
 </style>

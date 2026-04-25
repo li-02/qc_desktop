@@ -113,7 +113,7 @@
             </div>
             <!-- 错误信息 -->
             <div class="node-error" v-if="ne.errorMessage">
-              <span class="node-error-icon">⚠️</span>
+              <span class="node-error-icon">🔴</span>
               {{ ne.errorMessage }}
             </div>
             <!-- 结果数据 -->

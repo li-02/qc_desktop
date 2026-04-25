@@ -125,10 +125,6 @@ onMounted(async () => {
   console.log("DataView 组件已挂载");
 
   await handleRouteQuery();
-
-  if (!currentDataset.value) {
-    ElMessage.warning("请先从左侧选择一个数据集");
-  }
 });
 
 // 监听路由参数变化（以防在同一个视图里直接 query 变化）

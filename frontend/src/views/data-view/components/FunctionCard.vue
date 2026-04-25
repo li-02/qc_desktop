@@ -89,6 +89,7 @@ const emit = defineEmits<{
   startOutlierDetection: [options: any];
   startMissingValueImputation: [options: any];
   startDataCleaning: [options: any];
+  exportData: [options: any];
 }>();
 
 // Reactive state
@@ -175,6 +176,10 @@ const handleStartMissingValueImputation = (options: any) => {
 
 const handleStartDataCleaning = (options: any) => {
   emit("startDataCleaning", options);
+};
+
+const handleExportData = (options: any) => {
+  emit("exportData", options);
 };
 
 // Watch for dataset changes

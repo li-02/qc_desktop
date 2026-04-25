@@ -17,6 +17,7 @@ export type ImputationMethodId =
   | "SEASONAL"
   | "MDS_REDDYPROC"
   | "XGBOOST"
+  | "RANDOM_FOREST"
   | "ITRANSFORMER"
   | "SAITS"
   | "BITS"

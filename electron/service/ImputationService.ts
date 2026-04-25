@@ -386,7 +386,7 @@ export class ImputationService {
         );
         imputedData = result.imputedData;
         columnStats = result.columnStats;
-      } else if (this.isXGBoostMethod(request.methodId)) {
+      } else if (this.isMachineLearningModelMethod(request.methodId)) {
         const result = await this.performCustomModelImputation(
           resultId,
           data,
@@ -708,8 +708,8 @@ export class ImputationService {
     return typeof methodId === "string" && methodId.startsWith("CUSTOM_");
   }
 
-  private isXGBoostMethod(methodId: ImputationMethodId): boolean {
-    return methodId === "XGBOOST";
+  private isMachineLearningModelMethod(methodId: ImputationMethodId): boolean {
+    return methodId === "XGBOOST" || methodId === "RANDOM_FOREST";
   }
 
   /**

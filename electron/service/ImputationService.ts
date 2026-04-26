@@ -672,7 +672,6 @@ export class ImputationService {
         break;
       case "ITRANSFORMER":
       case "SAITS":
-      case "BITS":
       case "TIMEMIXER":
         // 深度学习方法需要整体数据处理，在 performImputation 中特殊处理
         // 这里返回原数据，实际插补在 performDeepLearningImputation 中执行
@@ -691,7 +690,7 @@ export class ImputationService {
    * 检查是否为深度学习方法
    */
   private isDeepLearningMethod(methodId: ImputationMethodId): boolean {
-    return ["ITRANSFORMER", "SAITS", "BITS", "TIMEMIXER"].includes(methodId);
+    return ["ITRANSFORMER", "SAITS", "TIMEMIXER"].includes(methodId);
   }
 
   /**
@@ -1034,8 +1033,8 @@ export class ImputationService {
       return this.performSAITSImputation(resultId, data, targetColumns, params, version, columnMapping, onProgress);
     }
 
-    if (methodId === "BITS" || methodId === "TIMEMIXER") {
-      return this.performTimeMixerPPImputation(resultId, data, targetColumns, methodId, params, version, onProgress);
+    if (methodId === "TIMEMIXER") {
+      return this.performTimeMixerImputation(resultId, data, targetColumns, params, version, columnMapping, onProgress);
     }
 
     throw new Error(`深度学习方法 ${methodId} 暂未实现`);
@@ -1407,6 +1406,194 @@ export class ImputationService {
     return { imputedData: data, columnStats };
   }
 
+  /**
+   * 执行预训练 TimeMixer 模型插补。
+   * 使用已保存的 PyPOTS TimeMixer checkpoint 和 metadata。
+   */
+  private async performTimeMixerImputation(
+    resultId: number,
+    data: Record<string, any>[],
+    targetColumns: string[],
+    params: Record<string, any>,
+    version: { file_path: string; dataset_id: number },
+    columnMapping: Record<string, string> | undefined,
+    onProgress: (progress: number, message: string, currentColumn?: string) => void
+  ): Promise<{
+    imputedData: Record<string, any>[];
+    columnStats: Array<any>;
+  }> {
+    const pythonBridge = PythonBridgeService.getInstance();
+    const columnStats: Array<any> = [];
+
+    onProgress(5, "正在检查 Python 环境...");
+    const pythonStatus = await pythonBridge.detectPython();
+    if (!pythonStatus.available) {
+      throw new Error("Python 环境未找到，请先安装 Python 3.8+、pypots 1.1、torch、joblib");
+    }
+
+    const userTimeColumn = this.getDatasetTimeColumn(version.dataset_id);
+
+    for (let colIndex = 0; colIndex < targetColumns.length; colIndex++) {
+      const columnName = targetColumns[colIndex];
+      const baseProgress = 10 + (colIndex / targetColumns.length) * 80;
+      onProgress(baseProgress, `正在插补列: ${columnName}`, columnName);
+
+      const missingIndices: number[] = [];
+      const validValues: number[] = [];
+      data.forEach((row, idx) => {
+        const val = row[columnName];
+        if (val === null || val === undefined || val === "" || Number.isNaN(Number(val))) {
+          missingIndices.push(idx);
+        } else {
+          validValues.push(Number(val));
+        }
+      });
+
+      if (missingIndices.length === 0) {
+        columnStats.push({
+          resultId,
+          columnName,
+          missingCount: 0,
+          imputedCount: 0,
+          imputationRate: 0,
+          imputedRowIndices: [],
+          imputedValues: [],
+        });
+        continue;
+      }
+
+      const modelConfig = this.getModelForTargetColumn(version.dataset_id, "TIMEMIXER", columnName);
+      const meanBefore = this.calculateMean(validValues);
+      const stdBefore = this.calculateStd(validValues, meanBefore);
+
+      const tempDir = path.dirname(version.file_path);
+      const tempInputFile = path.join(tempDir, `timemixer_input_${resultId}_${colIndex}.csv`);
+      const tempOutputFile = path.join(tempDir, `timemixer_output_${resultId}_${colIndex}.csv`);
+
+      try {
+        fs.writeFileSync(tempInputFile, Papa.unparse(data), "utf-8");
+
+        const bridgeProgress = (pythonProgress: { progress: number; message: string }) => {
+          const adjusted = baseProgress + (pythonProgress.progress / 100) * (80 / targetColumns.length);
+          onProgress(adjusted, pythonProgress.message, columnName);
+        };
+
+        let result: PythonTaskResult;
+
+        if (params.model_path || modelConfig?.modelPath) {
+          let modelPath = params.model_path || modelConfig?.modelPath;
+          if (!path.isAbsolute(modelPath)) {
+            modelPath = path.join(pythonBridge.getPythonDir(), modelPath);
+          }
+
+          const savedModelParams = { ...(modelConfig?.modelParams || {}), ...params };
+          let metadataPath = savedModelParams.metadata_path || savedModelParams.metadataPath;
+          if (metadataPath && !path.isAbsolute(metadataPath)) {
+            metadataPath = path.join(pythonBridge.getPythonDir(), metadataPath);
+          }
+
+          const useGpu = savedModelParams.use_gpu === true || savedModelParams.use_gpu === "true";
+          const truthy = (value: unknown): boolean => value === true || value === "true" || value === 1 || value === "1";
+
+          result = await pythonBridge.runTimeMixerImputation(
+            {
+              modelPath,
+              metadataPath,
+              inputFile: tempInputFile,
+              outputFile: tempOutputFile,
+              targetColumn: columnName,
+              timeColumn: modelConfig?.timeColumn || userTimeColumn || "record_time",
+              seqLen: Number(savedModelParams.seq_len || savedModelParams.seqLen || 0) || undefined,
+              batchSize: Number(savedModelParams.batch_size || savedModelParams.batchSize || 4),
+              device: useGpu ? "cuda" : "cpu",
+              nLayers: Number(savedModelParams.n_layers || 3),
+              dModel: Number(savedModelParams.d_model || 16),
+              dFfn: Number(savedModelParams.d_ffn || 32),
+              topK: Number(savedModelParams.top_k || savedModelParams.topK || 5),
+              dropout: Number(savedModelParams.dropout ?? 0.1),
+              channelIndependence: truthy(savedModelParams.channel_independence ?? savedModelParams.channelIndependence),
+              decompMethod: String(savedModelParams.decomp_method || savedModelParams.decompMethod || "moving_avg"),
+              movingAvg: Number(savedModelParams.moving_avg || savedModelParams.movingAvg || 25),
+              downsamplingLayers: Number(
+                savedModelParams.downsampling_layers || savedModelParams.downsamplingLayers || 3
+              ),
+              downsamplingWindow: Number(
+                savedModelParams.downsampling_window || savedModelParams.downsamplingWindow || 2
+              ),
+              applyNonstationaryNorm: truthy(
+                savedModelParams.apply_nonstationary_norm ?? savedModelParams.applyNonstationaryNorm
+              ),
+              columnMapping:
+                params.column_mapping ||
+                (columnMapping && Object.keys(columnMapping).length > 0 ? JSON.stringify(columnMapping) : undefined) ||
+                (modelConfig?.featureColumns && modelConfig.featureColumns.length > 0
+                  ? JSON.stringify(this.buildDefaultModelColumnMapping(modelConfig.featureColumns, data[0] || {}))
+                  : undefined),
+            },
+            bridgeProgress
+          );
+        } else {
+          onProgress(baseProgress, `列 "${columnName}" 无专属 TimeMixer 模型，使用 KNN 插补`, columnName);
+          result = await pythonBridge.runKNNImputation(
+            {
+              inputFile: tempInputFile,
+              outputFile: tempOutputFile,
+              targetColumn: columnName,
+            },
+            bridgeProgress
+          );
+        }
+
+        if (!result.success) {
+          throw new Error(`TimeMixer 插补失败 (列: ${columnName}): ${result.error}`);
+        }
+
+        if (!fs.existsSync(tempOutputFile)) {
+          throw new Error(`TimeMixer 输出文件未生成: ${tempOutputFile}`);
+        }
+
+        const imputedDataRaw = await this.readDataFile(tempOutputFile);
+        const imputedOnlyValues: number[] = [];
+        const imputedRowIndices: number[] = [];
+
+        for (const idx of missingIndices) {
+          const imputedValue = Number(imputedDataRaw[idx]?.[columnName]);
+          if (!Number.isNaN(imputedValue)) {
+            imputedOnlyValues.push(imputedValue);
+            imputedRowIndices.push(idx);
+            data[idx][columnName] = imputedValue;
+          }
+        }
+
+        const allValuesAfter = [...validValues, ...imputedOnlyValues];
+        const meanAfter = this.calculateMean(allValuesAfter);
+        const stdAfter = this.calculateStd(allValuesAfter, meanAfter);
+
+        columnStats.push({
+          resultId,
+          columnName,
+          missingCount: missingIndices.length,
+          imputedCount: imputedOnlyValues.length,
+          imputationRate: imputedOnlyValues.length / missingIndices.length,
+          meanBefore,
+          meanAfter,
+          stdBefore,
+          stdAfter,
+          minImputed: imputedOnlyValues.length > 0 ? Math.min(...imputedOnlyValues) : undefined,
+          maxImputed: imputedOnlyValues.length > 0 ? Math.max(...imputedOnlyValues) : undefined,
+          imputedRowIndices,
+          imputedValues: imputedOnlyValues,
+        });
+      } finally {
+        if (fs.existsSync(tempInputFile)) fs.unlinkSync(tempInputFile);
+        if (fs.existsSync(tempOutputFile)) fs.unlinkSync(tempOutputFile);
+      }
+    }
+
+    onProgress(100, "TimeMixer 插补完成");
+    return { imputedData: data, columnStats };
+  }
+
   private buildDefaultModelColumnMapping(
     featureColumns: string[],
     sampleRow: Record<string, any>
@@ -1746,7 +1933,7 @@ export class ImputationService {
     };
 
     const orderByPreferredDefault =
-      methodId === "ITRANSFORMER" || methodId === "SAITS"
+      methodId === "ITRANSFORMER" || methodId === "SAITS" || methodId === "TIMEMIXER"
         ? `ORDER BY CASE WHEN lower(model_path) GLOB '*masks1_*' THEN 0 ELSE 1 END, trained_at DESC LIMIT 1`
         : `ORDER BY trained_at DESC LIMIT 1`;
 

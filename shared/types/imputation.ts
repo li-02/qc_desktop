@@ -20,7 +20,6 @@ export type ImputationMethodId =
   | "RANDOM_FOREST"
   | "ITRANSFORMER"
   | "SAITS"
-  | "BITS"
   | "TIMEMIXER"
   | `CUSTOM_${string}`;
 

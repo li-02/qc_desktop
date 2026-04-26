@@ -1344,6 +1344,164 @@ export class PythonBridgeService {
   }
 
   /**
+   * 执行 TimeMixer 模型推理插补任务
+   */
+  async runTimeMixerImputation(
+    params: {
+      modelPath: string;
+      metadataPath?: string;
+      inputFile: string;
+      outputFile: string;
+      targetColumn: string;
+      timeColumn?: string;
+      seqLen?: number;
+      batchSize?: number;
+      device?: string;
+      nLayers?: number;
+      dModel?: number;
+      dFfn?: number;
+      topK?: number;
+      dropout?: number;
+      channelIndependence?: boolean;
+      decompMethod?: string;
+      movingAvg?: number;
+      downsamplingLayers?: number;
+      downsamplingWindow?: number;
+      applyNonstationaryNorm?: boolean;
+      columnMapping?: string;
+    },
+    progressCallback?: ProgressCallback
+  ): Promise<PythonTaskResult> {
+    if (!this.pythonPath) {
+      await this.detectPython();
+    }
+    if (!this.pythonPath) {
+      return { success: false, error: "Python 环境未找到" };
+    }
+
+    const scriptPath = path.join(this.pythonDir, "methods", "timemixer_impute.py");
+    if (!fs.existsSync(scriptPath)) {
+      return { success: false, error: `脚本文件不存在: ${scriptPath}` };
+    }
+
+    if (!fs.existsSync(params.modelPath)) {
+      return { success: false, error: `模型文件不存在: ${params.modelPath}` };
+    }
+
+    if (params.metadataPath && !fs.existsSync(params.metadataPath)) {
+      return { success: false, error: `模型 metadata 文件不存在: ${params.metadataPath}` };
+    }
+
+    const args: string[] = [
+      scriptPath,
+      "--model",
+      params.modelPath,
+      "--file",
+      params.inputFile,
+      "--target",
+      params.targetColumn,
+      "--output",
+      params.outputFile,
+    ];
+
+    if (params.metadataPath) args.push("--metadata", params.metadataPath);
+    if (params.timeColumn) args.push("--time-col", params.timeColumn);
+    if (params.seqLen) args.push("--seq-len", params.seqLen.toString());
+    if (params.batchSize) args.push("--batch-size", params.batchSize.toString());
+    if (params.device) args.push("--device", params.device);
+    if (params.nLayers) args.push("--n-layers", params.nLayers.toString());
+    if (params.dModel) args.push("--d-model", params.dModel.toString());
+    if (params.dFfn) args.push("--d-ffn", params.dFfn.toString());
+    if (params.topK) args.push("--top-k", params.topK.toString());
+    if (params.dropout !== undefined) args.push("--dropout", params.dropout.toString());
+    if (params.channelIndependence !== undefined) {
+      args.push("--channel-independence", params.channelIndependence ? "true" : "false");
+    }
+    if (params.decompMethod) args.push("--decomp-method", params.decompMethod);
+    if (params.movingAvg) args.push("--moving-avg", params.movingAvg.toString());
+    if (params.downsamplingLayers) args.push("--downsampling-layers", params.downsamplingLayers.toString());
+    if (params.downsamplingWindow) args.push("--downsampling-window", params.downsamplingWindow.toString());
+    if (params.applyNonstationaryNorm !== undefined) {
+      args.push("--apply-nonstationary-norm", params.applyNonstationaryNorm ? "true" : "false");
+    }
+    if (params.columnMapping) args.push("--column-mapping", params.columnMapping);
+
+    const taskId = `timemixer_impute_${Date.now()}`;
+
+    return new Promise(resolve => {
+      progressCallback?.({ stage: "starting", progress: 0, message: "正在启动 TimeMixer 模型推理..." });
+
+      const proc = spawn(this.pythonPath!, args, {
+        cwd: this.pythonDir,
+        env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" },
+      });
+
+      this.runningProcesses.set(taskId, proc);
+
+      let stdout = "";
+      let stderr = "";
+
+      proc.stdout.on("data", data => {
+        const text = data.toString();
+        stdout += text;
+
+        if (text.includes("[1/5]")) {
+          progressCallback?.({ stage: "loading", progress: 10, message: "正在加载数据和 metadata..." });
+        } else if (text.includes("[2/5]")) {
+          progressCallback?.({ stage: "loading_model", progress: 25, message: "正在加载 TimeMixer 模型..." });
+        } else if (text.includes("[3/5]")) {
+          progressCallback?.({ stage: "preparing", progress: 45, message: "正在构建 TimeMixer 输入序列..." });
+        } else if (text.includes("[4/5]")) {
+          progressCallback?.({ stage: "imputing", progress: 65, message: "正在执行 TimeMixer 插补..." });
+        } else if (text.includes("[5/5]")) {
+          progressCallback?.({ stage: "saving", progress: 85, message: "正在保存结果..." });
+        } else if (text.includes("插补完成")) {
+          progressCallback?.({ stage: "completed", progress: 100, message: "TimeMixer 插补完成" });
+        }
+      });
+
+      proc.stderr.on("data", data => {
+        stderr += data.toString();
+      });
+
+      proc.on("close", code => {
+        this.runningProcesses.delete(taskId);
+        let resultData: any;
+        const marker = "__RESULT_JSON__:";
+        const markerIndex = stdout.lastIndexOf(marker);
+        if (markerIndex >= 0) {
+          const jsonLine = stdout
+            .slice(markerIndex + marker.length)
+            .split(/\r?\n/, 1)[0]
+            .trim();
+          if (jsonLine) {
+            try {
+              resultData = JSON.parse(jsonLine);
+            } catch {
+              resultData = undefined;
+            }
+          }
+        }
+        const parsedError =
+          resultData && typeof resultData === "object" && resultData.error ? String(resultData.error) : undefined;
+        resolve({
+          success: code === 0,
+          data: resultData,
+          exitCode: code ?? undefined,
+          stdout,
+          stderr,
+          error: code !== 0 ? (parsedError ?? PythonBridgeService.cleanRStderr(stderr)) || "执行失败" : undefined,
+        });
+      });
+
+      proc.on("error", err => {
+        this.runningProcesses.delete(taskId);
+        resolve({ success: false, error: err.message });
+      });
+    });
+  }
+
+  /**
    * 执行 KNN 插补任务（无需预训练模型）
    */
   async runKNNImputation(

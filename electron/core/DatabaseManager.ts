@@ -958,18 +958,6 @@ export class DatabaseManager {
         icon: "🧠",
       },
       {
-        method_id: "BITS",
-        method_name: "BITS",
-        category: "dl",
-        description: "双向时序插补模型，结合前向和后向信息进行高精度插补",
-        requires_python: 1,
-        estimated_time: "slow",
-        accuracy: "high",
-        priority: 63,
-        applicable_data_types: JSON.stringify(["numeric"]),
-        icon: "🧠",
-      },
-      {
         method_id: "TIMEMIXER",
         method_name: "TimeMixer",
         category: "dl",
@@ -1022,6 +1010,7 @@ export class DatabaseManager {
     this.insertDefaultMethodParams();
     this.seedBuiltinSAITSModels();
     this.seedBuiltinITransformerModels();
+    this.seedBuiltinTimeMixerModels();
   }
 
   private cleanupObsoleteImputationMethods(activeMethodIds: string[]): void {
@@ -1610,92 +1599,6 @@ export class DatabaseManager {
         param_order: 8,
       },
 
-      // BITS 参数
-      {
-        method_id: "BITS",
-        param_key: "seq_len",
-        param_name: "序列长度",
-        param_type: "number",
-        default_value: "96",
-        min_value: 24,
-        max_value: 512,
-        step_value: 24,
-        tooltip: "滑动窗口长度",
-        is_required: true,
-        is_advanced: false,
-        param_order: 1,
-      },
-      {
-        method_id: "BITS",
-        param_key: "n_layers",
-        param_name: "层数",
-        param_type: "number",
-        default_value: "2",
-        min_value: 1,
-        max_value: 8,
-        step_value: 1,
-        tooltip: "模型层数",
-        is_required: false,
-        is_advanced: true,
-        param_order: 2,
-      },
-      {
-        method_id: "BITS",
-        param_key: "d_model",
-        param_name: "隐藏层维度",
-        param_type: "number",
-        default_value: "64",
-        min_value: 16,
-        max_value: 256,
-        step_value: 16,
-        tooltip: "隐藏层特征维度",
-        is_required: false,
-        is_advanced: true,
-        param_order: 3,
-      },
-      {
-        method_id: "BITS",
-        param_key: "dropout",
-        param_name: "Dropout率",
-        param_type: "number",
-        default_value: "0.1",
-        min_value: 0,
-        max_value: 0.5,
-        step_value: 0.05,
-        tooltip: "Dropout 比率",
-        is_required: false,
-        is_advanced: true,
-        param_order: 4,
-      },
-      {
-        method_id: "BITS",
-        param_key: "epochs",
-        param_name: "训练轮数",
-        param_type: "number",
-        default_value: "100",
-        min_value: 10,
-        max_value: 500,
-        step_value: 10,
-        tooltip: "训练轮数",
-        is_required: false,
-        is_advanced: true,
-        param_order: 5,
-      },
-      {
-        method_id: "BITS",
-        param_key: "batch_size",
-        param_name: "批次大小",
-        param_type: "number",
-        default_value: "32",
-        min_value: 8,
-        max_value: 256,
-        step_value: 8,
-        tooltip: "每批次训练样本数",
-        is_required: false,
-        is_advanced: true,
-        param_order: 6,
-      },
-
       // TimeMixer 参数
       {
         method_id: "TIMEMIXER",
@@ -2172,6 +2075,195 @@ export class DatabaseManager {
       const modelParamsJson = JSON.stringify(modelParams);
       const trainedAt = resolveTimestamp(path.basename(absoluteModelPath));
       const modelName = `${resolveMetricLabel(config.targetColumn)} ${resolveModelLabel(path.basename(absoluteModelPath))}`;
+      const existing = findStmt.get(config.targetColumn, modelPath) as { id: number } | undefined;
+
+      if (existing) {
+        updateStmt.run(modelName, modelParamsJson, featureColumns, featureColumns, trainedAt, existing.id);
+      } else {
+        insertStmt.run(
+          modelName,
+          modelPath,
+          modelParamsJson,
+          config.targetColumn,
+          featureColumns,
+          featureColumns,
+          trainedAt
+        );
+      }
+    }
+  }
+
+  private seedBuiltinTimeMixerModels(): void {
+    if (!this.db) return;
+
+    const modelsRoot = path.join(this.getPythonDir(), "models", "TIMEMIXER");
+    if (!fs.existsSync(modelsRoot)) return;
+
+    this.db
+      .prepare(
+        `UPDATE biz_imputation_model
+         SET is_del = 1,
+             is_active = 0,
+             deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE dataset_id IS NULL
+           AND method_id = 'TIMEMIXER'
+           AND is_del = 0
+           AND (
+             lower(model_path) GLOB 'models/timemixer/timemixerpp*'
+             OR lower(model_path) GLOB 'models/timemixer/timermixerpp*'
+           )`
+      )
+      .run();
+
+    const targetConfigs: Record<
+      string,
+      {
+        targetColumn: string;
+        displayName: string;
+        featureColumns: string[];
+      }
+    > = {
+      FCH4: {
+        targetColumn: "FCH4",
+        displayName: "FCH4",
+        featureColumns: ["ta_1_2_1", "vpd", "swin", "ws_1_2_1", "par", "rh_1_2_1"],
+      },
+      NAI: {
+        targetColumn: "nai",
+        displayName: "NAI",
+        featureColumns: ["rh", "vpd", "rg", "ppfd", "ta", "pm2_5", "pm10"],
+      },
+      "NEE/BEON": {
+        targetColumn: "nee",
+        displayName: "NEE BEON",
+        featureColumns: ["rg_1_1_2", "rn_1_1_1", "ta_1_2_1", "vpd", "rh_1_1_1", "swc_1_1_1", "ts_1_1_1"],
+      },
+      "NEE/FLUXNET": {
+        targetColumn: "co2_flux",
+        displayName: "NEE Fluxnet",
+        featureColumns: ["rg_1_1_2", "rn_1_1_1", "ta_1_2_1", "vpd", "rh_1_1_1", "swc_1_1_1", "ts_1_1_1"],
+      },
+    };
+
+    const toRelativePythonPath = (absolutePath: string): string =>
+      path.relative(this.getPythonDir(), absolutePath).replace(/\\/g, "/");
+
+    const collectModelFiles = (dir: string): string[] => {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      const files: string[] = [];
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          files.push(...collectModelFiles(fullPath));
+        } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".pypots")) {
+          files.push(fullPath);
+        }
+      }
+      return files;
+    };
+
+    const resolveConfig = (absoluteModelPath: string) => {
+      const relativeDir = path
+        .relative(modelsRoot, path.dirname(absoluteModelPath))
+        .replace(/\\/g, "/")
+        .toUpperCase();
+      return targetConfigs[relativeDir];
+    };
+
+    const resolveMissingDays = (fileName: string): number => {
+      const match = fileName.match(/masks(\d+)/i);
+      return match ? Number(match[1]) : 1;
+    };
+
+    const resolveSeqLen = (missingDays: number): number => {
+      if (missingDays === 1) return 192;
+      if (missingDays === 7) return 672;
+      if (missingDays === 15) return 1440;
+      if (missingDays === 30) return 2880;
+      return 192;
+    };
+
+    const resolveModelLabel = (fileName: string): string => {
+      const missingDays = resolveMissingDays(fileName);
+      return `适合缺失${missingDays}天`;
+    };
+
+    const resolveMetricLabel = (targetColumn: string, displayName: string): string => {
+      if (targetColumn === "co2_flux" || targetColumn === "nee") return displayName;
+      return targetColumn.toUpperCase();
+    };
+
+    const resolveTimestamp = (fileName: string): string | null => {
+      const match = fileName.match(/_(\d{8})_(\d{6})\.pypots$/i);
+      if (!match) return null;
+      const date = match[1];
+      const time = match[2];
+      return `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)} ${time.slice(0, 2)}:${time.slice(2, 4)}:${time.slice(4, 6)}`;
+    };
+
+    const findStmt = this.db.prepare(`
+      SELECT id FROM biz_imputation_model
+      WHERE dataset_id IS NULL AND method_id = 'TIMEMIXER' AND target_column = ? AND model_path = ? AND is_del = 0
+      LIMIT 1
+    `);
+
+    const insertStmt = this.db.prepare(`
+      INSERT INTO biz_imputation_model
+        (dataset_id, method_id, model_name, model_path, model_params,
+         target_column, feature_columns, time_column, training_columns,
+         is_active, trained_at)
+      VALUES
+        (NULL, 'TIMEMIXER', ?, ?, ?, ?, ?, 'record_time', ?, 1, COALESCE(?, CURRENT_TIMESTAMP))
+    `);
+
+    const updateStmt = this.db.prepare(`
+      UPDATE biz_imputation_model
+      SET model_name = ?,
+          model_params = ?,
+          feature_columns = ?,
+          training_columns = ?,
+          is_active = 1,
+          trained_at = COALESCE(?, trained_at),
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+
+    for (const absoluteModelPath of collectModelFiles(modelsRoot)) {
+      const config = resolveConfig(absoluteModelPath);
+      if (!config) continue;
+
+      const metadataFile = absoluteModelPath.replace(/\.pypots$/i, "_metadata.joblib");
+      if (!fs.existsSync(metadataFile)) continue;
+
+      const modelPath = toRelativePythonPath(absoluteModelPath);
+      const metadataPath = toRelativePythonPath(metadataFile);
+      const missingDays = resolveMissingDays(path.basename(absoluteModelPath));
+      const modelParams = {
+        model_path: modelPath,
+        metadata_path: metadataPath,
+        framework: "pypots",
+        pypots_version: "1.1",
+        missing_days: missingDays,
+        seq_len: resolveSeqLen(missingDays),
+        n_layers: 3,
+        d_model: 16,
+        d_ffn: 32,
+        top_k: 5,
+        dropout: 0.1,
+        channel_independence: false,
+        decomp_method: "moving_avg",
+        moving_avg: 25,
+        downsampling_layers: 3,
+        downsampling_window: 2,
+        apply_nonstationary_norm: false,
+        batch_size: 4,
+        use_gpu: false,
+      };
+      const featureColumns = JSON.stringify(config.featureColumns);
+      const modelParamsJson = JSON.stringify(modelParams);
+      const trainedAt = resolveTimestamp(path.basename(absoluteModelPath));
+      const modelName = `${resolveMetricLabel(config.targetColumn, config.displayName)} ${resolveModelLabel(path.basename(absoluteModelPath))}`;
       const existing = findStmt.get(config.targetColumn, modelPath) as { id: number } | undefined;
 
       if (existing) {

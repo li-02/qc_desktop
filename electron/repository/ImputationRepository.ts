@@ -416,7 +416,7 @@ export class ImputationRepository {
   getModelsByDataset(datasetId: number, methodId?: string): any[] {
     if (methodId) {
       const orderBy =
-        methodId === "ITRANSFORMER" || methodId === "SAITS"
+        methodId === "ITRANSFORMER" || methodId === "SAITS" || methodId === "TIMEMIXER"
           ? `
           ORDER BY
             target_column COLLATE NOCASE,

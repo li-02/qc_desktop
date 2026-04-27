@@ -100,13 +100,21 @@ const handleExportData = async (options: any = {}) => {
 
 // 处理路由参数以支持从工作流直接跳转
 const handleRouteQuery = async () => {
-  const { datasetId, tab } = route.query;
-  if (datasetId) {
+  const { dataset, datasetId, tab, versionId } = route.query;
+  const targetDatasetId = datasetId || dataset;
+  if (targetDatasetId) {
     // 强制选中这个 dataset 如果有必要
-    const idStr = String(datasetId);
+    const idStr = String(targetDatasetId);
     if (!currentDataset.value || String(currentDataset.value.id) !== idStr) {
       // 通过 setCurrentDataset 获取并设定
       await datasetStore.setCurrentDataset(idStr);
+    }
+  }
+
+  if (versionId) {
+    const id = Number(versionId);
+    if (!Number.isNaN(id)) {
+      await datasetStore.setCurrentVersion(id);
     }
   }
 

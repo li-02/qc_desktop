@@ -62,7 +62,11 @@ const formatTime = (timestamp: number) => {
 
       <div class="node-main">
         <div class="node-header">
-          <el-tag size="small" :color="getStageColor(node.data.stageType)" effect="dark" style="border: none">
+          <el-tag
+            size="small"
+            :color="getStageColor(node.data.stageType)"
+            :effect="node.isCurrent ? 'dark' : 'plain'"
+            :style="{ border: 'none', fontWeight: node.isCurrent ? 'var(--font-semibold)' : 'var(--font-normal)' }">
             {{ getStageLabel(node.data.stageType) }}
           </el-tag>
           <span class="version-id">#{{ node.id }}</span>

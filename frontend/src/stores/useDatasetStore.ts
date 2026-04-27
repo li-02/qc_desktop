@@ -22,6 +22,8 @@ export const useDatasetStore = defineStore("dataset", () => {
   const currentVersion = ref<DatasetVersionInfo | null>(null);
   const currentVersionStats = ref<VersionStatsInfo | null>(null);
   const loading = ref(false);
+  let datasetSelectionRequestId = 0;
+  let versionStatsRequestId = 0;
 
   // 计算属性
   const hasDatasets = computed(() => datasets.value.length > 0);
@@ -70,6 +72,7 @@ export const useDatasetStore = defineStore("dataset", () => {
     try {
       const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.GET_VERSIONS, { datasetId });
       if (result.success) {
+        if (currentDataset.value && currentDataset.value.id !== String(datasetId)) return;
         // 显式按创建时间倒序排序，确保最新的在第一个
         versions.value = result.data.sort((a: DatasetVersionInfo, b: DatasetVersionInfo) => b.createdAt - a.createdAt);
       } else {
@@ -80,21 +83,41 @@ export const useDatasetStore = defineStore("dataset", () => {
     }
   };
 
+  const getDefaultVersion = () => {
+    const sortedOldestFirst = [...versions.value].sort((a, b) => a.createdAt - b.createdAt || a.id - b.id);
+    return sortedOldestFirst.find(v => v.stageType === "RAW" && !v.parentVersionId) || sortedOldestFirst[0] || null;
+  };
+
   const setCurrentDataset = async (datasetId: string) => {
+    const requestId = ++datasetSelectionRequestId;
+    versionStatsRequestId++;
+    versions.value = [];
+    currentVersion.value = null;
+    currentVersionStats.value = null;
+
     if (categoryStore.currentCategory && datasetId) {
-      currentDataset.value = await getCurrentDatasetInfo(categoryStore.currentCategory.id, datasetId);
-      // [DEBUG] 诊断缺失值标记问题
-      console.log(
-        "[setCurrentDataset] missingValueTypes=",
-        JSON.stringify(currentDataset.value?.missingValueTypes),
-        "datasetId=",
-        datasetId
-      );
-      if (currentDataset.value) {
-        await loadDatasetVersions(datasetId);
-        if (versions.value.length > 0) {
-          // Default to latest version
-          await setCurrentVersion(versions.value[0].id);
+      try {
+        loading.value = true;
+        const nextDataset = await getCurrentDatasetInfo(categoryStore.currentCategory.id, datasetId);
+        if (requestId !== datasetSelectionRequestId) return;
+
+        currentDataset.value = nextDataset;
+        // [DEBUG] 诊断缺失值标记问题
+        console.log(
+          "[setCurrentDataset] missingValueTypes=",
+          JSON.stringify(currentDataset.value?.missingValueTypes),
+          "datasetId=",
+          datasetId
+        );
+        if (currentDataset.value) {
+          await loadDatasetVersions(datasetId);
+          if (requestId !== datasetSelectionRequestId || currentDataset.value.id !== String(datasetId)) return;
+          const defaultVersion = getDefaultVersion();
+          if (defaultVersion) await setCurrentVersion(defaultVersion.id);
+        }
+      } finally {
+        if (requestId === datasetSelectionRequestId) {
+          loading.value = false;
         }
       }
     } else {
@@ -107,17 +130,21 @@ export const useDatasetStore = defineStore("dataset", () => {
 
   const setCurrentVersion = async (versionId: number) => {
     const version = versions.value.find(v => v.id === versionId);
-    if (version) {
-      currentVersion.value = version;
-      await loadVersionStats(versionId);
-    }
+    if (!version) return;
+    if (currentDataset.value && String(version.datasetId) !== String(currentDataset.value.id)) return;
+
+    const requestId = ++versionStatsRequestId;
+    currentVersion.value = version;
+    currentVersionStats.value = null;
+    await loadVersionStats(versionId, requestId);
   };
 
-  const loadVersionStats = async (versionId: number) => {
+  const loadVersionStats = async (versionId: number, requestId = ++versionStatsRequestId) => {
     try {
       const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.GET_VERSION_STATS, {
         versionId: String(versionId),
       });
+      if (requestId !== versionStatsRequestId || currentVersion.value?.id !== versionId) return;
       if (result.success) {
         currentVersionStats.value = result.data;
       } else {
@@ -126,6 +153,7 @@ export const useDatasetStore = defineStore("dataset", () => {
         console.warn(result.error || "获取版本统计信息失败");
       }
     } catch (error) {
+      if (requestId !== versionStatsRequestId || currentVersion.value?.id !== versionId) return;
       console.error("Failed to load version stats:", error);
       currentVersionStats.value = null;
     }
@@ -252,7 +280,8 @@ export const useDatasetStore = defineStore("dataset", () => {
         if (currentDataset.value) {
           await loadDatasetVersions(currentDataset.value.id);
           if (versions.value.length > 0 && !currentVersion.value) {
-            await setCurrentVersion(versions.value[0].id);
+            const defaultVersion = getDefaultVersion();
+            if (defaultVersion) await setCurrentVersion(defaultVersion.id);
           }
         }
         ElMessage.success("版本删除成功");
@@ -319,6 +348,8 @@ export const useDatasetStore = defineStore("dataset", () => {
   watch(
     () => categoryStore.currentCategory,
     newCategory => {
+      datasetSelectionRequestId++;
+      versionStatsRequestId++;
       if (newCategory) {
         // 切换分类时，清除当前选中的数据集
         currentDataset.value = null;

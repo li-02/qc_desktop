@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted, nextTick } from "vue";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { translateRemark } from "@/utils/versionUtils";
 import type { DatasetVersionInfo } from "@shared/types/projectInterface";
+import { API_ROUTES } from "@shared/constants/apiRoutes";
 import { ElMessageBox } from "element-plus";
 
 const props = defineProps<{
@@ -30,8 +31,11 @@ const loadVersions = async () => {
 
   loading.value = true;
   try {
-    await datasetStore.loadVersions(props.datasetId);
-    versions.value = datasetStore.versions;
+    const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.GET_VERSIONS, { datasetId: props.datasetId });
+    if (!result.success) {
+      throw new Error(result.error || "获取版本列表失败");
+    }
+    versions.value = result.data.sort((a: DatasetVersionInfo, b: DatasetVersionInfo) => b.createdAt - a.createdAt);
     if (flattenedVersions.value.length > 0) {
       emit("select-version", flattenedVersions.value[0].id);
     }
@@ -87,7 +91,15 @@ const flattenedVersions = computed(() => {
   return result;
 });
 
-const currentVersionId = computed(() => datasetStore.currentVersion?.id);
+const isCurrentVersionNode = (node: VersionNode) => {
+  const currentDatasetId = datasetStore.currentDataset?.id;
+  const currentVersion = datasetStore.currentVersion;
+  return (
+    String(currentDatasetId) === String(props.datasetId) &&
+    String(currentVersion?.datasetId) === String(props.datasetId) &&
+    currentVersion?.id === node.id
+  );
+};
 
 const getStageColor = (stageType: string) => {
   const colors: Record<string, string> = {
@@ -213,7 +225,7 @@ onMounted(() => {
         v-for="node in flattenedVersions"
         :key="node.id"
         class="version-row"
-        :class="{ 'is-active': currentVersionId === node.id }"
+        :class="{ 'is-active': isCurrentVersionNode(node) }"
         :style="{ paddingLeft: `${node.depth * 10 + 6}px` }"
         @click.stop="handleVersionClick(node.id)"
         :title="`版本 #${node.id} - ${formatTime(node.data.createdAt)}`">
@@ -330,10 +342,15 @@ onMounted(() => {
   background-color: var(--sb-item-bg-active);
 }
 
-.version-row.is-active .version-name {
-  color: var(--c-brand);
-  font-weight: 600;
-}
+        .version-row.is-active .version-name {
+          color: var(--c-brand);
+          font-weight: 600;
+        }
+
+        .version-row.is-active .version-stage {
+          color: var(--c-brand-hover);
+          font-weight: 600;
+        }
 
 /* Tree connection guide for nested items */
 .tree-guide {
@@ -489,10 +506,15 @@ onMounted(() => {
   background-color: rgba(255, 255, 255, 0.13);
 }
 
-.version-row.is-active .version-name {
-  color: var(--sb-text-primary);
-  font-weight: 600;
-}
+        .version-row.is-active .version-name {
+          color: var(--sb-text-primary);
+          font-weight: 600;
+        }
+
+        .version-row.is-active .version-stage {
+          color: var(--sb-text-primary);
+          font-weight: 600;
+        }
 
 /* Tree connection guide for nested items */
 .tree-guide {

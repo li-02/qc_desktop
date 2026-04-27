@@ -1,20 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { formatLocalWithTZ } from "@/utils/timeUtils";
 import { translateRemark, getStageLabel, getVersionDisplayName } from "@/utils/versionUtils";
 import { ElMessage } from "element-plus";
 import { Loader2, RefreshCw, Search, Link, List, Info, Play } from "lucide-vue-next";
 import { useDatasetStore } from "@/stores/useDatasetStore";
+import { useDataViewStore } from "@/stores/useDataViewStore";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import { useGapFillingStore } from "@/stores/useGapFillingStore";
 import DataVisualizationChart from "../charts/DataVisualizationChart.vue";
 import VersionManager from "../VersionManager.vue";
-import { API_ROUTES } from "@shared/constants/apiRoutes";
 import type { OutlierResult } from "@shared/types/database";
 import MissingAnalysisView from "../gapfilling/MissingAnalysisView.vue";
 import MissingMarkersEditor from "../common/MissingMarkersEditor.vue";
 
 const datasetStore = useDatasetStore();
+const dataViewStore = useDataViewStore();
 const outlierStore = useOutlierDetectionStore();
 const gapFillingStore = useGapFillingStore();
 const datasetInfo = computed(() => datasetStore.currentDataset);
@@ -23,11 +24,7 @@ const datasetInfo = computed(() => datasetStore.currentDataset);
 const showVersionDrawer = ref(false);
 const refreshing = ref(false);
 const columnSearchText = ref("");
-const selectedColumn = ref("");
 const chartType = ref<"scatter">("scatter");
-const chartLoading = ref(false);
-const csvData = ref<any>(null);
-const columnStatistics = ref<any>(null);
 
 // 异常检测结果
 const outlierResults = ref<OutlierResult[]>([]);
@@ -101,6 +98,33 @@ const numericColumns = computed(() => {
   return filterTimeCol(datasetInfo.value?.originalFile?.columns || []);
 });
 
+const numericColumnNames = computed(() => numericColumns.value.map(col => col.name));
+const selectedColumn = computed({
+  get: () => dataViewStore.timeSeries.column,
+  set: value => {
+    dataViewStore.setTimeSeriesColumn(value);
+  },
+});
+
+const currentChartKey = computed(() =>
+  selectedColumn.value ? dataViewStore.buildColumnKey(selectedColumn.value) : ""
+);
+const chartReady = computed(
+  () =>
+    dataViewStore.timeSeries.status === "ready" &&
+    !!currentChartKey.value &&
+    dataViewStore.timeSeries.key === currentChartKey.value
+);
+const chartPending = computed(
+  () =>
+    dataViewStore.timeSeries.status === "loading" ||
+    (!!selectedColumn.value && dataViewStore.timeSeries.status === "idle") ||
+    (!!selectedColumn.value && !!currentChartKey.value && dataViewStore.timeSeries.key !== currentChartKey.value)
+);
+const chartEmpty = computed(
+  () => dataViewStore.timeSeries.status === "empty" && dataViewStore.timeSeries.key === currentChartKey.value
+);
+
 // Methods
 const handleVersionSwitch = async (versionId: number) => {
   if (versionId === datasetStore.currentVersion?.id) return;
@@ -125,14 +149,19 @@ const getColumnStats = (columnName: string) => {
   }
 
   // 2. 如果有从后端返回的实时统计信息（CSV读取），使用它
-  if (columnStatistics.value && selectedColumn.value === columnName) {
+  if (
+    dataViewStore.timeSeries.statistics &&
+    selectedColumn.value === columnName &&
+    dataViewStore.timeSeries.key === currentChartKey.value
+  ) {
+    const columnStatistics = dataViewStore.timeSeries.statistics;
     return {
-      mean: columnStatistics.value.mean.toFixed(2),
-      std: columnStatistics.value.std.toFixed(2),
-      min: columnStatistics.value.min.toFixed(2),
-      max: columnStatistics.value.max.toFixed(2),
-      minTimestamp: columnStatistics.value.minTimestamp || "",
-      maxTimestamp: columnStatistics.value.maxTimestamp || "",
+      mean: columnStatistics.mean.toFixed(2),
+      std: columnStatistics.std.toFixed(2),
+      min: columnStatistics.min.toFixed(2),
+      max: columnStatistics.max.toFixed(2),
+      minTimestamp: columnStatistics.minTimestamp || "",
+      maxTimestamp: columnStatistics.maxTimestamp || "",
     };
   }
 
@@ -161,92 +190,29 @@ const formatTimestamp = (timestamp: string | number) => {
   }
 };
 
-/**
- * 读取CSV数据（只在指标变化时调用）
- */
-const loadCsvData = async () => {
-  if (!selectedColumn.value) {
-    csvData.value = null;
-    columnStatistics.value = null;
-    return;
-  }
-
-  chartLoading.value = true;
-  try {
-    // 从数据集信息中获取文件路径 (优先使用当前版本的路径)
-    const filePath = datasetStore.currentVersion?.filePath || datasetInfo.value?.originalFile?.filePath;
-    if (!filePath) {
-      throw new Error("未找到数据文件路径");
-    }
-
-    // 调用读取CSV数据的API
-    const result = await window.electronAPI.invoke(API_ROUTES.FILES.READ_CSV_DATA, {
-      filePath: filePath,
-      columnName: selectedColumn.value,
-    });
-
-    if (!result.success) {
-      throw new Error(result.error || "读取数据失败");
-    }
-
-    // 存储读取的数据，传递给DataVisualizationChart组件
-    csvData.value = result.data;
-
-    // 存储统计信息
-    if (result.data && result.data.statistics) {
-      columnStatistics.value = result.data.statistics;
-      console.log("统计信息:", result.data.statistics);
-    } else {
-      columnStatistics.value = null;
-    }
-
-    console.log("读取到的数据:", result.data);
-  } catch (error: any) {
-    console.error("读取数据失败:", error);
-    csvData.value = null;
-    columnStatistics.value = null;
-  } finally {
-    chartLoading.value = false;
-  }
-};
-
-// 监听选中列的变化，自动加载数据
+// 监听数据集或版本变化，更新数据视图上下文
 watch(
-  () => selectedColumn.value,
-  (newColumn, oldColumn) => {
-    if (newColumn && newColumn !== oldColumn) {
-      loadCsvData();
-    }
-  },
-  { immediate: false }
-);
-
-// 监听数据集变化，清空当前数据并默认选中第一列
-watch(
-  () => datasetInfo.value,
+  () => [
+    datasetInfo.value?.id,
+    datasetStore.currentVersion?.id,
+    datasetStore.currentVersion?.filePath,
+    datasetInfo.value?.originalFile?.filePath,
+    JSON.stringify(datasetInfo.value?.missingValueTypes || []),
+  ],
   () => {
-    csvData.value = null;
-    columnStatistics.value = null;
-    selectedColumn.value = "";
-    // 延迟等待 numericColumns 计算完成后默认选中第一列
-    nextTick(() => {
-      if (numericColumns.value.length > 0 && !selectedColumn.value) {
-        selectedColumn.value = numericColumns.value[0].name;
-      }
+    dataViewStore.setContext({
+      datasetId: datasetInfo.value?.id || null,
+      versionId: datasetStore.currentVersion?.id || null,
+      filePath: datasetStore.currentVersion?.filePath || datasetInfo.value?.originalFile?.filePath || "",
+      missingValueTypes: datasetInfo.value?.missingValueTypes || [],
     });
-  }
-);
-
-// 监听 numericColumns 变化，确保默认选中第一列
-watch(
-  numericColumns,
-  cols => {
-    if (cols.length > 0 && !selectedColumn.value) {
-      selectedColumn.value = cols[0].name;
-    }
+    dataViewStore.ensureTimeSeriesColumn(numericColumnNames.value);
   },
   { immediate: true }
 );
+
+// 监听 numericColumns 变化，确保默认选中第一列
+watch(numericColumnNames, cols => dataViewStore.ensureTimeSeriesColumn(cols), { immediate: true });
 
 // 加载异常检测结果
 const loadOutlierResults = async () => {
@@ -322,9 +288,6 @@ watch(
 
 // 组件挂载时，如果已有选中列则加载数据
 onMounted(() => {
-  if (selectedColumn.value && datasetInfo.value) {
-    loadCsvData();
-  }
   if (datasetInfo.value?.id) {
     loadOutlierResults();
     autoDetectMissingValues();
@@ -507,10 +470,27 @@ onMounted(() => {
           </div> -->
 
           <DataVisualizationChart
+            v-if="chartReady"
+            :key="currentChartKey"
             :selected-column="selectedColumn"
             :chart-type="chartType"
-            :loading="chartLoading"
-            :csv-data="csvData" />
+            :loading="false"
+            :csv-data="dataViewStore.timeSeries.data" />
+          <div v-else-if="chartPending" class="chart-state-panel">
+            <Loader2 :size="22" class="chart-state-spinner" />
+            <span>正在加载时间序列数据...</span>
+          </div>
+          <div v-else-if="chartEmpty" class="chart-state-panel">
+            <span>当前列没有可绘制的时间序列数据</span>
+          </div>
+          <div
+            v-else-if="dataViewStore.timeSeries.status === 'error'"
+            class="chart-state-panel chart-state-panel--error">
+            <span>{{ dataViewStore.timeSeries.error || "时间序列数据加载失败" }}</span>
+          </div>
+          <div v-else class="chart-state-panel">
+            <span>请选择一个数值列查看时间序列趋势</span>
+          </div>
         </div>
 
         <!-- 统计信息 -->
@@ -1451,6 +1431,28 @@ onMounted(() => {
   position: relative;
   box-sizing: border-box;
   display: flex;
+}
+
+.chart-state-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  min-height: 620px;
+  color: var(--c-text-secondary);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.chart-state-panel--error {
+  color: var(--c-danger);
+}
+
+.chart-state-spinner {
+  color: var(--c-brand);
+  animation: spin 1s linear infinite;
 }
 
 /* 统计摘要 - 新样式 */

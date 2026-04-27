@@ -3,11 +3,13 @@ import { ref, watch, nextTick, onMounted, onUnmounted, computed, toRaw } from "v
 import * as echarts from "echarts";
 import { useGapFillingStore } from "@/stores/useGapFillingStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
-import { API_ROUTES } from "@shared/constants/apiRoutes";
+import { useDataViewStore } from "@/stores/useDataViewStore";
 import MissingOverviewCharts from "./MissingOverviewCharts.vue";
+import { readCsvColumnData } from "@/utils/csvColumnDataCache";
 
 const store = useGapFillingStore();
 const datasetStore = useDatasetStore();
+const dataViewStore = useDataViewStore();
 const heatmapViewMode = ref<"weekly" | "calendar">("weekly");
 
 // ==================== Value Heatmap Column Selector ====================
@@ -16,12 +18,17 @@ const valueColumnOptions = computed(() => {
   return store.missingStats?.columnStats?.map(c => c.columnName) || [];
 });
 
-// 当前选中列（默认第一个）
-const selectedValueColumn = ref<string>("");
-
-// 已加载的列数据：Record<"YYYY-MM-DD HH", avgValue>
-const valueHeatmapRaw = ref<Record<string, number>>({});
-const valueHeatmapLoading = ref(false);
+// 当前数值热力图列和数据由 data view store 统一管理
+const selectedValueColumn = computed({
+  get: () => dataViewStore.valueHeatmap.column,
+  set: value => {
+    dataViewStore.setValueHeatmapColumn(value);
+  },
+});
+const valueHeatmapRaw = computed(() => dataViewStore.valueHeatmap.data);
+const valueHeatmapLoading = computed(() => dataViewStore.valueHeatmap.status === "loading");
+const valueHeatmapStatus = computed(() => dataViewStore.valueHeatmap.status);
+const valueHeatmapError = computed(() => dataViewStore.valueHeatmap.error);
 
 type MissingTemporalDistribution = {
   monthly: Record<string, number>;
@@ -32,8 +39,36 @@ type MissingTemporalDistribution = {
 const selectedMissingColumn = ref<string>("");
 const missingTemporalLoading = ref(false);
 const missingTemporalDistribution = ref<MissingTemporalDistribution | null>(null);
+let missingTemporalRequestId = 0;
 
 const selectedMissingColumnLabel = computed(() => selectedMissingColumn.value || "未选择列");
+const statsTargetKey = computed(() =>
+  store.missingStats ? `${store.missingStats.datasetId}:${store.missingStats.versionId}` : ""
+);
+const currentFilePath = computed(
+  () => datasetStore.currentVersion?.filePath || datasetStore.currentDataset?.originalFile?.filePath || ""
+);
+const currentMissingValueTypes = computed(() => toRaw(datasetStore.currentDataset?.missingValueTypes) || []);
+const valueHeatmapReady = computed(
+  () =>
+    valueHeatmapStatus.value === "ready" &&
+    !!selectedValueColumn.value &&
+    dataViewStore.valueHeatmap.key === dataViewStore.buildColumnKey(selectedValueColumn.value)
+);
+const showValueHeatmapLoading = computed(
+  () =>
+    heatmapViewMode.value === "weekly" &&
+    !!selectedValueColumn.value &&
+    !valueHeatmapReady.value &&
+    valueHeatmapStatus.value !== "empty" &&
+    valueHeatmapStatus.value !== "error"
+);
+const showValueHeatmapEmpty = computed(
+  () => heatmapViewMode.value === "weekly" && valueHeatmapStatus.value === "empty"
+);
+const showValueHeatmapError = computed(
+  () => heatmapViewMode.value === "weekly" && valueHeatmapStatus.value === "error"
+);
 
 const isMissingValue = (value: unknown, markers: string[]) => {
   if (value === null || value === undefined) return true;
@@ -54,20 +89,36 @@ const createEmptyDistribution = (): MissingTemporalDistribution => ({
 
 const getMissingAxisMax = (values: number[]) => (values.some(value => value > 0) ? undefined : 1);
 
+const buildCsvColumnRequest = (columnName: string) => ({
+  datasetId: datasetStore.currentDataset?.id,
+  versionId: datasetStore.currentVersion?.id,
+  filePath: currentFilePath.value,
+  columnName,
+  missingValueTypes: currentMissingValueTypes.value,
+});
+
 const loadMissingColumnDistribution = async (columnName: string) => {
-  if (!columnName) return;
-  const filePath = datasetStore.currentVersion?.filePath || datasetStore.currentDataset?.originalFile?.filePath;
+  const requestId = ++missingTemporalRequestId;
+  const datasetId = datasetStore.currentDataset?.id;
+  const versionId = datasetStore.currentVersion?.id;
+  if (!columnName) {
+    missingTemporalDistribution.value = null;
+    return;
+  }
+  const filePath = currentFilePath.value;
   if (!filePath) return;
 
   missingTemporalLoading.value = true;
   try {
-    const missingValueTypes = toRaw(datasetStore.currentDataset?.missingValueTypes) || [];
+    const missingValueTypes = currentMissingValueTypes.value;
     const markers = Array.from(new Set([...(store.missingStats?.missingMarkers || []), ...missingValueTypes]));
-    const result = await (window as any).electronAPI.invoke(API_ROUTES.FILES.READ_CSV_DATA, {
-      filePath: String(filePath),
-      columnName: String(columnName),
-      missingValueTypes,
-    });
+    const result = await readCsvColumnData(buildCsvColumnRequest(columnName));
+    const isCurrentRequest =
+      requestId === missingTemporalRequestId &&
+      datasetStore.currentDataset?.id === datasetId &&
+      datasetStore.currentVersion?.id === versionId &&
+      selectedMissingColumn.value === columnName;
+    if (!isCurrentRequest) return;
     if (!result?.success || !result?.data?.tableData) {
       missingTemporalDistribution.value = createEmptyDistribution();
       return;
@@ -99,48 +150,9 @@ const loadMissingColumnDistribution = async (columnName: string) => {
 
     missingTemporalDistribution.value = distribution;
   } finally {
-    missingTemporalLoading.value = false;
-  }
-};
-
-// 加载选中列的时序数据并聚合成 "YYYY-MM-DD HH" → avgValue
-const loadValueColumnData = async (columnName: string) => {
-  if (!columnName) return;
-  const filePath = datasetStore.currentVersion?.filePath || datasetStore.currentDataset?.originalFile?.filePath;
-  if (!filePath) return;
-
-  valueHeatmapLoading.value = true;
-  try {
-    const missingValueTypes = toRaw(datasetStore.currentDataset?.missingValueTypes) || [];
-    const result = await (window as any).electronAPI.invoke(API_ROUTES.FILES.READ_CSV_DATA, {
-      filePath: String(filePath),
-      columnName: String(columnName),
-      missingValueTypes,
-    });
-    if (!result?.success || !result?.data?.tableData) return;
-
-    // 聚合：每个 "YYYY-MM-DD HH" 桶内求均值
-    const buckets: Record<string, { sum: number; count: number }> = {};
-    for (const row of result.data.tableData) {
-      const epochMs: number | null = row._epochMs;
-      const value = row[columnName];
-      if (epochMs === null || value === null || value === undefined || isNaN(Number(value))) continue;
-      const d = new Date(epochMs);
-      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      const hourStr = String(d.getHours()).padStart(2, "0");
-      const key = `${dateStr} ${hourStr}`;
-      if (!buckets[key]) buckets[key] = { sum: 0, count: 0 };
-      buckets[key].sum += Number(value);
-      buckets[key].count += 1;
+    if (requestId === missingTemporalRequestId) {
+      missingTemporalLoading.value = false;
     }
-    // 转为均值 map
-    const avgMap: Record<string, number> = {};
-    for (const [key, { sum, count }] of Object.entries(buckets)) {
-      avgMap[key] = sum / count;
-    }
-    valueHeatmapRaw.value = avgMap;
-  } finally {
-    valueHeatmapLoading.value = false;
   }
 };
 
@@ -226,7 +238,15 @@ const generateTimelineData = () => {
 
 // ==================== Temporal Analysis (Real Data) ====================
 const updateTemporalCharts = async () => {
-  if (!store.missingStats?.timeDistribution) return;
+  if (!store.missingStats?.timeDistribution) {
+    trendChart?.clear();
+    timelineChart?.clear();
+    heatmapInstance?.clear();
+    calendarInstance?.clear();
+    monthlyInstance?.clear();
+    hourlyInstance?.clear();
+    return;
+  }
 
   await nextTick();
   const temporalDistribution = missingTemporalDistribution.value || store.missingStats.timeDistribution;
@@ -493,15 +513,27 @@ const updateTemporalCharts = async () => {
 
     const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, "0"));
 
-    // 使用已加载的实际值数据；若还未加载则回退到缺失计数 heatmap（只做时间范围判断）
+    if (!valueHeatmapReady.value) {
+      heatmapInstance.clear();
+      return;
+    }
+
+    // 使用已加载的实际值数据。数值数据未就绪时不再回退画空坐标轴。
     const valueData = valueHeatmapRaw.value;
-    const srcForRange = Object.keys(valueData).length > 0 ? valueData : heatmap;
+    if (Object.keys(valueData).length === 0) {
+      heatmapInstance.clear();
+      return;
+    }
+    const srcForRange = valueData;
 
     // 分析数据时间跨度
     const dates = Object.keys(srcForRange).map(key => new Date(key.split(" ")[0]));
     const validDates = dates.filter(d => !isNaN(d.getTime()));
 
-    if (validDates.length === 0) return;
+    if (validDates.length === 0) {
+      heatmapInstance.clear();
+      return;
+    }
 
     const minDate = new Date(Math.min(...validDates.map(d => d.getTime())));
     const maxDate = new Date(Math.max(...validDates.map(d => d.getTime())));
@@ -735,7 +767,10 @@ const updateTemporalCharts = async () => {
     // 转换为日历数据格式
     const calendarData = Object.entries(dailyMissing).map(([date, count]) => [date, count]);
 
-    if (calendarData.length === 0) return;
+    if (calendarData.length === 0) {
+      calendarInstance.clear();
+      return;
+    }
 
     // 获取日期范围
     const dates = calendarData.map(d => new Date(d[0]));
@@ -807,6 +842,28 @@ watch(
   { deep: true }
 );
 
+watch(statsTargetKey, async () => {
+  missingTemporalRequestId++;
+  missingTemporalDistribution.value = null;
+  selectedMissingColumn.value = "";
+  missingTemporalLoading.value = false;
+  heatmapInstance?.clear();
+  calendarInstance?.clear();
+  monthlyInstance?.clear();
+  hourlyInstance?.clear();
+  trendChart?.clear();
+  timelineChart?.clear();
+
+  await nextTick();
+  const firstColumn = valueColumnOptions.value[0];
+  if (firstColumn) {
+    await dataViewStore.ensureValueHeatmapColumn(valueColumnOptions.value);
+    selectedMissingColumn.value = firstColumn;
+    await loadMissingColumnDistribution(firstColumn);
+    updateTemporalCharts();
+  }
+});
+
 watch(heatmapViewMode, () => {
   setTimeout(initCharts, 100);
 });
@@ -815,12 +872,22 @@ watch(heatmapViewMode, () => {
 watch(
   valueColumnOptions,
   async cols => {
-    if (cols.length > 0 && !selectedValueColumn.value) {
-      selectedValueColumn.value = cols[0];
-      await loadValueColumnData(cols[0]);
+    const valueColumnStillExists = cols.includes(selectedValueColumn.value);
+    const missingColumnStillExists = cols.includes(selectedMissingColumn.value);
+
+    if (cols.length === 0) {
+      selectedMissingColumn.value = "";
+      await dataViewStore.ensureValueHeatmapColumn([]);
+      missingTemporalDistribution.value = null;
+      updateTemporalCharts();
+      return;
+    }
+
+    if (!selectedValueColumn.value || !valueColumnStillExists) {
+      await dataViewStore.ensureValueHeatmapColumn(cols);
       updateTemporalCharts();
     }
-    if (cols.length > 0 && !selectedMissingColumn.value) {
+    if (!selectedMissingColumn.value || !missingColumnStillExists) {
       selectedMissingColumn.value = cols[0];
       await loadMissingColumnDistribution(cols[0]);
       updateTemporalCharts();
@@ -830,12 +897,14 @@ watch(
 );
 
 // 当选中列改变时，重新加载数据并刷新图表
-watch(selectedValueColumn, async col => {
-  if (col) {
-    await loadValueColumnData(col);
-    updateTemporalCharts();
-  }
-});
+watch(
+  () => [
+    dataViewStore.valueHeatmap.status,
+    dataViewStore.valueHeatmap.key,
+    Object.keys(dataViewStore.valueHeatmap.data).length,
+  ],
+  () => updateTemporalCharts()
+);
 
 watch(selectedMissingColumn, async col => {
   if (col) {
@@ -895,6 +964,16 @@ onUnmounted(() => {
           </div>
         </div>
         <div v-show="heatmapViewMode === 'weekly'" ref="heatmapChartRef" class="chart-div heatmap-chart-div"></div>
+        <div v-if="showValueHeatmapLoading" class="heatmap-state-overlay">
+          <div class="heatmap-state-spinner"></div>
+          <span>正在加载数值时序数据...</span>
+        </div>
+        <div v-else-if="showValueHeatmapEmpty" class="heatmap-state-overlay">
+          <span>当前列没有可绘制的数值时序数据</span>
+        </div>
+        <div v-else-if="showValueHeatmapError" class="heatmap-state-overlay heatmap-state-overlay--error">
+          <span>{{ valueHeatmapError || "数值时序数据加载失败" }}</span>
+        </div>
         <div v-show="heatmapViewMode === 'calendar'" ref="calendarChartRef" class="chart-div heatmap-chart-div"></div>
       </div>
 
@@ -1010,6 +1089,41 @@ onUnmounted(() => {
 
 .heatmap-chart-div {
   height: 400px !important;
+}
+
+.heatmap-state-overlay {
+  position: absolute;
+  inset: 56px 16px 16px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--c-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.76);
+  border-radius: var(--radius-panel);
+  pointer-events: none;
+}
+
+.heatmap-state-overlay--error {
+  color: var(--c-danger);
+}
+
+.heatmap-state-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--c-border);
+  border-top-color: var(--c-brand);
+  border-radius: var(--radius-full);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .trend-chart-div {

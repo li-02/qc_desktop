@@ -36,6 +36,7 @@ export const useGapFillingStore = defineStore("gapFilling", () => {
   const missingStats = ref<VersionMissingStats | null>(null);
   const loading = ref(false);
   const detectionHistory = ref<VersionMissingStats[]>([]);
+  let missingStatsRequestId = 0;
 
   // 计算属性
   const hasStats = computed(() => missingStats.value !== null);
@@ -114,6 +115,7 @@ export const useGapFillingStore = defineStore("gapFilling", () => {
     versionId: number,
     customMissingMarkers?: string[]
   ): Promise<VersionMissingStats | null> => {
+    const requestId = ++missingStatsRequestId;
     try {
       loading.value = true;
 
@@ -128,6 +130,13 @@ export const useGapFillingStore = defineStore("gapFilling", () => {
       });
 
       if (result.success) {
+        const datasetStore = useDatasetStore();
+        const stillCurrent =
+          String(datasetStore.currentDataset?.id) === String(datasetId) &&
+          datasetStore.currentVersion?.id === versionId &&
+          requestId === missingStatsRequestId;
+        if (!stillCurrent) return null;
+
         const stats = result.data;
         missingStats.value = {
           datasetId,
@@ -151,11 +160,14 @@ export const useGapFillingStore = defineStore("gapFilling", () => {
       }
 
     } catch (error: any) {
+      if (requestId !== missingStatsRequestId) return null;
       console.error('加载缺失统计失败:', error);
       ElMessage.error('加载缺失统计失败: ' + error.message);
       return null;
     } finally {
-      loading.value = false;
+      if (requestId === missingStatsRequestId) {
+        loading.value = false;
+      }
     }
   };
 
@@ -203,6 +215,7 @@ export const useGapFillingStore = defineStore("gapFilling", () => {
 
   // 清除统计信息
   const clearStats = () => {
+    missingStatsRequestId++;
     missingStats.value = null;
     selectedDatasetId.value = null;
     selectedVersionId.value = null;

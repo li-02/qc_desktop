@@ -1158,6 +1158,10 @@ const getChartOption = computed(() => {
     if (props.csvData && props.csvData.tableData.length > 0) {
       console.log("使用真实CSV数据生成直方图");
       data = extractDataFromCsv(props.csvData, props.selectedColumn);
+      if (data.length === 0) {
+        console.log("真实CSV中没有当前列的有效直方图数据");
+        return null;
+      }
     } else {
       console.log("使用模拟数据生成直方图");
       data = generateMockData(props.selectedColumn);
@@ -1176,6 +1180,10 @@ const getChartOption = computed(() => {
     if (props.csvData && props.csvData.tableData.length > 0) {
       console.log("使用真实CSV数据生成时间序列图");
       timeData = extractTimeSeriesFromCsv(props.csvData, props.selectedColumn);
+      if (timeData.length === 0) {
+        console.log("真实CSV中没有当前列的有效时间序列数据");
+        return null;
+      }
     } else {
       console.log("使用模拟数据生成时间序列图");
       timeData = generateTimeSeriesData(props.selectedColumn);
@@ -1194,6 +1202,10 @@ const getChartOption = computed(() => {
     if (props.csvData && props.csvData.tableData.length > 0) {
       console.log("使用真实CSV数据生成热力图");
       timeData = extractTimeSeriesFromCsv(props.csvData, props.selectedColumn);
+      if (timeData.length === 0) {
+        console.log("真实CSV中没有当前列的有效热力图数据");
+        return null;
+      }
     } else {
       console.log("使用模拟数据生成热力图");
       timeData = generateTimeSeriesData(props.selectedColumn);
@@ -1212,6 +1224,10 @@ const getChartOption = computed(() => {
     if (props.csvData && props.csvData.tableData.length > 0) {
       console.log("使用真实CSV数据生成累计分布函数图");
       data = extractDataFromCsv(props.csvData, props.selectedColumn);
+      if (data.length === 0) {
+        console.log("真实CSV中没有当前列的有效累计分布数据");
+        return null;
+      }
     } else {
       console.log("使用模拟数据生成累计分布函数图");
       data = generateMockData(props.selectedColumn);
@@ -1293,6 +1309,7 @@ const updateChart = () => {
     const option = getChartOption.value;
     if (!option) {
       console.warn("图表配置为空");
+      chartInstance.clear();
       return;
     }
 
@@ -1347,10 +1364,9 @@ watch(
     const [oldColumn, oldChartType, oldCsvData] = oldValues || [null, null, null];
 
     // 只有在真正需要时才更新图表
-    const shouldUpdate =
-      newColumn !== oldColumn || newChartType !== oldChartType || (newCsvData !== oldCsvData && newCsvData);
+    const shouldUpdate = newColumn !== oldColumn || newChartType !== oldChartType || newCsvData !== oldCsvData;
 
-    if (newColumn && shouldUpdate) {
+    if (shouldUpdate) {
       nextTick(() => {
         updateChart();
       });

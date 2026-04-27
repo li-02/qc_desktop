@@ -5,9 +5,18 @@ import * as path from "path";
 import { normalizeTimestamp, formatTimestamp } from "../utils/timeUtils";
 import { SettingsRepository } from "../repository/SettingsRepository";
 
+type ParsedCsvCacheEntry = {
+  data: any;
+  lastUsed: number;
+};
+
 export class FileController extends BaseController {
   private fileParserWorker: Worker | null = null;
   private settingsRepository: SettingsRepository;
+  private parserQueue: Promise<void> = Promise.resolve();
+  private parsedCsvCache = new Map<string, ParsedCsvCacheEntry>();
+  private parsedCsvInFlight = new Map<string, Promise<any>>();
+  private readonly maxParsedCsvCacheEntries = 4;
 
   constructor() {
     super();
@@ -48,6 +57,23 @@ export class FileController extends BaseController {
     maxRows: number = 20,
     missingValueTypes: string[] = []
   ): Promise<any> {
+    const task = this.parserQueue.then(
+      () => this.runParseFileWithWorker(type, data, maxRows, missingValueTypes),
+      () => this.runParseFileWithWorker(type, data, maxRows, missingValueTypes)
+    );
+    this.parserQueue = task.then(
+      () => undefined,
+      () => undefined
+    );
+    return task;
+  }
+
+  private runParseFileWithWorker(
+    type: string,
+    data: any,
+    maxRows: number = 20,
+    missingValueTypes: string[] = []
+  ): Promise<any> {
     return new Promise((resolve, reject) => {
       const worker = this.createFileParserWorker();
 
@@ -65,6 +91,56 @@ export class FileController extends BaseController {
       // 发送数据到worker
       worker.postMessage({ type, data, maxRows, missingValueTypes });
     });
+  }
+
+  private getMissingTypesKey(missingValueTypes: string[] = []): string {
+    return [...missingValueTypes].map(value => String(value)).sort().join("\u001f");
+  }
+
+  private getCsvCacheKey(filePath: string, stat: { size: number; mtimeMs: number }, missingValueTypes: string[]): string {
+    return [filePath, stat.size, stat.mtimeMs, this.getMissingTypesKey(missingValueTypes)].join("\u001e");
+  }
+
+  private trimParsedCsvCache() {
+    if (this.parsedCsvCache.size <= this.maxParsedCsvCacheEntries) return;
+
+    const entries = [...this.parsedCsvCache.entries()].sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+    const deleteCount = this.parsedCsvCache.size - this.maxParsedCsvCacheEntries;
+    for (let i = 0; i < deleteCount; i++) {
+      this.parsedCsvCache.delete(entries[i][0]);
+    }
+  }
+
+  private async getParsedCsvData(filePath: string, missingValueTypes: string[]): Promise<any> {
+    const fs = require("fs");
+    const stat = fs.statSync(filePath);
+    const cacheKey = this.getCsvCacheKey(filePath, stat, missingValueTypes);
+    const cached = this.parsedCsvCache.get(cacheKey);
+    if (cached) {
+      cached.lastUsed = Date.now();
+      return cached.data;
+    }
+
+    const inFlight = this.parsedCsvInFlight.get(cacheKey);
+    if (inFlight) return inFlight;
+
+    const parsePromise = (async () => {
+      const fileContent = fs.readFileSync(filePath, "utf-8");
+      const parsed = await this.parseFileWithWorker("csv", fileContent, -1, missingValueTypes);
+      this.parsedCsvCache.set(cacheKey, {
+        data: parsed,
+        lastUsed: Date.now(),
+      });
+      this.trimParsedCsvCache();
+      return parsed;
+    })();
+
+    this.parsedCsvInFlight.set(cacheKey, parsePromise);
+    try {
+      return await parsePromise;
+    } finally {
+      this.parsedCsvInFlight.delete(cacheKey);
+    }
   }
 
   /**
@@ -132,11 +208,10 @@ export class FileController extends BaseController {
         throw new Error("只支持CSV文件格式");
       }
 
-      // 读取文件内容
-      const fileContent = fs.readFileSync(args.filePath, "utf-8");
+      const missingValueTypes = args.missingValueTypes || [];
 
-      // 使用worker解析文件，读取全部数据
-      const result = await this.parseFileWithWorker("csv", fileContent, -1, args.missingValueTypes || []);
+      // 使用文件级缓存解析 CSV。相同文件、相同缺失标记只解析一次。
+      const result = await this.getParsedCsvData(args.filePath, missingValueTypes);
 
       // 获取时区设置
       const timezoneResult = this.settingsRepository.getTimezone();
@@ -160,7 +235,7 @@ export class FileController extends BaseController {
       // 如果指定了列名，只返回该列的数据和统计信息
       if (args.columnName && result.tableData) {
         const columnName = args.columnName;
-        const missingTypes = args.missingValueTypes || [];
+        const missingTypes = missingValueTypes;
 
         // 识别时间列
         const timestampKey = this.findTimestampKey(result.tableData);
@@ -348,6 +423,8 @@ export class FileController extends BaseController {
    * 清理资源
    */
   cleanup() {
+    this.parsedCsvCache.clear();
+    this.parsedCsvInFlight.clear();
     if (this.fileParserWorker) {
       this.fileParserWorker.terminate();
       this.fileParserWorker = null;

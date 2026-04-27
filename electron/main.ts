@@ -55,7 +55,6 @@ function createWindow(): void {
   if (process.env.NODE_ENV === "development") {
     console.log("开发环境：加载本地开发服务器");
     appState.mainWindow.loadURL("http://localhost:5173");
-    appState.mainWindow.webContents.openDevTools();
   } else {
     console.log("生产环境：加载打包后的文件");
     appState.mainWindow.loadFile(path.join(__dirname, "../../frontend/dist/index.html"));
@@ -79,9 +78,6 @@ function setupWindowEvents(): void {
     appState.mainWindow?.maximize();
     appState.mainWindow?.show();
 
-    if (process.env.NODE_ENV === "development") {
-      appState.mainWindow?.webContents.openDevTools();
-    }
   });
 
   // 窗口关闭事件

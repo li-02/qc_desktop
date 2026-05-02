@@ -7,13 +7,14 @@
     "files": [
       "public/dist/**/*",
       "public/frontend/dist/**/*",
-      "node_modules/**/*"
+      "node_modules/**/*",
+      "package.json"
     ],
     "extraResources": [
       {
         "from": "python",
         "to": "python",
-        "filter": ["**/*.py", "**/*.pypots", "requirements.txt"]
+        "filter": ["**/*.py", "**/*.pypots", "**/*.pkl", "**/*.joblib", "requirements.txt"]
       },
       {
         "from": "R-Portable",

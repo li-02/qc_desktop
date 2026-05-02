@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js --fix",
     "format": "prettier --write \"./**/*.{html,vue,ts,js,json,md}\"",
-    "fix": "npm run format && npm run lint"
+    "fix": "pnpm run format && pnpm run lint"
   },
   "dependencies": {
     "@pureadmin/table": "^3.2.1",

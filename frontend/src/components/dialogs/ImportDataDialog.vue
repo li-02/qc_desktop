@@ -33,6 +33,7 @@ const missingTypesList = ref([
   { value: "NA", label: "NA" },
   { value: "na", label: "na" },
   { value: "undefined", label: "undefined" },
+  { value: "-9999", label: "-9999" },
   { value: "", label: "空值" },
 ]);
 
@@ -140,6 +141,8 @@ const canImport = computed(() => {
 });
 const completedCount = computed(() => progressItems.value.filter(p => p.status === "completed").length);
 const failedCount = computed(() => progressItems.value.filter(p => p.status === "failed").length);
+const isExcelFile = (fileName: string): boolean => /\.(xlsx|xls)$/i.test(fileName);
+const hasExcelFile = computed(() => fileEntries.value.some(entry => isExcelFile(entry.file.name)));
 
 // ── MySQL 计算属性 ──
 const dbFilteredTables = computed(() => {
@@ -222,6 +225,9 @@ const handleFilesAdded = (file: any) => {
   if (!["csv", "xlsx", "xls"].includes(ext || "")) {
     ElMessage.error("只支持 CSV、Excel (xlsx/xls) 文件");
     return;
+  }
+  if (ext === "xlsx" || ext === "xls") {
+    ElMessage.warning("当前 Excel 导入仅解析第一个工作表，请将需要导入的数据放在第一个 sheet。");
   }
   // @ts-ignore
   const path = window.electronAPI.getFilePath(file.raw || file);
@@ -542,6 +548,9 @@ defineExpose({ open, close });
               </div>
             </div>
           </el-upload>
+          <div v-if="hasExcelFile" class="excel-sheet-notice">
+            当前 Excel 导入仅解析第一个工作表，请确认需要导入的数据位于第一个 sheet。
+          </div>
           <div v-if="fileEntries.length > 0" class="file-list">
             <div v-for="entry in fileEntries" :key="entry.uid" class="file-row">
               <div class="file-row-info">
@@ -1300,10 +1309,12 @@ defineExpose({ open, close });
   padding-right: 2px;
 }
 .file-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr) 52px;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
+  min-height: 76px;
+  padding: 8px 12px;
   border-radius: var(--radius-panel);
   border: 1px solid #e2e8f0;
   background: #ffffff;
@@ -1314,9 +1325,15 @@ defineExpose({ open, close });
   background: #f8fafc;
 }
 .file-row-info {
-  flex: 0 0 auto;
+  width: 180px;
+  height: 56px;
   min-width: 0;
-  max-width: 140px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
 }
 .file-row-filename {
   display: block;
@@ -1331,12 +1348,22 @@ defineExpose({ open, close });
   display: block;
   font-size: var(--text-xs);
   color: #94a3b8;
+  line-height: 1.4;
 }
 .file-row-name-input {
-  flex: 1;
+  width: 100%;
+}
+.file-row-name-input :deep(.el-input__wrapper) {
+  min-height: 56px;
+  box-sizing: border-box;
+}
+.file-row-name-input :deep(.el-input__inner) {
+  height: 56px;
+  line-height: 56px;
 }
 .file-row-remove {
-  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
   color: #94a3b8;
   border-color: #e2e8f0 !important;
 }
@@ -1345,12 +1372,40 @@ defineExpose({ open, close });
   border-color: #fca5a5 !important;
 }
 
+@media (max-width: 640px) {
+  .file-row {
+    grid-template-columns: minmax(0, 1fr) 44px;
+  }
+
+  .file-row-info,
+  .file-row-name-input {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .file-row-remove {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+}
+
 .empty-file-hint {
   margin-top: 10px;
   text-align: center;
   color: #94a3b8;
   font-size: var(--text-base);
   padding: 16px;
+}
+.excel-sheet-notice {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius-panel);
+  background: #f0fdf4;
+  color: #047857;
+  font-size: var(--text-sm);
+  line-height: 1.5;
 }
 
 /* ── 进度视图 ── */

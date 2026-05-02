@@ -34,6 +34,80 @@ const SAMPLING_CONFIG = {
 // 时间序列数据点类型
 type TimeSeriesPoint = { time: string; value: number; epochMs?: number };
 
+const median = (values: number[]) => {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+};
+
+const formatLocalDateTimeKey = (timestamp: number) => {
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  const second = String(date.getSeconds()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+};
+
+const buildDailyMedianTrendData = (timeData: TimeSeriesPoint[]) => {
+  const groups = new Map<string, { timestamp: number; values: number[] }>();
+
+  timeData.forEach(point => {
+    const timestamp = point.epochMs ?? new Date(point.time).getTime();
+    if (!Number.isFinite(timestamp) || !Number.isFinite(point.value)) return;
+
+    const date = new Date(timestamp);
+    const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+    const key = formatLocalDateTimeKey(dayStart);
+    const group = groups.get(key) ?? { timestamp: dayStart + 12 * 3600 * 1000, values: [] };
+    group.values.push(point.value);
+    groups.set(key, group);
+  });
+
+  const dailyPoints = [...groups.values()]
+    .map(group => ({ timestamp: group.timestamp, value: median(group.values) }))
+    .filter((point): point is { timestamp: number; value: number } => point.value !== null)
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  const trendData: Array<[string, number | null]> = [];
+  dailyPoints.forEach((point, index) => {
+    const previous = dailyPoints[index - 1];
+    if (previous && point.timestamp - previous.timestamp > 2 * 24 * 3600 * 1000) {
+      trendData.push([formatLocalDateTimeKey(previous.timestamp + 24 * 3600 * 1000), null]);
+      trendData.push([formatLocalDateTimeKey(point.timestamp - 24 * 3600 * 1000), null]);
+    }
+    trendData.push([formatLocalDateTimeKey(point.timestamp), point.value]);
+  });
+
+  return trendData;
+};
+
+const buildRollingMedianTrendData = (timeData: TimeSeriesPoint[]) => {
+  const sortedData = [...timeData]
+    .filter(point => Number.isFinite(point.value))
+    .sort((a, b) => Number(a.time) - Number(b.time));
+  if (!sortedData.length) return [];
+
+  const windowSize = Math.max(5, Math.min(101, Math.ceil(sortedData.length / 40)));
+  const halfWindow = Math.floor(windowSize / 2);
+  const step = Math.max(1, Math.ceil(sortedData.length / 300));
+
+  const trendData: Array<[string, number]> = [];
+  for (let index = 0; index < sortedData.length; index += step) {
+    const start = Math.max(0, index - halfWindow);
+    const end = Math.min(sortedData.length, index + halfWindow + 1);
+    const value = median(sortedData.slice(start, end).map(point => point.value));
+    if (value !== null) {
+      trendData.push([sortedData[index].time, value]);
+    }
+  }
+
+  return trendData;
+};
+
 /**
  * 智能数据采样函数
  * 根据数据量和缩放级别进行采样
@@ -580,6 +654,7 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
     !isNaN(Number(sampledData[0].time)) &&
     !sampledData[0].time.includes("-") &&
     !sampledData[0].time.includes(":");
+  const trendData = isIndexBased ? buildRollingMedianTrendData(timeData) : buildDailyMedianTrendData(timeData);
 
   let timeSpanDays = 0;
   if (!isIndexBased && sampledData.length > 1) {
@@ -619,18 +694,28 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
       },
     },
     tooltip: {
-      trigger: "axis",
+      trigger: "item",
       confine: true, // 限制在图表区域内
       enterable: false, // 禁止鼠标进入tooltip
       hideDelay: 0, // 立即隐藏
       formatter: (params: any) => {
-        const dataPoint = params[0];
-        let timeStr = dataPoint.value[0];
+        let timeStr = params.value[0];
         if (!isIndexBased) {
-          const date = new Date(dataPoint.value[0]);
+          const date = new Date(params.value[0]);
           timeStr = formatLocalWithTZ(date.getTime());
         }
-        return `时间/索引: ${timeStr}<br/>${props.selectedColumn}: ${dataPoint.value[1].toFixed(3)}`;
+        const value = Number(params.value[1]);
+        const valueText = Number.isFinite(value) ? value.toFixed(3) : "缺失";
+        return `${params.seriesName}<br/>时间/索引: ${timeStr}<br/>${props.selectedColumn}: ${valueText}`;
+      },
+    },
+    legend: {
+      top: 34,
+      left: "center",
+      itemWidth: 14,
+      itemHeight: 8,
+      textStyle: {
+        color: "#64748b",
       },
     },
     // 工具箱配置
@@ -731,7 +816,7 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
       left: "12%", // 为Y轴滑动条留出空间
       right: "8%",
       bottom: 96, // 为X轴滑动条留出空间
-      top: 72,
+      top: 88,
       containLabel: true,
     },
     xAxis: {
@@ -755,28 +840,40 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
     },
     series: [
       {
-        name: props.selectedColumn,
-        type: "line",
+        name: `${props.selectedColumn} 原始观测`,
+        type: "scatter",
         data: data,
-        symbol: sampledData.length > 1000 ? "none" : "circle", // 大数据集时隐藏点
-        symbolSize: sampledData.length > 1000 ? 0 : 3, // 优化点大小
-        sampling: "lttb", // 使用LTTB算法进行进一步采样
+        symbol: "circle",
+        symbolSize: sampledData.length > 5000 ? 2 : sampledData.length > 1000 ? 3 : 4,
         large: sampledData.length > 1000, // 启用大数据优化
         largeThreshold: 1000, // 大数据阈值
-        lineStyle: {
-          color: "#2d6a4f",
-          width: sampledData.length > 5000 ? 1 : 2, // 大数据集时使用细线
-        },
         itemStyle: {
           color: "#2d6a4f",
+          opacity: sampledData.length > 3000 ? 0.55 : 0.75,
         },
         emphasis: {
           disabled: sampledData.length > 3000, // 大数据集时禁用高亮效果
           scale: false,
         },
-        smooth: false,
+      },
+      {
+        name: "中位数趋势",
+        type: "line",
+        data: trendData,
+        symbol: "none",
         connectNulls: false,
-        // 移除markLine以提高性能
+        smooth: true,
+        lineStyle: {
+          color: "#064e3b",
+          width: 3,
+        },
+        emphasis: {
+          focus: "series",
+          lineStyle: {
+            width: 4,
+          },
+        },
+        z: 3,
       },
     ],
     // 优化的动画配置

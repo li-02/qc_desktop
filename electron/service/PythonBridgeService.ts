@@ -63,6 +63,17 @@ export class PythonBridgeService {
   }
 
   /**
+   * 校验输入文件是否存在
+   * @returns 如果文件不存在则返回错误信息，否则返回 null
+   */
+  private static validateInputFile(inputFile: string): string | null {
+    if (!fs.existsSync(inputFile)) {
+      return `输入文件不存在: ${inputFile}`;
+    }
+    return null;
+  }
+
+  /**
    * 检测 Python 环境
    */
   async detectPython(): Promise<{ available: boolean; version?: string; path?: string }> {
@@ -227,6 +238,11 @@ export class PythonBridgeService {
       return { success: false, error: `模型文件不存在: ${params.modelPath}` };
     }
 
+    const inputFileError = PythonBridgeService.validateInputFile(params.inputFile);
+    if (inputFileError) {
+      return { success: false, error: inputFileError };
+    }
+
     // 构建命令行参数
     const args: string[] = [
       scriptPath,
@@ -361,6 +377,11 @@ export class PythonBridgeService {
     const scriptPath = path.join(this.pythonDir, "methods", "reddyproc_flux_pipeline.py");
     if (!fs.existsSync(scriptPath)) {
       return { success: false, error: `脚本文件不存在: ${scriptPath}` };
+    }
+
+    const inputFileError = PythonBridgeService.validateInputFile(params.inputFile);
+    if (inputFileError) {
+      return { success: false, error: inputFileError };
     }
 
     // 构建命令行参数
@@ -527,6 +548,11 @@ export class PythonBridgeService {
     const scriptPath = path.join(this.pythonDir, "methods", "beon_reddyproc_pipeline.py");
     if (!fs.existsSync(scriptPath)) {
       return { success: false, error: `脚本文件不存在: ${scriptPath}` };
+    }
+
+    const inputFileError = PythonBridgeService.validateInputFile(params.inputFile);
+    if (inputFileError) {
+      return { success: false, error: inputFileError };
     }
 
     const args: string[] = [
@@ -696,6 +722,11 @@ export class PythonBridgeService {
       return { success: false, error: `脚本文件不存在: ${scriptPath}` };
     }
 
+    const inputFileError = PythonBridgeService.validateInputFile(params.inputFile);
+    if (inputFileError) {
+      return { success: false, error: inputFileError };
+    }
+
     const args: string[] = [
       scriptPath,
       "--file",
@@ -817,6 +848,11 @@ export class PythonBridgeService {
 
     if (!fs.existsSync(params.modelPath)) {
       return { success: false, error: `模型文件不存在: ${params.modelPath}` };
+    }
+
+    const inputFileError = PythonBridgeService.validateInputFile(params.inputFile);
+    if (inputFileError) {
+      return { success: false, error: inputFileError };
     }
 
     const args: string[] = [
@@ -941,6 +977,11 @@ export class PythonBridgeService {
 
     if (!fs.existsSync(params.modelPath)) {
       return { success: false, error: `模型文件不存在: ${params.modelPath}` };
+    }
+
+    const inputFileError = PythonBridgeService.validateInputFile(params.inputFile);
+    if (inputFileError) {
+      return { success: false, error: inputFileError };
     }
 
     const args: string[] = [
@@ -1082,6 +1123,11 @@ export class PythonBridgeService {
 
     if (params.metadataPath && !fs.existsSync(params.metadataPath)) {
       return { success: false, error: `模型 metadata 文件不存在: ${params.metadataPath}` };
+    }
+
+    const inputFileError = PythonBridgeService.validateInputFile(params.inputFile);
+    if (inputFileError) {
+      return { success: false, error: inputFileError };
     }
 
     const args: string[] = [
@@ -1239,6 +1285,11 @@ export class PythonBridgeService {
       return { success: false, error: `模型 metadata 文件不存在: ${params.metadataPath}` };
     }
 
+    const inputFileError = PythonBridgeService.validateInputFile(params.inputFile);
+    if (inputFileError) {
+      return { success: false, error: inputFileError };
+    }
+
     const args: string[] = [
       scriptPath,
       "--model",
@@ -1392,6 +1443,11 @@ export class PythonBridgeService {
       return { success: false, error: `模型 metadata 文件不存在: ${params.metadataPath}` };
     }
 
+    const inputFileError = PythonBridgeService.validateInputFile(params.inputFile);
+    if (inputFileError) {
+      return { success: false, error: inputFileError };
+    }
+
     const args: string[] = [
       scriptPath,
       "--model",
@@ -1525,6 +1581,11 @@ export class PythonBridgeService {
       return { success: false, error: `脚本文件不存在: ${scriptPath}` };
     }
 
+    const inputFileError = PythonBridgeService.validateInputFile(params.inputFile);
+    if (inputFileError) {
+      return { success: false, error: inputFileError };
+    }
+
     const args: string[] = [
       scriptPath,
       "--file",
@@ -1637,6 +1698,15 @@ export class PythonBridgeService {
     const scriptPath = path.join(this.pythonDir, "methods", "beon_nonflux_pipeline.py");
     if (!fs.existsSync(scriptPath)) {
       return { success: false, error: `脚本文件不存在: ${scriptPath}` };
+    }
+
+    const inputFileError = PythonBridgeService.validateInputFile(params.inputFile);
+    if (inputFileError) {
+      return { success: false, error: inputFileError };
+    }
+    const fluxInputFileError = PythonBridgeService.validateInputFile(params.fluxInputFile);
+    if (fluxInputFileError) {
+      return { success: false, error: fluxInputFileError };
     }
 
     const args: string[] = [

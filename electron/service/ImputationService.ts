@@ -2706,6 +2706,26 @@ export class ImputationService {
    * 3. 插入方法参数 conf_imputation_method_params
    * 4. 插入模型记录 biz_imputation_model
    */
+  importModelFromYaml(input: { filePath?: string; content?: string }): {
+    methodId: ImputationMethodId;
+    modelId: number;
+    modelName: string;
+  } {
+    const source = input.content?.trim()
+      ? input.content
+      : input.filePath
+        ? fs.readFileSync(input.filePath, "utf-8")
+        : "";
+
+    if (!source.trim()) {
+      throw new Error("YAML 配置内容不能为空");
+    }
+
+    const config = this.normalizeCustomModelConfig(this.parseModelConfig(source));
+    const result = this.registerCustomModel(config);
+    return { ...result, modelName: config.modelName };
+  }
+
   registerCustomModel(config: CustomModelConfig): {
     methodId: ImputationMethodId;
     modelId: number;
@@ -2828,6 +2848,161 @@ export class ImputationService {
   /**
    * 验证模型文件是否存在且可访问
    */
+  private parseModelConfig(source: string): Record<string, unknown> {
+    const trimmed = source.trim();
+    if (trimmed.startsWith("{")) {
+      return JSON.parse(trimmed) as Record<string, unknown>;
+    }
+
+    const result: Record<string, unknown> = {};
+    let currentKey: string | null = null;
+    let currentItem: Record<string, unknown> | null = null;
+
+    for (const rawLine of source.split(/\r?\n/)) {
+      const withoutComment = rawLine.replace(/\s+#.*$/, "");
+      if (!withoutComment.trim()) continue;
+
+      const indent = withoutComment.search(/\S/);
+      const line = withoutComment.trim();
+
+      if (indent === 0) {
+        const match = /^([^:]+):\s*(.*)$/.exec(line);
+        if (!match) continue;
+
+        const key = match[1].trim();
+        const value = match[2].trim();
+        if (value === "") {
+          result[key] = [];
+          currentKey = key;
+          currentItem = null;
+        } else {
+          result[key] = this.parseYamlValue(value);
+          currentKey = null;
+          currentItem = null;
+        }
+        continue;
+      }
+
+      if (!currentKey || !Array.isArray(result[currentKey])) continue;
+
+      if (line.startsWith("- ")) {
+        const itemText = line.slice(2).trim();
+        const pair = /^([^:]+):\s*(.*)$/.exec(itemText);
+        if (pair) {
+          currentItem = { [pair[1].trim()]: this.parseYamlValue(pair[2].trim()) };
+          (result[currentKey] as unknown[]).push(currentItem);
+        } else {
+          currentItem = null;
+          (result[currentKey] as unknown[]).push(this.parseYamlValue(itemText));
+        }
+      } else if (currentItem) {
+        const pair = /^([^:]+):\s*(.*)$/.exec(line);
+        if (pair) {
+          currentItem[pair[1].trim()] = this.parseYamlValue(pair[2].trim());
+        }
+      }
+    }
+
+    return result;
+  }
+
+  private parseYamlValue(value: string): unknown {
+    if (value === "") return "";
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      return value.slice(1, -1);
+    }
+    if (value.startsWith("[") && value.endsWith("]")) {
+      return value
+        .slice(1, -1)
+        .split(",")
+        .map(item => this.parseYamlValue(item.trim()))
+        .filter(item => item !== "");
+    }
+    if (value === "true") return true;
+    if (value === "false") return false;
+    if (value === "null") return undefined;
+
+    const numberValue = Number(value);
+    return Number.isNaN(numberValue) ? value : numberValue;
+  }
+
+  private normalizeCustomModelConfig(rawConfig: Record<string, unknown>): CustomModelConfig {
+    const getString = (...keys: string[]) => {
+      for (const key of keys) {
+        const value = rawConfig[key];
+        if (typeof value === "string" && value.trim()) return value.trim();
+      }
+      return "";
+    };
+
+    const modelName = getString("modelName", "model_name", "name");
+    const modelFilePath = getString("modelFilePath", "model_file_path", "modelPath", "model_file");
+    const inferenceScriptPath = getString(
+      "inferenceScriptPath",
+      "inference_script_path",
+      "scriptPath",
+      "inference_script"
+    );
+
+    if (!modelName) throw new Error("模型名称不能为空");
+    if (!modelFilePath) throw new Error("模型文件路径不能为空");
+    if (!inferenceScriptPath) throw new Error("推理脚本路径不能为空");
+
+    const framework = this.pickAllowed(rawConfig.framework, ["pypots", "pytorch", "onnx", "other"], "other");
+    const estimatedTime = this.pickAllowed(rawConfig.estimatedTime ?? rawConfig.estimated_time, ["fast", "medium", "slow"], "medium");
+    const accuracy = this.pickAllowed(rawConfig.accuracy, ["low", "medium", "high"], "medium");
+
+    return {
+      modelName,
+      description: getString("description", "desc") || modelName,
+      modelFilePath,
+      inferenceScriptPath,
+      framework: framework as CustomModelConfig["framework"],
+      featureColumns: this.toStringArray(rawConfig.featureColumns ?? rawConfig.feature_columns ?? rawConfig.features),
+      targetColumn: getString("targetColumn", "target_column") || undefined,
+      timeColumn: getString("timeColumn", "time_column") || "record_time",
+      seqLen: typeof rawConfig.seqLen === "number" ? rawConfig.seqLen : Number(rawConfig.seq_len) || undefined,
+      estimatedTime: estimatedTime as CustomModelConfig["estimatedTime"],
+      accuracy: accuracy as CustomModelConfig["accuracy"],
+      params: this.normalizeCustomModelParams(rawConfig.params),
+    };
+  }
+
+  private pickAllowed(value: unknown, allowed: string[], fallback: string): string {
+    return typeof value === "string" && allowed.includes(value) ? value : fallback;
+  }
+
+  private toStringArray(value: unknown): string[] {
+    if (Array.isArray(value)) return value.map(item => String(item)).filter(Boolean);
+    if (typeof value === "string") return value.split(",").map(item => item.trim()).filter(Boolean);
+    return [];
+  }
+
+  private normalizeCustomModelParams(value: unknown): CustomModelConfig["params"] {
+    if (!Array.isArray(value)) return [];
+
+    return value
+      .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+      .map(item => ({
+        paramKey: String(item.paramKey ?? item.param_key ?? ""),
+        paramName: String(item.paramName ?? item.param_name ?? item.paramKey ?? item.param_key ?? ""),
+        paramType: this.pickAllowed(item.paramType ?? item.param_type, ["number", "select", "boolean", "string"], "string") as
+          | "number"
+          | "select"
+          | "boolean"
+          | "string",
+        defaultValue: String(item.defaultValue ?? item.default_value ?? ""),
+        minValue: typeof item.minValue === "number" ? item.minValue : typeof item.min_value === "number" ? item.min_value : undefined,
+        maxValue: typeof item.maxValue === "number" ? item.maxValue : typeof item.max_value === "number" ? item.max_value : undefined,
+        stepValue: typeof item.stepValue === "number" ? item.stepValue : typeof item.step_value === "number" ? item.step_value : undefined,
+        options: Array.isArray(item.options) ? (item.options as { label: string; value: string }[]) : undefined,
+        tooltip: typeof item.tooltip === "string" ? item.tooltip : undefined,
+        isRequired: typeof item.isRequired === "boolean" ? item.isRequired : item.is_required === true,
+        isAdvanced: typeof item.isAdvanced === "boolean" ? item.isAdvanced : item.is_advanced === true,
+      }))
+      .filter(item => item.paramKey);
+  }
+
   validateModelFile(filePath: string): { valid: boolean; error?: string } {
     try {
       if (!fs.existsSync(filePath)) {

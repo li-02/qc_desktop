@@ -57,6 +57,7 @@ export class ImputationController extends BaseController {
       "imputation:registerCustomModel": this.registerCustomModel.bind(this),
       "imputation:getCustomModels": this.getCustomModels.bind(this),
       "imputation:deleteCustomModel": this.deleteCustomModel.bind(this),
+      "imputation:importModelFromYaml": this.importModelFromYaml.bind(this),
       "imputation:validateModelFile": this.validateModelFile.bind(this),
       "imputation:validateScriptFile": this.validateScriptFile.bind(this),
     };
@@ -511,6 +512,18 @@ export class ImputationController extends BaseController {
   /**
    * 验证模型文件
    */
+  private async importModelFromYaml(
+    args: { filePath?: string; content?: string },
+    _event: Electron.IpcMainInvokeEvent
+  ): Promise<{ success: boolean; data?: { methodId: string; modelId: number; modelName: string }; error?: string }> {
+    try {
+      const result = this.service.importModelFromYaml(args);
+      return { success: true, data: result };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
   private async validateModelFile(
     args: { filePath: string },
     _event: Electron.IpcMainInvokeEvent

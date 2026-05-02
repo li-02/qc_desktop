@@ -37,7 +37,7 @@ export class DatasetDBRepository {
 
   getDatasetById(id: number): ServiceResponse<Dataset> {
     try {
-      const stmt = this.db.prepare("SELECT * FROM sys_dataset WHERE id = ?");
+      const stmt = this.db.prepare("SELECT * FROM sys_dataset WHERE id = ? AND is_del = 0");
       const dataset = stmt.get(id) as Dataset;
       if (!dataset) {
         return { success: false, error: "Dataset not found" };
@@ -59,7 +59,7 @@ export class DatasetDBRepository {
       if (!fields) return { success: true };
 
       const stmt = this.db.prepare(`
-        UPDATE sys_dataset SET ${fields}, updated_at = CURRENT_TIMESTAMP WHERE id = @id
+        UPDATE sys_dataset SET ${fields}, updated_at = CURRENT_TIMESTAMP WHERE id = @id AND is_del = 0
       `);
       stmt.run({ ...dataset, id });
       return { success: true };
@@ -70,8 +70,199 @@ export class DatasetDBRepository {
 
   deleteDataset(id: number): ServiceResponse<void> {
     try {
-      const stmt = this.db.prepare("DELETE FROM sys_dataset WHERE id = ?");
-      stmt.run(id);
+      this.db.transaction(() => {
+        this.db
+          .prepare(
+            `
+            UPDATE biz_outlier_detail
+            SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE result_id IN (
+              SELECT id FROM biz_outlier_result
+              WHERE (
+                dataset_id = ?
+                OR version_id IN (SELECT id FROM biz_dataset_version WHERE dataset_id = ? AND is_del = 0)
+                OR generated_version_id IN (SELECT id FROM biz_dataset_version WHERE dataset_id = ? AND is_del = 0)
+              )
+              AND is_del = 0
+            )
+          `
+          )
+          .run(id, id, id);
+
+        this.db
+          .prepare(
+            `
+            UPDATE biz_outlier_column_stat
+            SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE result_id IN (
+              SELECT id FROM biz_outlier_result
+              WHERE (
+                dataset_id = ?
+                OR version_id IN (SELECT id FROM biz_dataset_version WHERE dataset_id = ? AND is_del = 0)
+                OR generated_version_id IN (SELECT id FROM biz_dataset_version WHERE dataset_id = ? AND is_del = 0)
+              )
+              AND is_del = 0
+            )
+          `
+          )
+          .run(id, id, id);
+
+        this.db
+          .prepare(
+            `
+            UPDATE biz_outlier_result
+            SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE (
+              dataset_id = ?
+              OR version_id IN (SELECT id FROM biz_dataset_version WHERE dataset_id = ? AND is_del = 0)
+              OR generated_version_id IN (SELECT id FROM biz_dataset_version WHERE dataset_id = ? AND is_del = 0)
+            )
+            AND is_del = 0
+          `
+          )
+          .run(id, id, id);
+
+        this.db
+          .prepare(
+            `
+            UPDATE conf_outlier_detection
+            SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE scope_type = 'DATASET' AND scope_id = ? AND is_del = 0
+          `
+          )
+          .run(id);
+
+        this.db
+          .prepare(
+            `
+            UPDATE biz_imputation_column_stat
+            SET is_del = 1, updated_at = CURRENT_TIMESTAMP
+            WHERE result_id IN (
+              SELECT id FROM biz_imputation_result
+              WHERE (
+                dataset_id = ?
+                OR version_id IN (SELECT id FROM biz_dataset_version WHERE dataset_id = ? AND is_del = 0)
+                OR new_version_id IN (SELECT id FROM biz_dataset_version WHERE dataset_id = ? AND is_del = 0)
+              )
+              AND is_del = 0
+            )
+          `
+          )
+          .run(id, id, id);
+
+        this.db
+          .prepare(
+            `
+            UPDATE biz_imputation_result
+            SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE (
+              dataset_id = ?
+              OR version_id IN (SELECT id FROM biz_dataset_version WHERE dataset_id = ? AND is_del = 0)
+              OR new_version_id IN (SELECT id FROM biz_dataset_version WHERE dataset_id = ? AND is_del = 0)
+            )
+            AND is_del = 0
+          `
+          )
+          .run(id, id, id);
+
+        this.db
+          .prepare(
+            `
+            UPDATE biz_imputation_model
+            SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE dataset_id = ? AND is_del = 0
+          `
+          )
+          .run(id);
+
+        this.db
+          .prepare(
+            `
+            UPDATE biz_flux_partitioning_result
+            SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE (
+              dataset_id = ?
+              OR version_id IN (SELECT id FROM biz_dataset_version WHERE dataset_id = ? AND is_del = 0)
+              OR new_version_id IN (SELECT id FROM biz_dataset_version WHERE dataset_id = ? AND is_del = 0)
+            )
+            AND is_del = 0
+          `
+          )
+          .run(id, id, id);
+
+        this.db
+          .prepare(
+            `
+            UPDATE biz_workflow_node
+            SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE workflow_id IN (
+              SELECT id FROM biz_workflow
+              WHERE (
+                dataset_id = ?
+                OR initial_version_id IN (SELECT id FROM biz_dataset_version WHERE dataset_id = ? AND is_del = 0)
+              )
+              AND is_del = 0
+            )
+          `
+          )
+          .run(id, id);
+
+        this.db
+          .prepare(
+            `
+            UPDATE biz_workflow
+            SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE (
+              dataset_id = ?
+              OR initial_version_id IN (SELECT id FROM biz_dataset_version WHERE dataset_id = ? AND is_del = 0)
+            )
+            AND is_del = 0
+          `
+          )
+          .run(id, id);
+
+        this.db
+          .prepare(
+            `
+            UPDATE stat_version_detail
+            SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE version_id IN (
+              SELECT id FROM biz_dataset_version WHERE dataset_id = ? AND is_del = 0
+            )
+          `
+          )
+          .run(id);
+
+        this.db
+          .prepare(
+            `
+            UPDATE biz_dataset_version
+            SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE dataset_id = ? AND is_del = 0
+          `
+          )
+          .run(id);
+
+        this.db
+          .prepare(
+            `
+            UPDATE conf_column_setting
+            SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE dataset_id = ? AND is_del = 0
+          `
+          )
+          .run(id);
+
+        this.db
+          .prepare(
+            `
+            UPDATE sys_dataset
+            SET is_del = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND is_del = 0
+          `
+          )
+          .run(id);
+      })();
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };
@@ -96,7 +287,9 @@ export class DatasetDBRepository {
 
   getVersionsByDatasetId(datasetId: number): ServiceResponse<DatasetVersion[]> {
     try {
-      const stmt = this.db.prepare("SELECT * FROM biz_dataset_version WHERE dataset_id = ? ORDER BY created_at DESC");
+      const stmt = this.db.prepare(
+        "SELECT * FROM biz_dataset_version WHERE dataset_id = ? AND is_del = 0 ORDER BY created_at DESC"
+      );
       const versions = stmt.all(datasetId) as DatasetVersion[];
       return { success: true, data: versions };
     } catch (error: any) {
@@ -106,7 +299,7 @@ export class DatasetDBRepository {
 
   getDatasetVersionById(id: number): ServiceResponse<DatasetVersion> {
     try {
-      const stmt = this.db.prepare("SELECT * FROM biz_dataset_version WHERE id = ?");
+      const stmt = this.db.prepare("SELECT * FROM biz_dataset_version WHERE id = ? AND is_del = 0");
       const version = stmt.get(id) as DatasetVersion;
       if (!version) {
         return { success: false, error: "Version not found" };
@@ -124,7 +317,7 @@ export class DatasetDBRepository {
         .join(", ");
       if (!fields) return { success: true };
       const stmt = this.db.prepare(`
-        UPDATE biz_dataset_version SET ${fields}, updated_at = CURRENT_TIMESTAMP WHERE id = @id
+        UPDATE biz_dataset_version SET ${fields}, updated_at = CURRENT_TIMESTAMP WHERE id = @id AND is_del = 0
       `);
       stmt.run({ ...updates, id });
       return { success: true };
@@ -163,7 +356,7 @@ export class DatasetDBRepository {
 
   getStatByVersionId(versionId: number): ServiceResponse<StatVersionDetail> {
     try {
-      const stmt = this.db.prepare("SELECT * FROM stat_version_detail WHERE version_id = ?");
+      const stmt = this.db.prepare("SELECT * FROM stat_version_detail WHERE version_id = ? AND is_del = 0");
       const stat = stmt.get(versionId) as StatVersionDetail;
       if (!stat) {
         return { success: false, error: "Stat not found" };
@@ -202,7 +395,7 @@ export class DatasetDBRepository {
 
   getColumnSettings(datasetId: number): ServiceResponse<ColumnSetting[]> {
     try {
-      const stmt = this.db.prepare("SELECT * FROM conf_column_setting WHERE dataset_id = ?");
+      const stmt = this.db.prepare("SELECT * FROM conf_column_setting WHERE dataset_id = ? AND is_del = 0");
       const settings = stmt.all(datasetId) as ColumnSetting[];
       return { success: true, data: settings };
     } catch (error: any) {

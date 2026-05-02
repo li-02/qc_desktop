@@ -1,6 +1,6 @@
 /**
  * FLUXNET 体系标准列名中文映射
- * 数据来源: indicators_filtered.csv
+ * 数据来源: shared/static/indicators_filtered.csv
  */
 const COLUMN_LABEL_MAP: Record<string, string> = {
   // 通量与气象基础变量

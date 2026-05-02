@@ -2503,7 +2503,7 @@ export class DatabaseManager {
 
   /**
    * 种入内置阈值模板数据（已存在则跳过）
-   * 数据来源：indicators_filtered.csv
+   * 数据来源：shared/static/indicators_filtered.csv
    */
   private seedBuiltinTemplates(): void {
     if (!this.db) return;
@@ -2661,7 +2661,7 @@ export class DatabaseManager {
         `INSERT INTO conf_threshold_template (name, description, template_data, is_builtin)
          VALUES (?, ?, ?, 1)`
       )
-      .run("standard", "系统内置标准物理范围模板，来源于 indicators_filtered.csv", JSON.stringify(templateData));
+      .run("standard", "系统内置标准物理范围模板，来源于 shared/static/indicators_filtered.csv", JSON.stringify(templateData));
 
     console.log("内置阈值模板 'standard' 已写入数据库");
   }

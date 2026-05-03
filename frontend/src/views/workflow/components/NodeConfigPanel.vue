@@ -154,6 +154,61 @@
           </div>
         </div>
 
+        <!-- 模型类方法配置：与普通缺失值插补模块保持一致 -->
+        <template v-if="imputationIsModelBased">
+          <div class="config-section">
+            <label class="config-label">插补模型</label>
+            <el-input
+              v-model="imputationModelSearch"
+              size="small"
+              clearable
+              placeholder="搜索模型名称、目标指标或特征列"
+              class="model-search-input" />
+            <el-select
+              v-model="imputationSelectedModelId"
+              size="small"
+              clearable
+              placeholder="请选择插补模型"
+              style="width: 100%"
+              @change="onImputationModelChange">
+              <el-option
+                v-for="model in filteredImputationModels"
+                :key="model.id"
+                :label="getImputationModelLabel(model)"
+                :value="model.id">
+                <div class="method-option">
+                  <span>{{ getImputationModelLabel(model) }}</span>
+                  <span class="method-category">{{ model.targetColumn || "通用" }}</span>
+                </div>
+              </el-option>
+            </el-select>
+            <div v-if="imputationModels.length === 0" class="param-tooltip">
+              未找到此方法的可用模型，请先在缺失值插补模块中注册或训练模型
+            </div>
+            <div v-else class="param-tooltip">此处展示该方法下的全部模型；列名映射使用当前配置数据集的列</div>
+          </div>
+
+          <div v-if="selectedImputationModel?.featureColumns?.length" class="config-section">
+            <label class="config-label">列名映射</label>
+            <div class="column-mapping-list">
+              <div v-for="modelCol in selectedImputationModel.featureColumns" :key="modelCol" class="column-mapping-row">
+                <span class="mapping-model-col">{{ modelCol }}</span>
+                <el-select
+                  v-model="imputationColumnMapping[modelCol]"
+                  size="small"
+                  clearable
+                  filterable
+                  placeholder="请选择数据列"
+                  style="flex: 1"
+                  @change="onImputationConfigChange">
+                  <el-option v-for="col in datasetColumns" :key="col" :label="col" :value="col" />
+                </el-select>
+              </div>
+            </div>
+            <div class="param-tooltip">将模型训练时的特征列映射到当前数据集中的实际列名</div>
+          </div>
+        </template>
+
         <!-- 方法参数（动态加载） -->
         <template v-if="imputationMethod && imputationMethodParams.length > 0">
           <div v-for="param in imputationMethodParams" :key="param.paramKey" class="config-section">
@@ -184,6 +239,22 @@
                 :label="opt.label"
                 :value="opt.value" />
             </el-select>
+            <el-slider
+              v-else-if="param.paramType === 'range'"
+              v-model="imputationParams[param.paramKey]"
+              :min="param.minValue"
+              :max="param.maxValue"
+              :step="param.stepValue || 1"
+              show-input
+              size="small"
+              @change="onImputationConfigChange" />
+            <el-input
+              v-else-if="param.paramType === 'string'"
+              v-model="imputationParams[param.paramKey]"
+              size="small"
+              :placeholder="param.tooltip || '请输入'"
+              @blur="onImputationConfigChange"
+              @keyup.enter="onImputationConfigChange" />
             <div v-if="param.tooltip" class="param-tooltip">{{ param.tooltip }}</div>
           </div>
         </template>
@@ -206,29 +277,6 @@
           <div class="param-tooltip">留空表示插补所有列，可多选指定列</div>
         </div>
 
-        <!-- 验证集比例（可选） -->
-        <div class="config-section">
-          <label class="config-label">验证集比例 (可选)</label>
-          <div style="display: flex; align-items: center; gap: 10px; padding: 0 4px">
-            <el-slider
-              v-model="imputationValidateSplit"
-              :min="0"
-              :max="0.3"
-              :step="0.05"
-              style="flex: 1"
-              @change="onImputationConfigChange" />
-            <span style="font-size: var(--text-sm); color: var(--c-text-base); min-width: 36px; text-align: right">
-              {{ imputationValidateSplit === 0 ? "关闭" : (imputationValidateSplit * 100).toFixed(0) + "%" }}
-            </span>
-          </div>
-          <div class="param-tooltip">
-            {{
-              imputationValidateSplit === 0
-                ? "不启用验证集评估"
-                : `使用 ${(imputationValidateSplit * 100).toFixed(0)}% 的数据评估插补效果`
-            }}
-          </div>
-        </div>
       </template>
 
       <!-- ====== 数据导出节点：结构化配置 ====== -->
@@ -326,7 +374,7 @@ import { NODE_TYPE_META } from "@shared/types/workflow";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
 import type { DetectionMethod, DetectionMethodId } from "@shared/types/database";
-import type { ImputationMethod, ImputationMethodParam, ImputationMethodId } from "@shared/types/imputation";
+import type { ImputationMethod, ImputationMethodParam, ImputationMethodId, ImputationModel } from "@shared/types/imputation";
 
 const props = defineProps<{
   node: WorkflowNode;
@@ -353,7 +401,7 @@ const outlierParams = ref<Record<string, any>>({});
 const outlierColumnNames = ref<string[]>([]);
 const datasetColumns = ref<string[]>([]);
 
-const availableDetectionMethods = computed(() => outlierStore.detectionMethods);
+const availableDetectionMethods = computed(() => outlierStore.availableMethods);
 
 const selectedMethodInfo = computed<DetectionMethod | undefined>(() =>
   outlierStore.detectionMethods.find(m => m.id === outlierMethod.value)
@@ -383,16 +431,45 @@ const categoryLabel = (cat: string) => {
 const imputationMethod = ref<ImputationMethodId | "">("");
 const imputationParams = ref<Record<string, any>>({});
 const imputationTargetColumns = ref<string[]>([]);
-const imputationValidateSplit = ref<number>(0);
 const imputationMethods = ref<ImputationMethod[]>([]);
 const imputationMethodParams = ref<ImputationMethodParam[]>([]);
 const imputationMethodParamsCache = ref<Record<string, ImputationMethodParam[]>>({});
+const imputationModels = ref<ImputationModel[]>([]);
+const imputationSelectedModelId = ref<number | null>(null);
+const imputationColumnMapping = ref<Record<string, string>>({});
+const imputationModelSearch = ref("");
 
 const availableImputationMethods = computed(() => imputationMethods.value);
 
 const selectedImputationMethodInfo = computed<ImputationMethod | undefined>(() =>
   imputationMethods.value.find(m => m.methodId === imputationMethod.value)
 );
+
+const imputationIsModelBased = computed(() => {
+  const method = selectedImputationMethodInfo.value;
+  return !!method && ["ml", "dl", "custom"].includes(method.category);
+});
+
+const selectedImputationModel = computed<ImputationModel | null>(() => {
+  if (!imputationSelectedModelId.value) return null;
+  return imputationModels.value.find(m => m.id === imputationSelectedModelId.value) || null;
+});
+
+const filteredImputationModels = computed(() => {
+  const keyword = imputationModelSearch.value.trim().toLowerCase();
+  if (!keyword) return imputationModels.value;
+  return imputationModels.value.filter(model =>
+    [
+      model.modelName,
+      model.targetColumn,
+      model.modelPath,
+      model.featureColumns?.join(" "),
+      model.trainingColumns?.join(" "),
+    ]
+      .filter(Boolean)
+      .some(value => String(value).toLowerCase().includes(keyword))
+  );
+});
 
 const imputationCategoryLabel = (cat: string) => {
   const map: Record<string, string> = {
@@ -411,6 +488,21 @@ const getImputationParamOptions = (param: ImputationMethodParam): { label: strin
     return opts.map((o: any) => ({ label: o.label, value: o.value }));
   } catch {
     return [];
+  }
+};
+
+const getImputationModelLabel = (model: ImputationModel) => model.modelName || model.targetColumn || `模型 #${model.id}`;
+
+const convertImputationParamDefault = (param: ImputationMethodParam) => {
+  if (param.defaultValue === null) return undefined;
+  switch (param.paramType) {
+    case "number":
+    case "range":
+      return Number(param.defaultValue);
+    case "boolean":
+      return param.defaultValue === "true";
+    default:
+      return param.defaultValue;
   }
 };
 
@@ -448,6 +540,80 @@ const loadImputationMethodParams = async (methodId: string) => {
   }
 };
 
+const initImputationColumnMapping = () => {
+  const model = selectedImputationModel.value;
+  if (!model?.featureColumns?.length) {
+    imputationColumnMapping.value = {};
+    return;
+  }
+
+  const nextMapping: Record<string, string> = {};
+  const cols = datasetColumns.value;
+  const lowerCols = cols.map(col => col.toLowerCase());
+
+  for (const modelCol of model.featureColumns) {
+    if (model.columnMapping?.[modelCol]) {
+      nextMapping[modelCol] = model.columnMapping[modelCol];
+      continue;
+    }
+    if (imputationColumnMapping.value[modelCol]) {
+      nextMapping[modelCol] = imputationColumnMapping.value[modelCol];
+      continue;
+    }
+    if (cols.includes(modelCol)) {
+      nextMapping[modelCol] = modelCol;
+      continue;
+    }
+
+    const modelColLower = modelCol.toLowerCase();
+    const exactIndex = lowerCols.indexOf(modelColLower);
+    if (exactIndex >= 0) {
+      nextMapping[modelCol] = cols[exactIndex];
+      continue;
+    }
+
+    const fuzzyIndex = lowerCols.findIndex(col => col.includes(modelColLower));
+    nextMapping[modelCol] = fuzzyIndex >= 0 ? cols[fuzzyIndex] : "";
+  }
+
+  imputationColumnMapping.value = nextMapping;
+};
+
+const applySelectedImputationModelParams = () => {
+  const model = selectedImputationModel.value;
+  if (!model?.modelParams) return;
+  imputationParams.value = {
+    ...imputationParams.value,
+    ...Object.fromEntries(Object.entries(model.modelParams).filter(([, value]) => value !== null && value !== undefined)),
+  };
+};
+
+const loadImputationModelsForMethod = async () => {
+  imputationModels.value = [];
+  imputationSelectedModelId.value = null;
+  imputationColumnMapping.value = {};
+  imputationModelSearch.value = "";
+
+  if (!imputationMethod.value || !imputationIsModelBased.value) return;
+
+  try {
+    const result = await window.electronAPI.invoke(API_ROUTES.IMPUTATION.GET_MODELS_BY_METHOD, {
+      methodId: imputationMethod.value,
+    });
+    if (result.success && Array.isArray(result.data)) {
+      imputationModels.value = result.data;
+    }
+  } catch (e) {
+    console.warn("加载插补模型失败:", e);
+  }
+};
+
+const onImputationModelChange = () => {
+  initImputationColumnMapping();
+  applySelectedImputationModelParams();
+  onImputationConfigChange();
+};
+
 // 从 configJson 解析插补配置
 const parseImputationConfig = async (configStr: string) => {
   try {
@@ -455,48 +621,51 @@ const parseImputationConfig = async (configStr: string) => {
     imputationMethod.value = cfg.methodId || "";
     imputationParams.value = cfg.params || {};
     imputationTargetColumns.value = cfg.targetColumns || [];
-    imputationValidateSplit.value = cfg.validateSplit || 0;
+    imputationSelectedModelId.value = cfg.modelId || null;
+    imputationColumnMapping.value = cfg.columnMapping || {};
 
     if (imputationMethod.value) {
       await loadImputationMethodParams(imputationMethod.value);
       // 填充缺省参数值
       for (const p of imputationMethodParams.value) {
         if (imputationParams.value[p.paramKey] === undefined && p.defaultValue !== null) {
-          const val =
-            p.paramType === "number"
-              ? Number(p.defaultValue)
-              : p.paramType === "boolean"
-                ? p.defaultValue === "true"
-                : p.defaultValue;
+          const val = convertImputationParamDefault(p);
           imputationParams.value[p.paramKey] = val;
         }
+      }
+      await loadImputationModelsForMethod();
+      if (cfg.modelId) {
+        imputationSelectedModelId.value = cfg.modelId;
+        initImputationColumnMapping();
       }
     }
   } catch {
     imputationMethod.value = "";
     imputationParams.value = {};
     imputationTargetColumns.value = [];
-    imputationValidateSplit.value = 0;
     imputationMethodParams.value = [];
+    imputationModels.value = [];
+    imputationSelectedModelId.value = null;
+    imputationColumnMapping.value = {};
+    imputationModelSearch.value = "";
   }
 };
 
 // 切换方法时重置参数
 const onImputationMethodChange = async () => {
   imputationParams.value = {};
+  imputationModels.value = [];
+  imputationSelectedModelId.value = null;
+  imputationColumnMapping.value = {};
   await loadImputationMethodParams(imputationMethod.value as string);
   // 填充默认值
   for (const p of imputationMethodParams.value) {
     if (p.defaultValue !== null) {
-      const val =
-        p.paramType === "number"
-          ? Number(p.defaultValue)
-          : p.paramType === "boolean"
-            ? p.defaultValue === "true"
-            : p.defaultValue;
+      const val = convertImputationParamDefault(p);
       imputationParams.value[p.paramKey] = val;
     }
   }
+  await loadImputationModelsForMethod();
   onImputationConfigChange();
 };
 
@@ -511,8 +680,13 @@ const onImputationConfigChange = () => {
   } else {
     cfg.targetColumns = null;
   }
-  if (imputationValidateSplit.value > 0) {
-    cfg.validateSplit = imputationValidateSplit.value;
+  if (imputationIsModelBased.value) {
+    if (imputationSelectedModelId.value) {
+      cfg.modelId = imputationSelectedModelId.value;
+    }
+    if (Object.keys(imputationColumnMapping.value).length > 0) {
+      cfg.columnMapping = { ...imputationColumnMapping.value };
+    }
   }
   const json = JSON.stringify(cfg, null, 2);
   localConfig.value = json;
@@ -691,6 +865,30 @@ const loadDatasetColumns = async (datasetId: number) => {
     console.warn("加载数据集列失败:", e);
   }
 };
+
+const reloadDatasetColumnsForCurrentNode = async (datasetId?: number) => {
+  if (!["OUTLIER_DETECTION", "IMPUTATION", "EXPORT"].includes(props.node.nodeType)) return;
+  if (!datasetId) {
+    datasetColumns.value = [];
+    return;
+  }
+
+  await loadDatasetColumns(datasetId);
+  if (props.node.nodeType === "IMPUTATION") {
+    const prevMapping = JSON.stringify(imputationColumnMapping.value);
+    initImputationColumnMapping();
+    if (selectedImputationModel.value && JSON.stringify(imputationColumnMapping.value) !== prevMapping) {
+      onImputationConfigChange();
+    }
+  }
+};
+
+watch(
+  () => props.datasetId,
+  async datasetId => {
+    await reloadDatasetColumnsForCurrentNode(datasetId);
+  }
+);
 
 // ==================== 初始化加载 ====================
 onMounted(async () => {
@@ -878,5 +1076,35 @@ onMounted(async () => {
   font-size: var(--text-xs);
   color: var(--c-text-muted);
   line-height: 1.4;
+}
+
+.column-mapping-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.model-search-input {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.column-mapping-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mapping-model-col {
+  flex: 0 0 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--c-text-secondary);
+  background: var(--c-bg-muted);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
 }
 </style>

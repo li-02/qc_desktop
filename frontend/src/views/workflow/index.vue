@@ -51,10 +51,14 @@
             </span>
           </div>
           <div class="header-actions">
+            <button class="btn-config-dataset" @click="openConfigDatasetDialog">
+              <span class="btn-icon">▣</span>
+              <span class="config-dataset-text">{{ configDatasetButtonText }}</span>
+            </button>
             <button
               class="btn-execute"
-              :disabled="workflowStore.executing || workflowStore.enabledNodes.length === 0"
-              @click="showExecuteDialog = true">
+              :disabled="workflowStore.executing || workflowStore.enabledNodes.length === 0 || !configDatasetId"
+              @click="handleExecute">
               <template v-if="workflowStore.executing">⏳ 执行中...</template>
               <template v-else>▶ 应用到数据集</template>
             </button>
@@ -92,7 +96,7 @@
     <div class="workflow-config" v-if="selectedNode">
       <NodeConfigPanel
         :node="selectedNode"
-        :dataset-id="executeForm.datasetId ?? undefined"
+        :dataset-id="configDatasetId ?? undefined"
         @update="handleUpdateNode"
         @close="selectedNode = null" />
     </div>
@@ -116,23 +120,22 @@
       </template>
     </el-dialog>
 
-    <!-- 应用到数据集弹窗 -->
-    <el-dialog v-model="showExecuteDialog" title="应用到数据集" width="480px" :close-on-click-modal="false">
-      <el-form :model="executeForm" label-width="80px">
+    <!-- 配置数据集弹窗 -->
+    <el-dialog v-model="showConfigDatasetDialog" title="选择配置数据集" width="480px" :close-on-click-modal="false">
+      <el-form label-width="80px">
         <el-form-item label="数据集" required>
-          <el-select v-model="executeForm.datasetId" placeholder="选择目标数据集" style="width: 100%">
-            <el-option v-for="ds in datasets" :key="ds.id" :label="ds.name" :value="ds.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="数据版本" required v-if="executeForm.datasetId">
-          <el-select v-model="executeForm.initialVersionId" placeholder="选择初始版本" style="width: 100%">
-            <el-option v-for="v in execVersions" :key="v.id" :label="v.name || `版本 ${v.id}`" :value="v.id" />
+          <el-select
+            v-model="configDatasetDraftId"
+            filterable
+            placeholder="选择用于节点配置的数据集"
+            style="width: 100%">
+            <el-option v-for="ds in datasets" :key="ds.id" :label="ds.name" :value="Number(ds.id)" />
           </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showExecuteDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleExecute" :disabled="!canExecute">执行</el-button>
+        <el-button @click="showConfigDatasetDialog = false">取消</el-button>
+        <el-button type="primary" @click="handleConfirmConfigDataset" :disabled="!configDatasetDraftId">确定</el-button>
       </template>
     </el-dialog>
   </div>
@@ -142,7 +145,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
 import { useWorkflowStore } from "@/stores/useWorkflowStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
-import { ElMessageBox } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import WorkflowList from "./components/WorkflowList.vue";
 import WorkflowEditor from "./components/WorkflowEditor.vue";
 import NodeConfigPanel from "./components/NodeConfigPanel.vue";
@@ -184,35 +187,25 @@ const handleCreate = async () => {
   }
 };
 
-// ==================== 执行表单（应用到数据集） ====================
-const showExecuteDialog = ref(false);
-const executeForm = ref({
-  datasetId: null as number | null,
-  initialVersionId: null as number | null,
-});
-
 const datasets = computed(() => datasetStore.datasets || []);
-const execVersions = ref<any[]>([]);
-
-watch(
-  () => executeForm.value.datasetId,
-  async dsId => {
-    if (!dsId) {
-      execVersions.value = [];
-      return;
-    }
-    try {
-      const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.GET_VERSIONS, { datasetId: dsId });
-      if (result.success) execVersions.value = result.data || [];
-      else execVersions.value = [];
-    } catch {
-      execVersions.value = [];
-    }
-    executeForm.value.initialVersionId = null;
-  }
+const showConfigDatasetDialog = ref(false);
+const configDatasetId = ref<number | null>(null);
+const configDatasetDraftId = ref<number | null>(null);
+const configDataset = computed(() => datasets.value.find(ds => Number(ds.id) === configDatasetId.value));
+const configDatasetButtonText = computed(() =>
+  configDataset.value ? `配置数据集：${configDataset.value.name}` : "配置数据集"
 );
 
-const canExecute = computed(() => executeForm.value.datasetId && executeForm.value.initialVersionId);
+const openConfigDatasetDialog = () => {
+  configDatasetDraftId.value = configDatasetId.value;
+  showConfigDatasetDialog.value = true;
+};
+
+const handleConfirmConfigDataset = () => {
+  if (!configDatasetDraftId.value) return;
+  configDatasetId.value = configDatasetDraftId.value;
+  showConfigDatasetDialog.value = false;
+};
 
 // ==================== 工作流选择 ====================
 const handleSelectWorkflow = async (workflowId: number) => {
@@ -222,6 +215,8 @@ const handleSelectWorkflow = async (workflowId: number) => {
     return;
   }
   selectedNode.value = null;
+  configDatasetId.value = null;
+  configDatasetDraftId.value = null;
   historyDetail.value = null;
   historyCollapsed.value = false;
   await workflowStore.loadWorkflowDetail(workflowId);
@@ -440,14 +435,30 @@ const getTabForNodeType = (nodeType: WorkflowNodeType): string | null => {
 };
 
 // ==================== 执行管理 ====================
-const handleExecute = async () => {
-  if (!workflowStore.currentWorkflow || !canExecute.value) return;
-  showExecuteDialog.value = false;
-  await workflowStore.executeWorkflow({
-    workflowId: workflowStore.currentWorkflow.workflow.id,
-    datasetId: executeForm.value.datasetId!,
-    initialVersionId: executeForm.value.initialVersionId!,
+const getDefaultExecutionVersionId = async (datasetId: number) => {
+  const result = await window.electronAPI.invoke(API_ROUTES.DATASETS.GET_VERSIONS, { datasetId });
+  if (!result.success || !Array.isArray(result.data) || result.data.length === 0) {
+    throw new Error(result.error || "未找到可执行的数据版本");
+  }
+
+  const versions = [...result.data].sort((a: any, b: any) => {
+    return (a.createdAt || 0) - (b.createdAt || 0) || a.id - b.id;
   });
+  return (versions.find((v: any) => v.stageType === "RAW" && !v.parentVersionId) || versions[0]).id;
+};
+
+const handleExecute = async () => {
+  if (!workflowStore.currentWorkflow || !configDatasetId.value || workflowStore.executing) return;
+  try {
+    const initialVersionId = await getDefaultExecutionVersionId(configDatasetId.value);
+    await workflowStore.executeWorkflow({
+      workflowId: workflowStore.currentWorkflow.workflow.id,
+      datasetId: configDatasetId.value,
+      initialVersionId,
+    });
+  } catch (error: any) {
+    ElMessage.error(error?.message || "启动工作流失败");
+  }
 };
 
 const handleCancelExecution = async () => {
@@ -561,8 +572,9 @@ onUnmounted(() => {
 }
 
 .btn-icon {
-  font-size: var(--text-xl);
+  font-size: var(--text-lg);
   font-weight: var(--font-bold);
+  line-height: 1;
 }
 
 /* 中间编辑器 */
@@ -633,6 +645,39 @@ onUnmounted(() => {
 .status-failed {
   background: var(--c-danger-bg);
   color: var(--c-danger);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.btn-config-dataset {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 260px;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--c-brand-border);
+  border-radius: var(--radius-btn);
+  background: var(--c-brand-soft);
+  color: var(--c-brand);
+  font-size: var(--text-md);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-config-dataset:hover {
+  background: var(--c-brand-muted);
+  border-color: var(--c-brand);
+}
+
+.config-dataset-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .btn-execute {

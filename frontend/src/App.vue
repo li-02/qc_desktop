@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from "vue";
 import GlobalDialogs from "./components/dialogs/index.vue";
+import GlobalTooltip from "./components/GlobalTooltip.vue";
 import { useCategoryStore } from "./stores/useCategoryStore";
 const categoryStore = useCategoryStore();
 onMounted(() => {
@@ -13,6 +14,7 @@ onUnmounted(() => {});
 <template>
   <router-view />
   <GlobalDialogs />
+  <GlobalTooltip />
 </template>
 
 <style>
@@ -378,7 +380,15 @@ body {
    ============================================================ */
 .el-tooltip__popper {
   font-size: var(--text-sm);
-  border-radius: var(--radius-overlay);
+  border: 1px solid var(--c-border-strong) !important;
+  border-radius: var(--radius-control) !important;
+  background: var(--c-bg-elevated) !important;
+  box-shadow: var(--shadow-lg) !important;
+  color: var(--c-text-base) !important;
+}
+
+.el-popper.el-tooltip__popper > .el-popper__arrow {
+  display: none !important;
 }
 
 .el-popover {

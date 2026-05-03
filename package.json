@@ -16,7 +16,14 @@
     "postinstall": "electron-builder install-app-deps",
     "watch": "tsc -w -p electron/tsconfig.json",
     "rebuild": "electron-builder install-app-deps",
-    "format": "prettier --write \"./{electron,frontend}/**/*.{html,vue,ts,js,json,md}\""
+    "format": "prettier --write \"./{electron,frontend}/**/*.{html,vue,ts,js,json,md}\"",
+    "test": "pnpm run test:frontend && pnpm run test:electron && pnpm run test:python",
+    "test:frontend": "pnpm --dir frontend exec vitest run",
+    "test:frontend:watch": "pnpm --dir frontend exec vitest",
+    "test:electron": "pnpm exec jest --config electron/jest.config.js --passWithNoTests",
+    "test:python": "cd python && .\\.venv\\Scripts\\python.exe -m pytest",
+    "test:e2e": "playwright test --config=e2e/playwright.config.ts",
+    "test:coverage": "pnpm run test:frontend -- --coverage && pnpm run test:electron -- --coverage"
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1",
@@ -28,6 +35,8 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.16.0",
     "@types/papaparse": "^5.3.16",
     "concurrently": "^8.2.2",
@@ -35,7 +44,9 @@
     "electron": "35.0.3",
     "electron-builder": "^25.1.8",
     "electron-rebuild": "^3.2.9",
+    "jest": "^30.3.0",
     "prettier": "^3.5.3",
+    "ts-jest": "^29.4.9",
     "typescript": "^5.4.2",
     "wait-on": "^7.2.0"
   }

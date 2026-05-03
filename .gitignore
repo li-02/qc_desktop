@@ -32,7 +32,6 @@ docs
 
 .agents
 .claude
-.github
 .idea
 .ropeproject
 .sisyphus
@@ -42,7 +41,6 @@ docs
 .windsurf
 
 # AI/agent local guidance
-AGENTS.md
 CLAUDE.md
 DESIGN_SYSTEM.md
 .cursorrules

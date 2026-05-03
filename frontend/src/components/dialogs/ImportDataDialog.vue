@@ -7,7 +7,12 @@ import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { API_ROUTES } from "@shared/constants/apiRoutes";
 import type { ImportTaskProgress } from "@shared/types/projectInterface";
-import type { MySQLTableInfo, MySQLTablePreview } from "@shared/types/mysqlInterface";
+import type {
+  DatabaseConnectionProfile,
+  MySQLColumnSelection,
+  MySQLTableInfo,
+  MySQLTablePreview,
+} from "@shared/types/mysqlInterface";
 
 // 对话框状态
 const dialogVisible = ref(false);
@@ -55,8 +60,13 @@ interface FileEntry {
 }
 const fileEntries = ref<FileEntry[]>([]);
 
+interface DbSelectedColumnGroup extends MySQLColumnSelection {}
+
 // ── MySQL 状态 ──
 const dbConfig = ref({ host: "127.0.0.1", port: 3306, user: "", password: "", database: "" });
+const dbConnectionProfiles = ref<DatabaseConnectionProfile[]>([]);
+const dbSelectedProfileId = ref<number | null>(null);
+const dbProfilesLoading = ref(false);
 const dbConnStatus = ref<"idle" | "testing" | "success" | "failed">("idle");
 const dbConnMessage = ref("");
 const dbTables = ref<MySQLTableInfo[]>([]);
@@ -64,6 +74,11 @@ const dbTableSearch = ref("");
 const dbSelectedTable = ref("");
 const dbPreview = ref<MySQLTablePreview | null>(null);
 const dbPreviewLoading = ref(false);
+const dbTableTimeColumn = ref("");
+const dbSelectedColumnGroups = ref<DbSelectedColumnGroup[]>([]);
+const dbCurrentTableTimeRange = ref<[Date, Date] | null>(null);
+const dbDefaultTableTimeRange = ref<[Date, Date] | null>(null);
+const dbUnifiedTimeRange = ref<[Date, Date] | null>(null);
 const dbCurrentStep = ref(0); // 0: 连接, 1: 选表, 2: 配置
 const dbDatasetName = ref("");
 const dbImporting = ref(false);
@@ -149,9 +164,28 @@ const dbFilteredTables = computed(() => {
   if (!dbTableSearch.value) return dbTables.value;
   return dbTables.value.filter(t => t.name.toLowerCase().includes(dbTableSearch.value.toLowerCase()));
 });
+const dbSelectedColumnCount = computed(() =>
+  dbSelectedColumnGroups.value.reduce((total, group) => total + group.columns.length, 0)
+);
+const dbCurrentSelectableColumns = computed(() => {
+  if (!dbPreview.value || !dbTableTimeColumn.value) return [];
+  return dbPreview.value.columns.filter(column => column !== dbTableTimeColumn.value);
+});
+const dbTimeRangesReady = computed(
+  () =>
+    dbSelectedColumnGroups.value.length > 0 &&
+    dbSelectedColumnGroups.value.every(group => group.startTime && group.endTime)
+);
+const dbSelectedRangeMismatch = computed(() => {
+  if (dbSelectedColumnGroups.value.length <= 1 || !dbTimeRangesReady.value) return false;
+  const [first] = dbSelectedColumnGroups.value;
+  return dbSelectedColumnGroups.value.some(
+    group => group.startTime !== first.startTime || group.endTime !== first.endTime
+  );
+});
 const dbCanGoNext = computed(() => {
   if (dbCurrentStep.value === 0) return dbConnStatus.value === "success";
-  if (dbCurrentStep.value === 1) return !!dbSelectedTable.value;
+  if (dbCurrentStep.value === 1) return dbSelectedColumnCount.value > 0 && dbTimeRangesReady.value;
   return false;
 });
 const dbCanImport = computed(
@@ -161,11 +195,142 @@ const dbCanImport = computed(
     !!categoryStore.currentCategory &&
     !!dbDatasetName.value.trim() &&
     dbConnStatus.value === "success" &&
-    !!dbSelectedTable.value
+    dbSelectedColumnCount.value > 0 &&
+    !!dbUnifiedTimeRange.value
 );
 const dbCanTestConn = computed(
   () => !!dbConfig.value.host.trim() && !!dbConfig.value.user.trim() && !!dbConfig.value.database.trim()
 );
+
+const dbConnectionTitle = (profile: DatabaseConnectionProfile) => {
+  return profile.profileName || `${profile.user}@${profile.host}:${profile.port}/${profile.database}`;
+};
+
+const dbConnectionMeta = (profile: DatabaseConnectionProfile) => {
+  return `${profile.host}:${profile.port} · ${profile.database}`;
+};
+
+const getDbProfileName = () => {
+  const { host, port, user, database } = dbConfig.value;
+  return `${user.trim()}@${host.trim()}:${port}/${database.trim()}`;
+};
+
+const findMatchingDbProfile = () => {
+  const { host, port, user, database } = dbConfig.value;
+  return dbConnectionProfiles.value.find(
+    profile =>
+      profile.host === host.trim() &&
+      profile.port === port &&
+      profile.user === user.trim() &&
+      profile.database === database.trim()
+  );
+};
+
+const commonTimeColumnNames = [
+  "record_time",
+  "timestamp",
+  "time",
+  "datetime",
+  "date_time",
+  "date",
+  "created_at",
+  "updated_at",
+  "采集时间",
+  "时间",
+  "日期",
+];
+
+const isLikelyTimeValue = (value: unknown) => {
+  if (value === null || value === undefined || value === "") return false;
+  if (value instanceof Date) return true;
+  const text = String(value).trim();
+  if (/^\d{10,13}$/.test(text)) return true;
+  return Number.isFinite(Date.parse(text));
+};
+
+const parseDbTimeValue = (value: unknown): Date | null => {
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value;
+  if (value === null || value === undefined || value === "") return null;
+  const text = String(value).trim();
+  const timestamp = /^\d{10,13}$/.test(text) ? Number(text.length === 10 ? `${text}000` : text) : Date.parse(text);
+  if (!Number.isFinite(timestamp)) return null;
+  return new Date(timestamp);
+};
+
+const formatDbDateTime = (date: Date) => {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(
+    date.getMinutes()
+  )}:${pad(date.getSeconds())}`;
+};
+
+const dateRangeToDbRange = (range: [Date, Date] | null) => {
+  if (!range) return null;
+  return {
+    startTime: formatDbDateTime(range[0]),
+    endTime: formatDbDateTime(range[1]),
+  };
+};
+
+const cloneDbDateRange = (range: [Date, Date] | null): [Date, Date] | null => {
+  if (!range) return null;
+  return [new Date(range[0].getTime()), new Date(range[1].getTime())];
+};
+
+const detectTimeColumn = (preview: MySQLTablePreview | null) => {
+  if (!preview?.columns.length) return "";
+  const exactMatch = preview.columns.find(column => commonTimeColumnNames.includes(column.toLowerCase()));
+  if (exactMatch) return exactMatch;
+
+  const nameMatch = preview.columns.find(column => {
+    const normalized = column.toLowerCase();
+    return (
+      normalized.includes("time") || normalized.includes("date") || column.includes("时间") || column.includes("日期")
+    );
+  });
+  if (nameMatch) return nameMatch;
+
+  let bestColumn = "";
+  let bestScore = 0;
+  preview.columns.forEach((column, columnIndex) => {
+    const sample = preview.rows.slice(0, 20).map(row => row[columnIndex]);
+    if (sample.length === 0) return;
+    const score = sample.filter(isLikelyTimeValue).length / sample.length;
+    if (score > bestScore) {
+      bestScore = score;
+      bestColumn = column;
+    }
+  });
+  return bestScore >= 0.6 ? bestColumn : "";
+};
+
+const getSelectedColumnGroup = (table: string) => dbSelectedColumnGroups.value.find(group => group.table === table);
+
+const inferPreviewTimeRange = (preview: MySQLTablePreview | null, timeColumn: string): [Date, Date] | null => {
+  if (!preview || !timeColumn) return null;
+  const timeIndex = preview.columns.indexOf(timeColumn);
+  if (timeIndex < 0) return null;
+  const times = preview.rows
+    .map(row => parseDbTimeValue(row[timeIndex]))
+    .filter((date): date is Date => !!date)
+    .sort((a, b) => a.getTime() - b.getTime());
+  if (times.length === 0) return null;
+  return [times[0], times[times.length - 1]];
+};
+
+const syncCurrentTableRangeToGroup = () => {
+  dbDefaultTableTimeRange.value = cloneDbDateRange(dbCurrentTableTimeRange.value);
+  const group = getSelectedColumnGroup(dbSelectedTable.value);
+  const range = dateRangeToDbRange(dbCurrentTableTimeRange.value);
+  if (!group || !range) return;
+  group.startTime = range.startTime;
+  group.endTime = range.endTime;
+};
+
+const isDbColumnSelected = (column: string) => {
+  const group = getSelectedColumnGroup(dbSelectedTable.value);
+  return !!group?.columns.includes(column);
+};
 
 const statusLabel = (status: string): string => {
   const map: Record<string, string> = { pending: "等待中", processing: "处理中...", completed: "完成", failed: "失败" };
@@ -175,6 +340,9 @@ const statusLabel = (status: string): string => {
 // ── 来源切换 ──
 const switchSource = (src: "file" | "mysql" | "datasource") => {
   importSource.value = src;
+  if (src === "mysql") {
+    void loadDbConnectionProfiles();
+  }
 };
 
 // ── 缺失值管理 ──
@@ -289,6 +457,64 @@ const submitImport = async () => {
 };
 
 // ── MySQL 方法 ──
+const loadDbConnectionProfiles = async () => {
+  dbProfilesLoading.value = true;
+  try {
+    const result = await window.electronAPI.invoke(API_ROUTES.MYSQL.GET_CONNECTION_PROFILES, {});
+    if (result.success) {
+      dbConnectionProfiles.value = result.data?.profiles || [];
+    } else {
+      dbConnectionProfiles.value = [];
+    }
+  } catch {
+    dbConnectionProfiles.value = [];
+  } finally {
+    dbProfilesLoading.value = false;
+  }
+};
+
+const selectDbConnectionProfile = (profile: DatabaseConnectionProfile) => {
+  dbSelectedProfileId.value = profile.id;
+  dbConfig.value = {
+    host: profile.host,
+    port: profile.port,
+    user: profile.user,
+    password: profile.password,
+    database: profile.database,
+  };
+  dbConnStatus.value = "success";
+  dbConnMessage.value = `已选择保存的连接：${dbConnectionTitle(profile)}`;
+  dbTables.value = [];
+  dbTableSearch.value = "";
+  dbSelectedTable.value = "";
+  dbPreview.value = null;
+  dbTableTimeColumn.value = "";
+  dbCurrentTableTimeRange.value = null;
+  dbDefaultTableTimeRange.value = null;
+  dbSelectedColumnGroups.value = [];
+  dbUnifiedTimeRange.value = null;
+};
+
+const saveCurrentDbConnectionProfile = async () => {
+  const matchedProfile = findMatchingDbProfile();
+  const result = await window.electronAPI.invoke(API_ROUTES.MYSQL.SAVE_CONNECTION_PROFILE, {
+    id: matchedProfile?.id,
+    profileName: matchedProfile?.profileName || getDbProfileName(),
+    connection: {
+      host: dbConfig.value.host.trim(),
+      port: dbConfig.value.port,
+      user: dbConfig.value.user.trim(),
+      password: dbConfig.value.password,
+      database: dbConfig.value.database.trim(),
+    },
+    isDefault: dbConnectionProfiles.value.length === 0,
+  });
+  if (result.success) {
+    await loadDbConnectionProfiles();
+    dbSelectedProfileId.value = result.data?.id || matchedProfile?.id || null;
+  }
+};
+
 const testDbConnection = async () => {
   dbConnStatus.value = "testing";
   dbConnMessage.value = "正在连接...";
@@ -298,6 +524,7 @@ const testDbConnection = async () => {
     });
     if (result.success) {
       dbConnStatus.value = "success";
+      await saveCurrentDbConnectionProfile();
       dbConnMessage.value = `连接成功 (${result.data?.serverVersion || "MySQL"})`;
     } else {
       dbConnStatus.value = "failed";
@@ -310,6 +537,12 @@ const testDbConnection = async () => {
 };
 
 const loadDbTables = async () => {
+  dbSelectedColumnGroups.value = [];
+  dbSelectedTable.value = "";
+  dbPreview.value = null;
+  dbTableTimeColumn.value = "";
+  dbCurrentTableTimeRange.value = null;
+  dbDefaultTableTimeRange.value = null;
   const result = await window.electronAPI.invoke(API_ROUTES.MYSQL.GET_TABLES, {
     connection: { ...dbConfig.value },
   });
@@ -323,6 +556,8 @@ const loadDbTables = async () => {
 const selectDbTable = async (tableName: string) => {
   dbSelectedTable.value = tableName;
   dbPreview.value = null;
+  dbTableTimeColumn.value = "";
+  dbCurrentTableTimeRange.value = null;
   dbPreviewLoading.value = true;
   try {
     const result = await window.electronAPI.invoke(API_ROUTES.MYSQL.GET_TABLE_PREVIEW, {
@@ -332,6 +567,20 @@ const selectDbTable = async (tableName: string) => {
     });
     if (result.success) {
       dbPreview.value = result.data;
+      dbTableTimeColumn.value = detectTimeColumn(result.data);
+      const selectedGroup = getSelectedColumnGroup(tableName);
+      if (selectedGroup?.startTime && selectedGroup.endTime) {
+        const start = parseDbTimeValue(selectedGroup.startTime);
+        const end = parseDbTimeValue(selectedGroup.endTime);
+        dbCurrentTableTimeRange.value = start && end ? [start, end] : null;
+      } else if (dbDefaultTableTimeRange.value) {
+        dbCurrentTableTimeRange.value = cloneDbDateRange(dbDefaultTableTimeRange.value);
+      } else {
+        dbCurrentTableTimeRange.value = inferPreviewTimeRange(result.data, dbTableTimeColumn.value);
+      }
+      if (!dbTableTimeColumn.value) {
+        ElMessage.warning("当前表未检测到时间列，无法参与按时间对齐");
+      }
     } else {
       ElMessage.error(result.error || "获取预览失败");
     }
@@ -340,11 +589,83 @@ const selectDbTable = async (tableName: string) => {
   }
 };
 
+const toggleDbColumnSelection = (column: string) => {
+  if (!dbSelectedTable.value || !dbTableTimeColumn.value || column === dbTableTimeColumn.value) return;
+  const range = dateRangeToDbRange(dbCurrentTableTimeRange.value);
+  if (!range) {
+    ElMessage.warning("请先为当前表选择起止时间");
+    return;
+  }
+  dbDefaultTableTimeRange.value = cloneDbDateRange(dbCurrentTableTimeRange.value);
+  const group = getSelectedColumnGroup(dbSelectedTable.value);
+  if (group) {
+    group.startTime = range.startTime;
+    group.endTime = range.endTime;
+    if (group.columns.includes(column)) {
+      group.columns = group.columns.filter(item => item !== column);
+      if (group.columns.length === 0) {
+        dbSelectedColumnGroups.value = dbSelectedColumnGroups.value.filter(
+          item => item.table !== dbSelectedTable.value
+        );
+      }
+    } else {
+      group.columns.push(column);
+    }
+    return;
+  }
+
+  dbSelectedColumnGroups.value.push({
+    table: dbSelectedTable.value,
+    timeColumn: dbTableTimeColumn.value,
+    startTime: range.startTime,
+    endTime: range.endTime,
+    columns: [column],
+  });
+};
+
+const removeDbSelectedColumn = (table: string, column: string) => {
+  const group = getSelectedColumnGroup(table);
+  if (!group) return;
+  group.columns = group.columns.filter(item => item !== column);
+  if (group.columns.length === 0) {
+    dbSelectedColumnGroups.value = dbSelectedColumnGroups.value.filter(item => item.table !== table);
+  }
+};
+
+const computeUnifiedDbTimeRange = () => {
+  const ranges = dbSelectedColumnGroups.value
+    .map(group => ({
+      start: parseDbTimeValue(group.startTime),
+      end: parseDbTimeValue(group.endTime),
+    }))
+    .filter((range): range is { start: Date; end: Date } => !!range.start && !!range.end);
+  if (ranges.length === 0) {
+    dbUnifiedTimeRange.value = null;
+    return;
+  }
+
+  const overlapStart = new Date(Math.max(...ranges.map(range => range.start.getTime())));
+  const overlapEnd = new Date(Math.min(...ranges.map(range => range.end.getTime())));
+  if (overlapStart.getTime() <= overlapEnd.getTime()) {
+    dbUnifiedTimeRange.value = [overlapStart, overlapEnd];
+    return;
+  }
+
+  const unionStart = new Date(Math.min(...ranges.map(range => range.start.getTime())));
+  const unionEnd = new Date(Math.max(...ranges.map(range => range.end.getTime())));
+  dbUnifiedTimeRange.value = [unionStart, unionEnd];
+  ElMessage.warning("所选表的时间范围没有重叠，已先填入最大覆盖范围，请确认最终起止时间");
+};
+
 const goDbNext = async () => {
   if (dbCurrentStep.value === 0 && dbCanGoNext.value) {
     await loadDbTables();
     dbCurrentStep.value = 1;
   } else if (dbCurrentStep.value === 1 && dbCanGoNext.value) {
+    computeUnifiedDbTimeRange();
+    if (dbSelectedRangeMismatch.value) {
+      ElMessage.warning("所选表的起止时间不一致，请在配置页确认统一起止时间");
+    }
     dbCurrentStep.value = 2;
   }
 };
@@ -381,7 +702,16 @@ const submitMysqlImport = async () => {
       datasetName: dbDatasetName.value.trim(),
       dataType: selectedDataType.value,
       connection: { ...dbConfig.value },
-      table: dbSelectedTable.value,
+      table: dbSelectedColumnGroups.value[0]?.table || dbSelectedTable.value,
+      selectedTables: dbSelectedColumnGroups.value.map(group => ({
+        table: group.table,
+        timeColumn: group.timeColumn,
+        startTime: group.startTime,
+        endTime: group.endTime,
+        columns: [...group.columns],
+      })),
+      startTime: dateRangeToDbRange(dbUnifiedTimeRange.value)?.startTime,
+      endTime: dateRangeToDbRange(dbUnifiedTimeRange.value)?.endTime,
       missingValueTypes: missingValueTypes.value.map(v => String(v)),
     });
     if (!result.success) {
@@ -398,6 +728,7 @@ const submitMysqlImport = async () => {
 // ── 对话框控制 ──
 const open = async () => {
   dialogVisible.value = true;
+  void loadDbConnectionProfiles();
   const customTypes = await settingsStore.getCustomMissingTypes();
   if (customTypes?.length) {
     customTypes.forEach((type: string) => {
@@ -428,12 +759,19 @@ const handleClosed = () => {
   // MySQL 来源重置
   importSource.value = "file";
   dbConfig.value = { host: "127.0.0.1", port: 3306, user: "", password: "", database: "" };
+  dbSelectedProfileId.value = null;
+  dbProfilesLoading.value = false;
   dbConnStatus.value = "idle";
   dbConnMessage.value = "";
   dbTables.value = [];
   dbTableSearch.value = "";
   dbSelectedTable.value = "";
   dbPreview.value = null;
+  dbTableTimeColumn.value = "";
+  dbCurrentTableTimeRange.value = null;
+  dbDefaultTableTimeRange.value = null;
+  dbSelectedColumnGroups.value = [];
+  dbUnifiedTimeRange.value = null;
   dbPreviewLoading.value = false;
   dbCurrentStep.value = 0;
   dbDatasetName.value = "";
@@ -454,7 +792,7 @@ defineExpose({ open, close });
 <template>
   <el-dialog
     v-model="dialogVisible"
-    :width="importSource === 'mysql' && !dbImporting && !dbImportFinished && dbCurrentStep === 1 ? '860px' : '680px'"
+    :width="importSource === 'mysql' && !dbImporting && !dbImportFinished && dbCurrentStep <= 1 ? '860px' : '680px'"
     class="batch-import-dialog"
     destroy-on-close
     :close-on-click-modal="canClose"
@@ -725,8 +1063,31 @@ defineExpose({ open, close });
            ════════════════════════════════════════ -->
       <template v-if="importSource === 'mysql'">
         <!-- DB Step 0: 连接配置 -->
-        <div v-if="!dbImporting && !dbImportFinished && dbCurrentStep === 0" class="step-container fade-in">
+        <div
+          v-if="!dbImporting && !dbImportFinished && dbCurrentStep === 0"
+          class="step-container fade-in db-connect-layout">
           <div class="section-label" style="margin-bottom: 14px">数据库连接配置</div>
+          <aside class="db-connect-saved-panel">
+            <div class="db-saved-header">
+              <span class="section-label">已保存连接</span>
+              <span v-if="dbProfilesLoading" class="db-saved-loading">加载中</span>
+            </div>
+            <div class="db-saved-list">
+              <button
+                v-for="profile in dbConnectionProfiles"
+                :key="profile.id"
+                type="button"
+                class="db-saved-item"
+                :class="{ 'is-active': dbSelectedProfileId === profile.id }"
+                @click="selectDbConnectionProfile(profile)">
+                <span class="db-saved-title">{{ dbConnectionTitle(profile) }}</span>
+                <span class="db-saved-meta">{{ dbConnectionMeta(profile) }}</span>
+              </button>
+              <div v-if="!dbProfilesLoading && dbConnectionProfiles.length === 0" class="db-saved-empty">
+                成功连接后会自动保存到这里
+              </div>
+            </div>
+          </aside>
           <div class="db-form-grid">
             <div class="db-form-group db-form-span-3">
               <label class="db-form-label">主机地址</label>
@@ -808,6 +1169,23 @@ defineExpose({ open, close });
             </div>
           </div>
           <!-- 右侧：数据预览 -->
+          <div class="db-selected-summary">
+            <div class="db-selected-summary-title">已选 {{ dbSelectedColumnCount }} 列</div>
+            <div v-if="dbSelectedColumnGroups.length === 0" class="db-selected-empty">可从多个表连续选择列</div>
+            <div v-for="group in dbSelectedColumnGroups" :key="group.table" class="db-selected-group">
+              <div class="db-selected-group-title">{{ group.table }}</div>
+              <div class="db-selected-tags">
+                <button
+                  v-for="column in group.columns"
+                  :key="`${group.table}.${column}`"
+                  type="button"
+                  class="db-selected-tag"
+                  @click="removeDbSelectedColumn(group.table, column)">
+                  {{ column }} ×
+                </button>
+              </div>
+            </div>
+          </div>
           <div class="db-preview-panel">
             <div class="section-label" style="margin-bottom: 8px">数据预览</div>
             <div v-if="!dbSelectedTable" class="db-preview-placeholder">请在左侧选择数据表</div>
@@ -816,6 +1194,34 @@ defineExpose({ open, close });
               <div class="db-preview-meta">
                 共 <strong>{{ dbPreview.totalCount.toLocaleString() }}</strong> 行 ·
                 <strong>{{ dbPreview.columns.length }}</strong> 列（预览前 20 行）
+              </div>
+              <div class="db-time-detect" :class="{ 'is-missing': !dbTableTimeColumn }">
+                <span>时间列</span>
+                <strong>{{ dbTableTimeColumn || "未检测到" }}</strong>
+                <em v-if="!dbTableTimeColumn">该表不能参与对齐，请选择包含时间列的表</em>
+              </div>
+              <div v-if="dbTableTimeColumn" class="db-time-range-picker">
+                <span>当前表起止时间</span>
+                <el-date-picker
+                  v-model="dbCurrentTableTimeRange"
+                  type="datetimerange"
+                  range-separator="至"
+                  start-placeholder="开始时间"
+                  end-placeholder="结束时间"
+                  size="small"
+                  @change="syncCurrentTableRangeToGroup" />
+              </div>
+              <div class="db-column-picker" :class="{ 'is-disabled': !dbTableTimeColumn }">
+                <button
+                  v-for="column in dbCurrentSelectableColumns"
+                  :key="column"
+                  type="button"
+                  class="db-column-chip"
+                  :class="{ 'is-active': isDbColumnSelected(column) }"
+                  :disabled="!dbTableTimeColumn"
+                  @click="toggleDbColumnSelection(column)">
+                  {{ column }}
+                </button>
               </div>
               <div class="db-preview-table-wrap">
                 <table class="db-preview-table">
@@ -839,7 +1245,30 @@ defineExpose({ open, close });
         <div v-if="!dbImporting && !dbImportFinished && dbCurrentStep === 2" class="step-container fade-in">
           <div class="db-config-info">
             <span class="db-config-info-label">数据来源</span>
-            <span class="db-config-info-value">{{ dbConfig.database }} / {{ dbSelectedTable }}</span>
+            <span class="db-config-info-value">
+              {{ dbConfig.database }} / {{ dbSelectedColumnGroups.length }} 个表 / {{ dbSelectedColumnCount }} 列
+            </span>
+          </div>
+          <div class="db-config-selection-list">
+            <div v-for="group in dbSelectedColumnGroups" :key="group.table" class="db-config-selection-item">
+              <strong>{{ group.table }}</strong>
+              <span>{{ group.startTime }} 至 {{ group.endTime }}</span>
+              <em>{{ group.columns.join("、") }}</em>
+            </div>
+          </div>
+          <div v-if="dbSelectedRangeMismatch" class="db-range-warning">
+            多个表的起止时间不一致，请确认下面用于最终对齐导入的统一起止时间。
+          </div>
+          <div class="db-form-group" style="margin-bottom: 16px">
+            <label class="db-form-label section-label">统一起止时间</label>
+            <el-date-picker
+              v-model="dbUnifiedTimeRange"
+              type="datetimerange"
+              range-separator="至"
+              start-placeholder="统一开始时间"
+              end-placeholder="统一结束时间"
+              size="large"
+              style="width: 100%" />
           </div>
           <div class="db-form-group" style="margin-bottom: 16px">
             <label class="db-form-label section-label">数据集名称</label>
@@ -1605,6 +2034,86 @@ defineExpose({ open, close });
 }
 
 /* ── MySQL 连接表单 ── */
+.db-connect-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 18px;
+}
+.db-connect-layout > :not(.db-connect-saved-panel) {
+  grid-column: 2;
+}
+.db-connect-saved-panel {
+  grid-column: 1;
+  grid-row: 1 / 4;
+  min-width: 0;
+}
+.db-saved-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.db-saved-loading {
+  color: #94a3b8;
+  font-size: var(--text-xs);
+}
+.db-saved-list {
+  max-height: 248px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-panel);
+  background: #f8fafc;
+}
+.db-saved-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid #eef2f7;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease;
+}
+.db-saved-item:last-child {
+  border-bottom: 0;
+}
+.db-saved-item:hover {
+  background: #f0fdf4;
+}
+.db-saved-item.is-active {
+  background: #ecfdf5;
+  border-left: 3px solid var(--c-brand);
+}
+.db-saved-title,
+.db-saved-meta {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.db-saved-title {
+  color: #1e293b;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.db-saved-meta {
+  color: #64748b;
+  font-size: var(--text-xs);
+}
+.db-saved-empty {
+  padding: 22px 14px;
+  color: #94a3b8;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  text-align: center;
+}
 .db-form-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1672,7 +2181,7 @@ defineExpose({ open, close });
 .db-table-list {
   flex: 1;
   overflow-y: auto;
-  max-height: 290px;
+  max-height: 220px;
   border: 1px solid #e2e8f0;
   border-radius: var(--radius-panel);
   background: #f8fafc;
@@ -1730,9 +2239,58 @@ defineExpose({ open, close });
   font-size: var(--text-sm);
   color: #94a3b8;
 }
+.db-selected-summary {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-panel);
+  background: #ffffff;
+  max-height: 150px;
+  overflow-y: auto;
+}
+.db-selected-summary-title {
+  color: #475569;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.db-selected-empty {
+  color: #94a3b8;
+  font-size: var(--text-xs);
+}
+.db-selected-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.db-selected-group:last-child {
+  margin-bottom: 0;
+}
+.db-selected-group-title {
+  color: #334155;
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+.db-selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.db-selected-tag {
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius-control);
+  background: #ecfdf5;
+  color: #047857;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  padding: 3px 7px;
+}
 .db-preview-panel {
   display: flex;
   flex-direction: column;
+  grid-column: 2;
+  grid-row: 1 / 3;
   min-width: 0;
 }
 .db-preview-placeholder {
@@ -1751,10 +2309,74 @@ defineExpose({ open, close });
   color: #64748b;
   margin-bottom: 8px;
 }
+.db-time-detect {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius-panel);
+  background: #f0fdf4;
+  color: #047857;
+  font-size: var(--text-sm);
+}
+.db-time-detect.is-missing {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #dc2626;
+}
+.db-time-detect strong {
+  font-weight: 700;
+}
+.db-time-detect em {
+  color: #ef4444;
+  font-size: var(--text-xs);
+  font-style: normal;
+}
+.db-time-range-picker {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+  color: #475569;
+  font-size: var(--text-sm);
+}
+.db-column-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+  max-height: 92px;
+  overflow-y: auto;
+}
+.db-column-chip {
+  border: 1px solid #dbe4ef;
+  border-radius: var(--radius-control);
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  padding: 6px 10px;
+}
+.db-column-chip:hover {
+  border-color: #86efac;
+  color: #047857;
+}
+.db-column-chip.is-active {
+  background: #047857;
+  border-color: #047857;
+  color: #ffffff;
+}
+.db-column-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
 .db-preview-table-wrap {
   flex: 1;
   overflow: auto;
-  max-height: 270px;
+  max-height: 210px;
   border: 1px solid #e2e8f0;
   border-radius: var(--radius-panel);
 }
@@ -1812,6 +2434,48 @@ defineExpose({ open, close });
   font-size: var(--text-sm);
   color: #047857;
   font-family: var(--font-mono);
+}
+.db-config-selection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  max-height: 130px;
+  overflow-y: auto;
+}
+.db-config-selection-item {
+  display: grid;
+  grid-template-columns: 150px 280px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-panel);
+  background: #ffffff;
+  color: #475569;
+  font-size: var(--text-xs);
+}
+.db-config-selection-item strong,
+.db-config-selection-item em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.db-config-selection-item strong {
+  color: #1e293b;
+}
+.db-config-selection-item em {
+  color: #047857;
+  font-style: normal;
+}
+.db-range-warning {
+  padding: 9px 12px;
+  margin-bottom: 14px;
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-panel);
+  background: #fffbeb;
+  color: #b45309;
+  font-size: var(--text-sm);
 }
 
 /* ── 剪贴板粘贴 ── */

@@ -107,7 +107,6 @@ export type DetectionMethodId =
   | "IQR"
   | "DESPIKING_MAD"
   | "DESPIKING_WINDOW"
-  | "ISOLATION_FOREST"
   | "LOF"
   | "AUTOENCODER";
 

@@ -154,7 +154,7 @@ import { ref, computed, reactive } from "vue";
 import { formatLocalWithTZ } from "@/utils/timeUtils";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { type Component } from "vue";
-import { Zap, Settings, AlertTriangle, CheckCircle, XCircle } from "lucide-vue-next";
+import { Zap, Settings, AlertTriangle, CheckCircle, XCircle } from "@/components/icons/iconoir";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import ActionButton from "./ActionButton.vue";
 

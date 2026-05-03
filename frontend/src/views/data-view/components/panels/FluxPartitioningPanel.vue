@@ -18,7 +18,7 @@ import {
   List,
   CheckCircle,
   MapPin,
-} from "lucide-vue-next";
+} from "@/components/icons/iconoir";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { API_ROUTES } from "@shared/constants/apiRoutes";

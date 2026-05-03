@@ -91,7 +91,7 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { ChevronLeft, ChevronRight, BarChart2 } from "lucide-vue-next";
+import { ChevronLeft, ChevronRight, BarChart2 } from "@/components/icons/iconoir";
 
 const currentStep = ref(0);
 const dataLoaded = ref(false);

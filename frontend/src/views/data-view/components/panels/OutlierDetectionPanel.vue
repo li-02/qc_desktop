@@ -19,7 +19,7 @@ import {
   Link,
   Eye,
   GripVertical,
-} from "lucide-vue-next";
+} from "@/components/icons/iconoir";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import { API_ROUTES } from "@shared/constants/apiRoutes";

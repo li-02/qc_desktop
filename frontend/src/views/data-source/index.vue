@@ -357,7 +357,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { Plus, FolderPlus } from "lucide-vue-next";
+import { Plus, FolderPlus } from "@/components/icons/iconoir";
 import { ElMessage, ElMessageBox } from "element-plus";
 
 // ── 类型定义 ──────────────────────────────────────

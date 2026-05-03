@@ -4,7 +4,7 @@ import { ElMessage } from "element-plus";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useWorkflowStore } from "@/stores/useWorkflowStore";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowLeft } from "lucide-vue-next";
+import { ArrowLeft } from "@/components/icons/iconoir";
 
 import DataAnalysisTabs from "./components/DataAnalysisTabs.vue";
 

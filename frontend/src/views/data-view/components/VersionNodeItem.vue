@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DatasetVersionInfo } from "@shared/types/projectInterface";
 import { translateRemark } from "@/utils/versionUtils";
-import { Download, Check, Clock } from "lucide-vue-next";
+import { Download, Check, Clock } from "@/components/icons/iconoir";
 
 // Tree Node Interface defined in parent, repeated here for type safety if needed,
 // or just use 'any' for the recursive prop if strict types are hard to share without a common file.

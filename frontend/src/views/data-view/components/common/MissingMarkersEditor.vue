@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import { ElMessage } from "element-plus";
-import { Plus } from "lucide-vue-next";
+import { Plus } from "@/components/icons/iconoir";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 
 const datasetStore = useDatasetStore();

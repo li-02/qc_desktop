@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { Upload, Plus, Trash2, CheckCircle, XCircle, Loader2, Link, FilePlus } from "lucide-vue-next";
+import { Upload, Plus, Trash2, CheckCircle, XCircle, Loader2, Link, FilePlus } from "@/components/icons/iconoir";
 import { useCategoryStore } from "@/stores/useCategoryStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";

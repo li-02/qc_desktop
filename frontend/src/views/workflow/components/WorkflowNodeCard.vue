@@ -56,7 +56,7 @@
 import { computed } from "vue";
 import type { WorkflowNode, WorkflowNodeType, WorkflowNodeExecution } from "@shared/types/workflow";
 import { NODE_TYPE_META } from "@shared/types/workflow";
-import { Eye } from "lucide-vue-next";
+import { Eye } from "@/components/icons/iconoir";
 
 const props = defineProps<{
   node: WorkflowNode;

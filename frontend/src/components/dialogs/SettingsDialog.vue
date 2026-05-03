@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Settings, FileText, Search, Eye, Pencil, Download, Trash2, X, Check, Plus } from "lucide-vue-next";
+import { Settings, FileText, Search, Eye, Pencil, Download, Trash2, X, Check, Plus } from "@/components/icons/iconoir";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
 import type { UserTemplateListItem, ThresholdTemplateEntry } from "@shared/types/database";
 

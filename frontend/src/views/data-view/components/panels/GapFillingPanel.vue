@@ -20,7 +20,7 @@ import {
   GripVertical,
   TrendingUp,
   Grid,
-} from "lucide-vue-next";
+} from "@/components/icons/iconoir";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import type { OutlierResult } from "@shared/types/database";
 import type {

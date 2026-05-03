@@ -1,8 +1,8 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { ElMessage, ElMessageBox } from "element-plus";
 import { computed } from "vue";
 import { useRouter } from "vue-router";
-import { RefreshCw, Plus, Trash2, Gauge, Cloud, Flag, BarChart, FileText } from "lucide-vue-next";
+import { RefreshCw, Plus, Trash2, Gauge, Cloud, Flag, BarChart, FileText } from "@/components/icons/iconoir";
 import { useCategoryStore } from "@/stores/useCategoryStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import emitter from "@/utils/eventBus";

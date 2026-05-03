@@ -2,7 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
-import { Plus, Eye, Search, Download, AlertTriangle, FileText } from "lucide-vue-next";
+import { Plus, Eye, Search, Download, AlertTriangle, FileText } from "@/components/icons/iconoir";
 import { useCategoryStore } from "@/stores/useCategoryStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import emitter from "@/utils/eventBus";

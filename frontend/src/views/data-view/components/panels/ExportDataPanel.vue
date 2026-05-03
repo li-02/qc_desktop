@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import { ElMessage } from "element-plus";
-import { Download, RefreshCw, Settings, FileText, CheckSquare, Info } from "lucide-vue-next";
+import { Download, RefreshCw, Settings, FileText, CheckSquare, Info } from "@/components/icons/iconoir";
 import type { DatasetInfo } from "@shared/types/projectInterface";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { API_ROUTES } from "@shared/constants/apiRoutes";

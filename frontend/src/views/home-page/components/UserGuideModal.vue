@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { ref, computed } from "vue";
 import {
   FolderPlus,
@@ -12,7 +12,7 @@ import {
   X,
   Check,
   HelpCircle,
-} from "lucide-vue-next";
+} from "@/components/icons/iconoir";
 
 const props = defineProps<{ modelValue: boolean }>();
 const emit = defineEmits<{ "update:modelValue": [val: boolean] }>();

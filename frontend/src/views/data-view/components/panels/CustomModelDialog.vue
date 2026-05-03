@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, reactive } from "vue";
 import { ElMessage, ElNotification } from "element-plus";
-import { Plus, Trash2, FileText, FolderOpen, Info, Check, X, AlertCircle } from "lucide-vue-next";
+import { Plus, Trash2, FileText, FolderOpen, Info, Check, X, AlertCircle } from "@/components/icons/iconoir";
 import type {
   CustomModelConfig,
   CustomModelParamDef,

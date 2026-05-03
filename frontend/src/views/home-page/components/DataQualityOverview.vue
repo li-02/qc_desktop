@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { List, Columns3, CheckCircle, AlertTriangle } from "lucide-vue-next";
+import { List, Columns3, CheckCircle, AlertTriangle } from "@/components/icons/iconoir";
 import type { VersionStatsInfo } from "@shared/types/projectInterface";
 
 const props = defineProps<{

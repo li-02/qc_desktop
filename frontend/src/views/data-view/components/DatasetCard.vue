@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import { formatLocalWithTZ } from "@/utils/timeUtils";
 import { ElMessage } from "element-plus";
-import { BarChart2, FileText, Copy, FileX, FolderOpen, RefreshCw } from "lucide-vue-next";
+import { BarChart2, FileText, Copy, FileX, FolderOpen, RefreshCw } from "@/components/icons/iconoir";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 
 const datasetStore = useDatasetStore();

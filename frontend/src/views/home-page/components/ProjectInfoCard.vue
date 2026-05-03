@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BarChart2 } from "lucide-vue-next";
+import { BarChart2 } from "@/components/icons/iconoir";
 import { useCategoryStore } from "@/stores/useCategoryStore";
 import { computed } from "vue";
 

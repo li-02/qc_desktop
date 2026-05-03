@@ -3,7 +3,20 @@ import { ref, computed, watch, onMounted } from "vue";
 import { formatLocalWithTZ } from "@/utils/timeUtils";
 import { translateRemark, getStageLabel, getVersionDisplayName } from "@/utils/versionUtils";
 import { ElMessage } from "element-plus";
-import { Loader2, RefreshCw, Search, Link, List, Info, Play } from "lucide-vue-next";
+import {
+  AlertTriangle,
+  BarChart,
+  FileText,
+  Loader2,
+  RefreshCw,
+  Search,
+  Link,
+  List,
+  Info,
+  Play,
+  Table2ColumnsIcon,
+  XCircle,
+} from "@/components/icons/iconoir";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useDataViewStore } from "@/stores/useDataViewStore";
 import { useOutlierDetectionStore } from "@/stores/useOutlierDetectionStore";
@@ -311,7 +324,10 @@ onMounted(() => {
         <!-- 数据统计摘要区域 -->
         <div class="stats-section">
           <div class="section-header">
-            <div class="section-title">📊 数据统计摘要</div>
+            <div class="section-title">
+              <BarChart :size="24" stroke-width="1.8" />
+              <span>数据统计摘要</span>
+            </div>
             <div class="header-controls" style="display: flex; align-items: center">
               <el-select
                 v-model="currentVersion"
@@ -335,7 +351,9 @@ onMounted(() => {
 
           <div class="stats-cards">
             <div class="stat-card primary">
-              <div class="stat-icon datasets">📊</div>
+              <div class="stat-icon datasets">
+                <Table2ColumnsIcon :size="24" stroke-width="1.8" />
+              </div>
               <div class="stat-info">
                 <div class="stat-value">{{ columnNumber.toLocaleString() }}</div>
                 <div class="stat-label">数据列</div>
@@ -343,7 +361,9 @@ onMounted(() => {
             </div>
 
             <div class="stat-card secondary">
-              <div class="stat-icon rows">📝</div>
+              <div class="stat-icon rows">
+                <FileText :size="24" stroke-width="1.8" />
+              </div>
               <div class="stat-info">
                 <div class="stat-value">{{ rowNumber.toLocaleString() }}</div>
                 <div class="stat-label">数据行</div>
@@ -351,7 +371,9 @@ onMounted(() => {
             </div>
 
             <div class="stat-card warning">
-              <div class="stat-icon missing">🔴</div>
+              <div class="stat-icon missing">
+                <XCircle :size="24" stroke-width="1.8" />
+              </div>
               <div class="stat-info">
                 <div class="stat-value">{{ missingValueCount.toLocaleString() }}</div>
                 <div class="stat-label">缺失值</div>
@@ -359,7 +381,9 @@ onMounted(() => {
             </div>
 
             <div class="stat-card" :class="totalOutlierCount > 0 ? 'danger' : 'info'">
-              <div class="stat-icon outlier">⚠️</div>
+              <div class="stat-icon outlier">
+                <AlertTriangle :size="24" stroke-width="1.8" />
+              </div>
               <div class="stat-info">
                 <div class="stat-value">{{ latestOutlierResult ? totalOutlierCount.toLocaleString() : "-" }}</div>
                 <div class="stat-label">异常值</div>

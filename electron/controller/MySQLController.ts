@@ -69,7 +69,7 @@ export class MySQLController extends BaseController {
     return this.handleAsync(async () => {
       if (!args.categoryId) throw new Error("分类ID不能为空");
       if (!args.datasetName || !args.datasetName.trim()) throw new Error("数据集名称不能为空");
-      if (!args.table) throw new Error("数据表名不能为空");
+      if (!args.table && (!args.selectedTables || args.selectedTables.length === 0)) throw new Error("请选择至少一个数据表列");
 
       const validationError = this.validateConnectionConfig(args.connection);
       if (validationError) throw new Error(validationError);

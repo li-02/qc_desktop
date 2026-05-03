@@ -21,13 +21,24 @@ export interface MySQLTablePreview {
   totalCount: number;
 }
 
+export interface MySQLColumnSelection {
+  table: string;
+  timeColumn: string;
+  columns: string[];
+  startTime?: string;
+  endTime?: string;
+}
+
 // MySQL 导入请求参数
 export interface MySQLImportRequest {
   categoryId: string;
   datasetName: string;
   dataType: string;
   connection: MySQLConnectionConfig;
-  table: string;
+  table?: string;
+  selectedTables?: MySQLColumnSelection[];
+  startTime?: string;
+  endTime?: string;
   missingValueTypes: string[];
 }
 

@@ -45,20 +45,22 @@ const handleSelect = (type: WorkflowNodeType) => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(17, 24, 39, 0.36);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(3px);
 }
 
 .selector-dialog {
-  background: var(--c-bg-surface);
+  background: #ffffff;
   border-radius: var(--radius-2xl);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-  width: 480px;
-  max-height: 80vh;
+  border: 1px solid rgba(212, 232, 219, 0.82);
+  box-shadow: 0 18px 42px rgb(17 24 39 / 0.18);
+  width: 440px;
+  max-width: calc(100vw - 40px);
+  max-height: min(640px, calc(100vh - 56px));
   overflow-y: auto;
 }
 
@@ -66,14 +68,16 @@ const handleSelect = (type: WorkflowNodeType) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 20px;
-  border-bottom: 1px solid var(--c-border);
+  min-height: 72px;
+  padding: 16px 20px;
+  background: linear-gradient(180deg, #f4fbf7 0%, #edf7f2 100%);
+  border-bottom: none;
 }
 
 .dialog-title {
-  font-size: var(--text-xl);
-  font-weight: 600;
-  color: var(--c-text-primary);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  color: #172033;
   margin: 0;
 }
 
@@ -81,9 +85,11 @@ const handleSelect = (type: WorkflowNodeType) => {
   border: none;
   background: none;
   cursor: pointer;
-  font-size: var(--text-xl);
+  font-size: 28px;
   color: var(--c-text-muted);
-  padding: 4px 8px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border-radius: var(--radius-control);
   transition: all 0.15s;
 }
@@ -94,17 +100,17 @@ const handleSelect = (type: WorkflowNodeType) => {
 }
 
 .type-grid {
-  padding: 12px;
+  padding: 14px 16px 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .type-card {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
+  gap: var(--space-3);
+  padding: 12px 14px;
   border-radius: var(--radius-panel);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -112,13 +118,22 @@ const handleSelect = (type: WorkflowNodeType) => {
 }
 
 .type-card:hover {
-  background: rgba(16, 185, 129, 0.06);
-  border-color: var(--c-brand-border);
-  transform: translateX(4px);
+  background: #f4fbf7;
+  border-color: #b8d9c4;
+  transform: translateX(2px);
 }
 
 .type-icon {
-  font-size: var(--text-5xl);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-lg);
+  background: #d8faec;
+  border: 1px solid #8ee6c0;
+  color: #087a57;
+  font-size: var(--text-2xl);
   flex-shrink: 0;
 }
 
@@ -131,13 +146,13 @@ const handleSelect = (type: WorkflowNodeType) => {
 
 .type-name {
   font-size: var(--text-md);
-  font-weight: 600;
-  color: var(--c-text-primary);
+  font-weight: var(--font-semibold);
+  color: #172033;
 }
 
 .type-desc {
   font-size: var(--text-sm);
-  color: var(--c-text-muted);
+  color: #61708a;
 }
 
 .type-badge {

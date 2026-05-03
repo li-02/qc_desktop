@@ -4,7 +4,10 @@
     <div class="workflow-sidebar">
       <div class="sidebar-header">
         <h3 class="sidebar-title">自动化工作流</h3>
-        <button class="btn-create" @click="showCreateDialog = true"><span class="btn-icon">+</span> 新建</button>
+        <button class="btn-create" @click="showCreateDialog = true">
+          <Plus :size="16" stroke-width="1.8" />
+          <span>新建</span>
+        </button>
       </div>
       <WorkflowList
         :workflows="workflowStore.workflows"
@@ -52,15 +55,21 @@
           </div>
           <div class="header-actions">
             <button class="btn-config-dataset" @click="openConfigDatasetDialog">
-              <span class="btn-icon">▣</span>
+              <DatabaseIcon :size="17" stroke-width="1.8" />
               <span class="config-dataset-text">{{ configDatasetButtonText }}</span>
             </button>
             <button
               class="btn-execute"
               :disabled="workflowStore.executing || workflowStore.enabledNodes.length === 0 || !configDatasetId"
               @click="handleExecute">
-              <template v-if="workflowStore.executing">⏳ 执行中...</template>
-              <template v-else>▶ 应用到数据集</template>
+              <template v-if="workflowStore.executing">
+                <Loader2 :size="16" stroke-width="1.8" class="spin-icon" />
+                <span>执行中...</span>
+              </template>
+              <template v-else>
+                <Play :size="16" stroke-width="1.8" />
+                <span>应用到数据集</span>
+              </template>
             </button>
           </div>
         </div>
@@ -86,9 +95,14 @@
       </template>
 
       <div v-else class="empty-state">
-        <div class="empty-icon">🔄</div>
+        <div class="empty-icon">
+          <Settings :size="56" stroke-width="1.5" />
+        </div>
         <p class="empty-text">选择一个工作流或创建新的工作流</p>
-        <button class="btn-create-large" @click="showCreateDialog = true">+ 创建工作流</button>
+        <button class="btn-create-large" @click="showCreateDialog = true">
+          <Plus :size="18" stroke-width="1.8" />
+          <span>创建工作流</span>
+        </button>
       </div>
     </div>
 
@@ -105,37 +119,95 @@
     <NodeTypeSelector v-if="showNodeSelector" @select="handleAddNode" @close="showNodeSelector = false" />
 
     <!-- 创建工作流弹窗 -->
-    <el-dialog v-model="showCreateDialog" title="创建工作流" width="480px" :close-on-click-modal="false">
-      <el-form :model="createForm" label-width="80px">
-        <el-form-item label="名称" required>
-          <el-input v-model="createForm.name" placeholder="输入工作流名称" />
-        </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="createForm.description" type="textarea" :rows="3" placeholder="可选描述" />
-        </el-form-item>
-      </el-form>
+    <el-dialog
+      v-model="showCreateDialog"
+      width="620px"
+      custom-class="workflow-style-dialog"
+      :show-close="false"
+      :close-on-click-modal="false">
+      <template #header>
+        <div class="workflow-dialog-header">
+          <div class="workflow-dialog-title-group">
+            <div class="workflow-dialog-icon">
+              <Plus :size="22" stroke-width="1.8" />
+            </div>
+            <div>
+              <h2 class="workflow-dialog-title">创建工作流</h2>
+              <p class="workflow-dialog-subtitle">定义可复用的数据处理节点流程</p>
+            </div>
+          </div>
+          <button class="workflow-dialog-close" type="button" aria-label="关闭" @click="showCreateDialog = false">
+            <X :size="22" stroke-width="1.8" />
+          </button>
+        </div>
+      </template>
+      <div class="workflow-dialog-body">
+        <el-form :model="createForm" label-width="64px" class="workflow-dialog-form">
+          <el-form-item label="名称" required>
+            <el-input v-model="createForm.name" placeholder="输入工作流名称" />
+          </el-form-item>
+          <el-form-item label="描述">
+            <el-input v-model="createForm.description" type="textarea" :rows="4" placeholder="可选描述" />
+          </el-form-item>
+        </el-form>
+      </div>
       <template #footer>
-        <el-button @click="showCreateDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleCreate" :disabled="!canCreate">创建</el-button>
+        <div class="workflow-dialog-footer">
+          <el-button class="workflow-dialog-button" @click="showCreateDialog = false">取消</el-button>
+          <el-button class="workflow-dialog-button" type="primary" @click="handleCreate" :disabled="!canCreate">
+            创建
+          </el-button>
+        </div>
       </template>
     </el-dialog>
 
     <!-- 配置数据集弹窗 -->
-    <el-dialog v-model="showConfigDatasetDialog" title="选择配置数据集" width="480px" :close-on-click-modal="false">
-      <el-form label-width="80px">
-        <el-form-item label="数据集" required>
-          <el-select
-            v-model="configDatasetDraftId"
-            filterable
-            placeholder="选择用于节点配置的数据集"
-            style="width: 100%">
-            <el-option v-for="ds in datasets" :key="ds.id" :label="ds.name" :value="Number(ds.id)" />
-          </el-select>
-        </el-form-item>
-      </el-form>
+    <el-dialog
+      v-model="showConfigDatasetDialog"
+      width="620px"
+      custom-class="workflow-style-dialog"
+      :show-close="false"
+      :close-on-click-modal="false">
+      <template #header>
+        <div class="workflow-dialog-header">
+          <div class="workflow-dialog-title-group">
+            <div class="workflow-dialog-icon">
+              <DatabaseIcon :size="22" stroke-width="1.8" />
+            </div>
+            <div>
+              <h2 class="workflow-dialog-title">选择配置数据集</h2>
+              <p class="workflow-dialog-subtitle">用于节点参数配置与预览的数据来源</p>
+            </div>
+          </div>
+          <button class="workflow-dialog-close" type="button" aria-label="关闭" @click="showConfigDatasetDialog = false">
+            <X :size="22" stroke-width="1.8" />
+          </button>
+        </div>
+      </template>
+      <div class="workflow-dialog-body">
+        <el-form label-width="64px" class="workflow-dialog-form">
+          <el-form-item label="数据集" required>
+            <el-select
+              v-model="configDatasetDraftId"
+              filterable
+              placeholder="选择用于节点配置的数据集"
+              style="width: 100%">
+              <el-option v-for="ds in datasets" :key="ds.id" :label="ds.name" :value="Number(ds.id)" />
+            </el-select>
+          </el-form-item>
+        </el-form>
+      </div>
       <template #footer>
-        <el-button @click="showConfigDatasetDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleConfirmConfigDataset" :disabled="!configDatasetDraftId">确定</el-button>
+        <div class="workflow-dialog-footer">
+          <el-button class="workflow-dialog-button" @click="showConfigDatasetDialog = false">取消</el-button>
+          <el-button
+            class="workflow-dialog-button"
+            type="primary"
+            @click="handleConfirmConfigDataset"
+            :disabled="!configDatasetDraftId">
+            确定
+          </el-button>
+        </div>
       </template>
     </el-dialog>
   </div>
@@ -152,6 +224,7 @@ import NodeConfigPanel from "./components/NodeConfigPanel.vue";
 import NodeTypeSelector from "./components/NodeTypeSelector.vue";
 import WorkflowExecutionView from "./components/WorkflowExecutionView.vue";
 import WorkflowHistoryPanel from "./components/WorkflowHistoryPanel.vue";
+import { DatabaseIcon, Loader2, Play, Plus, Settings, X } from "@/components/icons/iconoir";
 import type {
   WorkflowNode,
   WorkflowNodeType,
@@ -681,6 +754,9 @@ onUnmounted(() => {
 }
 
 .btn-execute {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: var(--space-2) var(--space-5);
   border: none;
   border-radius: var(--radius-btn);
@@ -733,7 +809,14 @@ onUnmounted(() => {
 }
 
 .empty-icon {
-  font-size: var(--text-display-lg);
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border: 1px solid rgba(184, 217, 196, 0.8);
+  border-radius: 20px;
+  background: rgba(236, 248, 240, 0.75);
+  color: var(--c-brand);
 }
 
 .empty-text {
@@ -742,6 +825,9 @@ onUnmounted(() => {
 }
 
 .btn-create-large {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: var(--space-2) var(--space-7);
   border: 2px dashed var(--c-brand-border);
   border-radius: var(--radius-control);
@@ -756,5 +842,104 @@ onUnmounted(() => {
 .btn-create-large:hover {
   background: var(--c-brand-muted);
   border-color: var(--c-brand);
+}
+
+.workflow-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.workflow-dialog-title-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.workflow-dialog-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  line-height: 1;
+  border: 1px solid rgba(161, 210, 181, 0.82);
+  border-radius: 12px;
+  background: rgba(220, 244, 226, 0.72);
+  color: #176647;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.workflow-dialog-title {
+  margin: 0;
+  color: #14251e;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.workflow-dialog-subtitle {
+  margin: 5px 0 0;
+  color: #60746a;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.workflow-dialog-close {
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #7d8b84;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.workflow-dialog-close:hover {
+  border-color: rgba(184, 217, 196, 0.75);
+  background: rgba(236, 248, 240, 0.82);
+  color: #176647;
+}
+
+.workflow-dialog-body {
+  padding: 26px 36px 28px 24px;
+}
+
+.workflow-dialog-form :deep(.el-form-item) {
+  margin-bottom: 24px;
+}
+
+.workflow-dialog-form :deep(.el-form-item:last-child) {
+  margin-bottom: 0;
+}
+
+.workflow-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 18px;
+}
+
+.workflow-dialog-button {
+  min-width: 112px;
+}
+
+.spin-icon {
+  animation: workflow-spin 1s linear infinite;
+}
+
+@keyframes workflow-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

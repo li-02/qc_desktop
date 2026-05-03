@@ -23,6 +23,13 @@ export class ImputationController extends BaseController {
     this.service = new ImputationService();
   }
 
+  async executeImputationForWorkflow(
+    request: ExecuteImputationRequest,
+    progressCallback?: (event: ImputationProgressEvent) => void
+  ): Promise<ExecuteImputationResponse> {
+    return this.service.executeImputation(request, progressCallback);
+  }
+
   getRoutes(): Record<string, (args: any, event: Electron.IpcMainInvokeEvent) => Promise<any>> {
     return {
       // 方法管理
@@ -48,6 +55,7 @@ export class ImputationController extends BaseController {
       // 模型管理
       "imputation:createModel": this.createModel.bind(this),
       "imputation:getModelsByDataset": this.getModelsByDataset.bind(this),
+      "imputation:getModelsByMethod": this.getModelsByMethod.bind(this),
       "imputation:getModel": this.getModel.bind(this),
       "imputation:setActiveModel": this.setActiveModel.bind(this),
       "imputation:updateModel": this.updateModel.bind(this),
@@ -338,6 +346,24 @@ export class ImputationController extends BaseController {
   /**
    * 获取模型详情
    */
+  /**
+   * 获取某个插补方法的所有模型（工作流配置使用，不绑定数据集）
+   */
+  private async getModelsByMethod(
+    args: { methodId: string },
+    _event: Electron.IpcMainInvokeEvent
+  ): Promise<{ success: boolean; data?: ImputationModel[]; error?: string }> {
+    try {
+      if (!args?.methodId) {
+        return { success: true, data: [] };
+      }
+      const models = this.service.getModelsByMethod(args.methodId);
+      return { success: true, data: models };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
   private async getModel(
     modelId: number,
     _event: Electron.IpcMainInvokeEvent

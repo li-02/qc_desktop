@@ -38,6 +38,11 @@ const routes: Array<RouteRecordRaw> = [
         name: "BeonQC",
         component: () => import("../views/workflow/beon-qc/index.vue"),
       },
+      {
+        path: "dialog-gallery",
+        name: "DialogGallery",
+        component: () => import("../views/dialog-gallery/index.vue"),
+      },
     ],
   },
   // 404 页面

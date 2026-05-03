@@ -16,12 +16,15 @@ import {
   X,
   Settings,
   Pencil,
-} from "lucide-vue-next";
+  DatabaseIcon,
+  Gauge,
+} from "@/components/icons/iconoir";
 import DatasetVersionTree from "@/components/sidebar/DatasetVersionTree.vue";
 import { useCategoryStore } from "@/stores/useCategoryStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import SettingsDialog from "@/components/dialogs/SettingsDialog.vue";
+import { KanbanBoard } from "@iconoir/vue";
 
 const categoryStore = useCategoryStore();
 const datasetStore = useDatasetStore();
@@ -521,7 +524,7 @@ onUnmounted(() => {
           :class="{ active: $route.path === '/workflow' }"
           @click="router.push('/workflow')"
           title="自动化工作流">
-          <span class="nav-icon">🔄</span>
+          <KanbanBoard class="nav-icon" :size="18" stroke-width="1.8" />
           <span class="nav-text">自动化工作流</span>
         </button>
         <button
@@ -529,7 +532,7 @@ onUnmounted(() => {
           :class="{ active: $route.path === '/data-source' }"
           @click="router.push('/data-source')"
           title="数据源管理">
-          <span class="nav-icon">🔌</span>
+          <DatabaseIcon class="nav-icon" :size="18" stroke-width="1.8" />
           <span class="nav-text">数据源管理</span>
         </button>
         <button
@@ -537,7 +540,7 @@ onUnmounted(() => {
           :class="{ active: $route.path === '/workflow/beon-qc' }"
           @click="router.push('/workflow/beon-qc')"
           title="BEON QC 管线">
-          <span class="nav-icon">🔬</span>
+          <Gauge class="nav-icon" :size="18" stroke-width="1.8" />
           <span class="nav-text">BEON QC</span>
         </button>
       </div>
@@ -573,7 +576,8 @@ onUnmounted(() => {
             $route.path === '/' ||
             $route.path === '/workflow' ||
             $route.path.startsWith('/workflow/') ||
-            $route.path === '/data-source'
+            $route.path === '/data-source' ||
+            $route.path === '/dialog-gallery'
           " />
         <div v-else class="content-empty">
           <el-empty description="请先选择一个分类" :image-size="128">

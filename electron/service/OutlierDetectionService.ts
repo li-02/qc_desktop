@@ -99,18 +99,6 @@ export class OutlierDetectionService {
           { key: "max_iterations", label: "最大迭代次数", type: "number", default: 10, min: 1, max: 20 },
         ],
       },
-      {
-        id: "ISOLATION_FOREST",
-        name: "Isolation Forest",
-        category: "ml",
-        description: "基于隔离森林的机器学习异常检测",
-        requiresPython: true,
-        isAvailable: false, // Phase 2
-        params: [
-          { key: "contamination", label: "异常比例", type: "number", default: 0.1, min: 0.01, max: 0.5, step: 0.01 },
-          { key: "n_estimators", label: "树数量", type: "number", default: 100, min: 50, max: 500 },
-        ],
-      },
     ];
 
     return { success: true, data: methods };

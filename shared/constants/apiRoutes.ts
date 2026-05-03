@@ -116,6 +116,7 @@ export const API_ROUTES = {
     VALIDATE_MODEL_FILE: "imputation:validateModelFile",
     VALIDATE_SCRIPT_FILE: "imputation:validateScriptFile",
     GET_MODELS_BY_DATASET: "imputation:getModelsByDataset",
+    GET_MODELS_BY_METHOD: "imputation:getModelsByMethod",
     GET_MODEL: "imputation:getModel",
     UPDATE_MODEL: "imputation:updateModel",
     SET_ACTIVE_MODEL: "imputation:setActiveModel",

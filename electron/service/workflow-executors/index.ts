@@ -130,21 +130,24 @@ export class ImputationExecutor implements INodeExecutor {
     // request: { datasetId, versionId, methodId, targetColumns, params?, validateSplit? }
     let result: any;
     try {
-      result = await this.imputationService.executeImputation(
-        {
-          datasetId: ctx.datasetId,
-          versionId: ctx.inputVersionId,
-          methodId: config.methodId,
-          targetColumns: config.targetColumns || null,
-          params: config.params || {},
-          validateSplit: config.validateSplit,
-        },
-        (progress: any) => {
-          // 将插补进度映射到 10-90 区间
-          const mapped = 10 + Math.round((progress.progress || 0) * 0.8);
-          ctx.onProgress(mapped, progress.message || "正在插补...");
-        }
-      );
+      const request = {
+        datasetId: ctx.datasetId,
+        versionId: ctx.inputVersionId,
+        methodId: config.methodId,
+        targetColumns: config.targetColumns || null,
+        params: config.params || {},
+        validateSplit: config.validateSplit,
+        columnMapping: config.columnMapping,
+      };
+      const progressHandler = (progress: any) => {
+        // 将插补进度映射到 10-90 区间
+        const mapped = 10 + Math.round((progress.progress || 0) * 0.8);
+        ctx.onProgress(mapped, progress.message || "正在插补...");
+      };
+
+      result = this.imputationService.executeImputationForWorkflow
+        ? await this.imputationService.executeImputationForWorkflow(request, progressHandler)
+        : await this.imputationService.executeImputation(request, progressHandler);
     } catch (error: any) {
       throw new Error(`缺失值插补失败: ${error.message}`);
     }

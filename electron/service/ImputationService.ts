@@ -2657,6 +2657,15 @@ export class ImputationService {
   }
 
   /**
+   * 获取指定插补方法的所有模型，不按数据集过滤。
+   * 工作流配置阶段尚未绑定目标数据集，需要让用户从完整模型列表中选择。
+   */
+  getModelsByMethod(methodId: string): ImputationModel[] {
+    const rows = this.repository.getModelsByMethodId(methodId);
+    return rows.map(this.mapModelRow);
+  }
+
+  /**
    * 获取模型详情
    */
   getModel(modelId: number): ImputationModel | null {

@@ -1009,6 +1009,7 @@ export class DatabaseManager {
 
     // 插入方法参数定义
     this.insertDefaultMethodParams();
+    this.seedBuiltinMachineLearningModels();
     this.seedBuiltinSAITSModels();
     this.seedBuiltinITransformerModels();
     this.seedBuiltinTimeMixerModels();
@@ -1777,6 +1778,141 @@ export class DatabaseManager {
     return app.isPackaged
       ? path.join(process.resourcesPath, "python")
       : path.join(__dirname, "..", "..", "..", "python");
+  }
+
+  private seedBuiltinMachineLearningModels(): void {
+    if (!this.db) return;
+
+    const pythonDir = this.getPythonDir();
+    const targetConfigs: Record<
+      string,
+      {
+        targetColumn: string;
+        displayName: string;
+        featureColumns: string[];
+      }
+    > = {
+      FCH4: {
+        targetColumn: "FCH4",
+        displayName: "FCH4",
+        featureColumns: ["ta_1_2_1", "vpd", "swin", "ws_1_2_1", "par", "rh_1_2_1"],
+      },
+      NAI: {
+        targetColumn: "nai",
+        displayName: "NAI",
+        featureColumns: ["rh", "vpd", "rg", "ppfd", "ta", "pm2_5", "pm10"],
+      },
+      NEE: {
+        targetColumn: "co2_flux",
+        displayName: "NEE",
+        featureColumns: ["rg_1_1_2", "rn_1_1_1", "ta_1_2_1", "vpd", "rh_1_1_1", "swc_1_1_1", "ts_1_1_1"],
+      },
+    };
+
+    const methods = [
+      {
+        methodId: "XGBOOST",
+        displayName: "XGBoost",
+        root: path.join(pythonDir, "models", "XGBOOST"),
+        filePattern: /^XGB_model_.*\.pkl$/i,
+        framework: "xgboost",
+      },
+      {
+        methodId: "RANDOM_FOREST",
+        displayName: "随机森林",
+        root: path.join(pythonDir, "models"),
+        filePattern: /^RF_model_.*\.pkl$/i,
+        framework: "sklearn",
+      },
+    ];
+
+    const toRelativePythonPath = (absolutePath: string): string =>
+      path.relative(pythonDir, absolutePath).replace(/\\/g, "/");
+
+    const resolveMissingDays = (fileName: string): number => {
+      const match = fileName.match(/masks(\d+)/i);
+      return match ? Number(match[1]) : 1;
+    };
+
+    const resolveTimestamp = (fileName: string): string | null => {
+      const match = fileName.match(/_(\d{8})_(\d{6})\.pkl$/i);
+      if (!match) return null;
+      const date = match[1];
+      const time = match[2];
+      return `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)} ${time.slice(0, 2)}:${time.slice(2, 4)}:${time.slice(4, 6)}`;
+    };
+
+    const findStmt = this.db.prepare(`
+      SELECT id FROM biz_imputation_model
+      WHERE dataset_id IS NULL AND method_id = ? AND target_column = ? AND model_path = ? AND is_del = 0
+      LIMIT 1
+    `);
+
+    const insertStmt = this.db.prepare(`
+      INSERT INTO biz_imputation_model
+        (dataset_id, method_id, model_name, model_path, model_params,
+         target_column, feature_columns, time_column, training_columns,
+         is_active, trained_at)
+      VALUES
+        (NULL, ?, ?, ?, ?, ?, ?, 'record_time', ?, 1, COALESCE(?, CURRENT_TIMESTAMP))
+    `);
+
+    const updateStmt = this.db.prepare(`
+      UPDATE biz_imputation_model
+      SET model_name = ?,
+          model_params = ?,
+          feature_columns = ?,
+          training_columns = ?,
+          is_active = 1,
+          trained_at = COALESCE(?, trained_at),
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+
+    for (const method of methods) {
+      if (!fs.existsSync(method.root)) continue;
+
+      for (const [targetDir, config] of Object.entries(targetConfigs)) {
+        const modelDir = path.join(method.root, targetDir);
+        if (!fs.existsSync(modelDir)) continue;
+
+        const modelFiles = fs
+          .readdirSync(modelDir)
+          .filter(file => method.filePattern.test(file))
+          .sort();
+
+        for (const modelFile of modelFiles) {
+          const absoluteModelPath = path.join(modelDir, modelFile);
+          const modelPath = toRelativePythonPath(absoluteModelPath);
+          const missingDays = resolveMissingDays(modelFile);
+          const modelParams = {
+            model_path: modelPath,
+            framework: method.framework,
+            missing_days: missingDays,
+          };
+          const featureColumns = JSON.stringify(config.featureColumns);
+          const modelParamsJson = JSON.stringify(modelParams);
+          const trainedAt = resolveTimestamp(modelFile);
+          const modelName = `${config.displayName} ${method.displayName} 适合缺失${missingDays}天`;
+          const existing = findStmt.get(method.methodId, config.targetColumn, modelPath) as { id: number } | undefined;
+
+          if (existing) {
+            updateStmt.run(modelName, modelParamsJson, featureColumns, featureColumns, trainedAt, existing.id);
+          } else {
+            insertStmt.run(
+              method.methodId,
+              modelName,
+              modelPath,
+              modelParamsJson,
+              config.targetColumn,
+              featureColumns,
+              featureColumns,
+              trainedAt
+            );
+          }
+        }
+      }
+    }
   }
 
   private seedBuiltinSAITSModels(): void {

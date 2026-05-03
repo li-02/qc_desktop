@@ -579,25 +579,26 @@
   --dialog-width-full: 90vw;
 
   /* 结构 */
-  --dialog-radius: var(--radius-xl); /* 12px */
-  --dialog-shadow: var(--shadow-2xl);
-  --dialog-bg: var(--c-bg-elevated);
-  --dialog-border: var(--c-border-subtle);
+  --dialog-radius: 14px;
+  --dialog-shadow: 0 22px 60px rgba(8, 28, 21, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.62) inset;
+  --dialog-bg: linear-gradient(180deg, rgba(253, 255, 254, 0.96), rgba(246, 252, 249, 0.94)),
+    rgba(248, 253, 251, 0.94);
+  --dialog-border: rgba(184, 217, 196, 0.8);
 
   /* 头部 */
-  --dialog-header-padding: var(--space-5) var(--space-6); /* 20px 24px */
-  --dialog-header-bg: var(--c-bg-muted);
-  --dialog-header-border: var(--c-border-subtle);
-  --dialog-header-font: var(--text-lg); /* 15px */
+  --dialog-header-padding: 22px 24px 12px;
+  --dialog-header-bg: transparent;
+  --dialog-header-border: transparent;
+  --dialog-header-font: 17px;
   --dialog-header-weight: var(--font-semibold);
 
   /* 主体 */
-  --dialog-body-padding: var(--space-6); /* 24px */
+  --dialog-body-padding: 4px 24px 22px;
 
   /* 底部 */
-  --dialog-footer-padding: var(--space-4) var(--space-6); /* 16px 24px */
-  --dialog-footer-bg: var(--c-bg-muted);
-  --dialog-footer-border: var(--c-border-subtle);
+  --dialog-footer-padding: 14px 24px 20px;
+  --dialog-footer-bg: transparent;
+  --dialog-footer-border: transparent;
   --dialog-footer-gap: var(--space-3); /* 12px */
 }
 

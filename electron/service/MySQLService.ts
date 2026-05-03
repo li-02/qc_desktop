@@ -65,6 +65,128 @@ export class MySQLService {
     return `${config.host}:${config.port}:${config.user}:${config.database}`;
   }
 
+  private async importSelectedColumns(
+    request: MySQLImportRequest,
+    mainWindow: BrowserWindow | null
+  ): Promise<ServiceResponse<void>> {
+    if (!this.datasetService) {
+      return { success: false, error: "DatasetService 未初始化，无法执行 MySQL 导入" };
+    }
+
+    const selections = (request.selectedTables || []).filter(item => item.columns.length > 0);
+    if (selections.length === 0) {
+      return { success: false, error: "请选择至少一个数据列" };
+    }
+
+    const sendProgress = (progress: MySQLImportProgress) => {
+      mainWindow?.webContents.send(IMPORT_PROGRESS_CHANNEL, progress);
+    };
+
+    let connection: any = null;
+    let tmpCsvPath: string | null = null;
+
+    try {
+      sendProgress({ status: "connecting", message: "正在连接数据库...", datasetName: request.datasetName });
+      connection = await this.createConnection(request.connection);
+      sendProgress({ status: "fetching", message: "正在读取已选择的数据列...", datasetName: request.datasetName });
+
+      const columnHeaders: string[] = [];
+      const usedHeaders = new Set<string>();
+      const rowsByTime = new Map<string, Record<string, any>>();
+
+      for (const selection of selections) {
+        if (!selection.timeColumn) {
+          return { success: false, error: `数据表 ${selection.table} 未检测到时间列` };
+        }
+
+        const safeTable = this.escapeIdentifier(selection.table);
+        const safeTimeColumn = this.escapeIdentifier(selection.timeColumn);
+        const aliases = selection.columns.map((column, index) => ({
+          column,
+          alias: `c${index}`,
+          header: this.uniqueColumnHeader(`${selection.table}_${column}`, usedHeaders),
+        }));
+        aliases.forEach(item => columnHeaders.push(item.header));
+
+        const selectColumns = aliases.map(
+          item => `${this.escapeIdentifier(item.column)} AS ${this.escapeIdentifier(item.alias)}`
+        );
+        const startTime = request.startTime || selection.startTime;
+        const endTime = request.endTime || selection.endTime;
+        const rangeSql = startTime && endTime ? ` AND ${safeTimeColumn} BETWEEN ? AND ?` : "";
+        const queryParams = startTime && endTime ? [startTime, endTime] : [];
+        const [rows] = await connection.query(
+          `SELECT ${safeTimeColumn} AS __time${selectColumns.length ? `, ${selectColumns.join(", ")}` : ""}
+           FROM ${safeTable}
+           WHERE ${safeTimeColumn} IS NOT NULL${rangeSql}
+           ORDER BY ${safeTimeColumn} ASC`,
+          queryParams
+        );
+
+        for (const row of rows as any[]) {
+          const timeValue = row.__time;
+          if (timeValue === null || timeValue === undefined || timeValue === "") continue;
+          const timeKey = this.normalizeTimeKey(timeValue);
+          const mergedRow = rowsByTime.get(timeKey) || { record_time: timeKey };
+          aliases.forEach(item => {
+            mergedRow[item.header] = row[item.alias];
+          });
+          rowsByTime.set(timeKey, mergedRow);
+        }
+      }
+
+      const columns = ["record_time", ...columnHeaders];
+      const sortedRows = Array.from(rowsByTime.values()).sort((a, b) =>
+        this.compareTimeKeys(a.record_time, b.record_time)
+      );
+      if (sortedRows.length === 0) {
+        return { success: false, error: "所选列没有可按时间对齐的数据" };
+      }
+
+      sendProgress({ status: "processing", message: "正在按时间列对齐数据...", datasetName: request.datasetName });
+      tmpCsvPath = path.join(os.tmpdir(), `mysql_joined_import_${Date.now()}.csv`);
+      await fs.promises.writeFile(tmpCsvPath, this.toCsv(columns, sortedRows), "utf-8");
+
+      const fileStats = await fs.promises.stat(tmpCsvPath);
+      const importResult = await this.datasetService.importDataset({
+        categoryId: request.categoryId,
+        datasetName: request.datasetName,
+        type: request.dataType,
+        file: {
+          name: `${request.datasetName}.csv`,
+          size: String(fileStats.size),
+          path: tmpCsvPath,
+        },
+        missingValueTypes: request.missingValueTypes,
+        rows: sortedRows.length,
+        columns,
+        sourceTimezone: "auto",
+      });
+
+      if (!importResult.success) {
+        throw new Error(importResult.error || "导入失败");
+      }
+
+      sendProgress({ status: "completed", message: "导入完成", datasetName: request.datasetName });
+      return { success: true };
+    } catch (error: any) {
+      const msg = this.formatMySQLError(error);
+      sendProgress({ status: "failed", message: msg, datasetName: request.datasetName, error: msg });
+      return { success: false, error: msg };
+    } finally {
+      if (connection) {
+        try {
+          await connection.end();
+        } catch (_) {}
+      }
+      if (tmpCsvPath && fs.existsSync(tmpCsvPath)) {
+        try {
+          fs.unlinkSync(tmpCsvPath);
+        } catch (_) {}
+      }
+    }
+  }
+
   /**
    * Get or create a connection pool for the given config.
    * Pools are cached per host:port:user:database and reused across calls.
@@ -206,7 +328,8 @@ export class MySQLService {
       const totalCount = (countRows as any[])[0]?.cnt || 0;
 
       // 获取预览数据
-      const [previewRows] = await connection.execute(`SELECT * FROM ${safeTable} LIMIT ?`, [limit]);
+      const previewLimit = this.normalizeLimit(limit);
+      const [previewRows] = await connection.query(`SELECT * FROM ${safeTable} LIMIT ${previewLimit}`);
       const arr = previewRows as any[];
 
       const columns = arr.length > 0 ? Object.keys(arr[0]) : [];
@@ -231,6 +354,13 @@ export class MySQLService {
   async importTable(request: MySQLImportRequest, mainWindow: BrowserWindow | null): Promise<ServiceResponse<void>> {
     if (!this.datasetService) {
       return { success: false, error: "DatasetService 未初始化，无法执行 MySQL 导入" };
+    }
+
+    if (request.selectedTables?.length) {
+      return this.importSelectedColumns(request, mainWindow);
+    }
+    if (!request.table) {
+      return { success: false, error: "数据表名不能为空" };
     }
 
     const sendProgress = (progress: MySQLImportProgress) => {
@@ -984,6 +1114,39 @@ export class MySQLService {
    */
   private escapeIdentifier(name: string): string {
     return "`" + name.replace(/`/g, "``") + "`";
+  }
+
+  private normalizeLimit(limit: number): number {
+    if (!Number.isFinite(limit)) return 50;
+    return Math.max(1, Math.min(1000, Math.floor(limit)));
+  }
+
+  private uniqueColumnHeader(header: string, usedHeaders: Set<string>): string {
+    const base = header.replace(/[^\w\u4e00-\u9fa5]+/g, "_").replace(/^_+|_+$/g, "") || "column";
+    let candidate = base;
+    let index = 2;
+    while (usedHeaders.has(candidate)) {
+      candidate = `${base}_${index}`;
+      index++;
+    }
+    usedHeaders.add(candidate);
+    return candidate;
+  }
+
+  private normalizeTimeKey(value: any): string {
+    if (value instanceof Date) {
+      return value.toISOString().replace("T", " ").slice(0, 19);
+    }
+    return String(value).trim();
+  }
+
+  private compareTimeKeys(a: string, b: string): number {
+    const timeA = Date.parse(a);
+    const timeB = Date.parse(b);
+    if (Number.isFinite(timeA) && Number.isFinite(timeB)) {
+      return timeA - timeB;
+    }
+    return a.localeCompare(b);
   }
 
   /**

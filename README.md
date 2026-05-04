@@ -1,233 +1,141 @@
 # QC Studio
 
-基于Electron + Vue 3 + TypeScript构建的智能数据质量控制桌面应用。
+基于 Electron + Vue 3 + TypeScript 构建的智能数据质量控制桌面应用，集成 Python 科学计算与 R 语言生态，提供从数据导入、质量分析、缺失值插补到可视化报告的全流程解决方案。
 
-## 🚀 主要功能
+## 功能特性
 
-- **数据管理**: 项目创建、数据导入、数据集管理
-- **数据质量分析**: 缺失值检测、异常值识别、数据完整性评估
-- **智能插补**: 
-  - 传统插补方法（线性、样条、均值、中位数等）
-  - **ARIMA时间序列插补** ⭐ 基于Python ARIMA模型的智能缺失值插补
-- **数据可视化**: 时间序列图表、相关性分析、统计分布图
-- **批处理**: 支持大数据集的批量处理
+- **数据管理** — 项目化组织数据，支持 CSV / Excel / MySQL 多源导入，数据集版本管理
+- **数据质量分析** — 缺失值检测、异常值识别、数据完整性评估、通量数据分割
+- **缺失值插补**
+  - 传统方法：线性插值、样条插值、均值 / 中位数填充
+  - 高级方法：ARIMA 时间序列插补（基于 Python statsmodels）
+  - 自定义模型支持
+- **异常值检测** — 基于统计规则与算法的异常值识别与标记
+- **数据可视化** — 时间序列图、相关性分析、统计分布图、通量分割图
+- **工作流引擎** — 可视化拖拽编排数据处理流程，保存与复用模板
+- **批处理与导出** — 支持大数据集批量处理，结果导出为 CSV / Excel
 
-## 🎯 ARIMA插补功能
+## 技术栈
 
-新增的ARIMA插补功能是一个高级时间序列缺失值处理方案：
+| 层级 | 技术 |
+|------|------|
+| 桌面框架 | Electron 35 |
+| 前端 | Vue 3 + TypeScript + Element Plus + Pinia + Vue Router + ECharts |
+| 主进程 | Node.js + TypeScript + better-sqlite3 + mysql2 |
+| 科学计算 | Python 3.12 + pandas + numpy + statsmodels + scipy |
+| 统计建模 | R（便携版） |
+| 构建工具 | Vite + electron-builder + TypeScript |
+| 包管理 | pnpm |
+| 测试 | Vitest + Jest + Playwright + pytest |
 
-### 特性
-- 自动参数选择或手动配置ARIMA(p,d,q)参数
-- 支持多种缺失值表示形式
-- 智能数据预处理和平稳性检验
-- 前向/后向预测结合的插补策略
-- 完整的统计信息和模型评估
+## 快速开始
 
-### 技术栈
-- **前端**: Vue 3 + TypeScript + Element Plus
-- **后端**: Electron + Node.js
-- **算法**: Python + statsmodels + pandas + numpy
+### 前置条件
 
-### 依赖安装
+- Node.js >= 18
+- pnpm
+- Python 3.12（可选，用于 ARIMA 插补）
+- Git
+
+### 安装
+
 ```bash
-# Python依赖
+# 克隆仓库
+git clone https://github.com/li-02/qc_desktop.git
+cd qc_desktop
+
+# 安装 Node 依赖
+pnpm install
+
+# 安装前端依赖
+cd frontend && pnpm install && cd ..
+
+# 安装 Python 依赖（可选）
 cd python
 pip install -r requirements.txt
+cd ..
 ```
 
----
+### 开发
 
-## 项目总体架构
-
-Electron应用由两个主要部分组成：
-
-- **主进程(Main Process)** - 运行Node.js代码，可访问系统API
-- **渲染进程(Renderer Process)** - 运行Web代码(Vue/React等)，负责UI展示
-
-## 通信流程
-
-```
-渲染进程 (Vue应用) <--> preload.ts <--> main.ts <--> 系统资源(文件系统等)
+```bash
+# 启动开发模式（前端热更新 + Electron）
+pnpm dev
 ```
 
-### 主要文件及其作用
+前端开发服务器运行在 `http://localhost:5173`，Electron 窗口会在 Vite 就绪后自动启动。
 
-#### `main.ts` - 主进程
+### 构建
 
-```typescript
-// 设置IPC通信处理程序
-function setupIPC() {
-    ipcMain.handle('get-projects', async () => {
-        return projectManager.getProjects();
-    });
-
-    ipcMain.handle('create-project', async (event, projectInfo) => {
-        try {
-            const project = projectManager.createProject(projectInfo);
-            return {success: true, project};
-        } catch (err: any) {
-            return {success: false, error: err.message};
-        }
-    });
-
-    // 其他IPC处理程序...
-}
+```bash
+# 构建生产版本
+pnpm build
 ```
 
-主要职责：
+构建产物输出至 `release/` 目录，支持 Windows（NSIS 安装包）、macOS、Linux（AppImage）。
 
-- 创建应用窗口
-- 管理应用生命周期
-- 访问系统资源(文件系统等)
-- 处理来自渲染进程的请求
-- 管理项目数据和文件操作
-
-#### `preload.ts` - 预加载脚本
-
-```typescript
-contextBridge.exposeInMainWorld('electronAPI', {
-    // 暴露API给渲染进程
-    getProjects: () => ipcRenderer.invoke('get-projects'),
-    createProject: (projectInfo: any) => ipcRenderer.invoke('create-project', projectInfo),
-    // 其他API...
-});
-```
-
-主要职责：
-
-- 为渲染进程提供安全的API
-- 在主进程和渲染进程之间建立通信桥梁
-- 维护上下文隔离，确保安全性
-
-#### `project.ts` - 项目管理模块
-
-```typescript
-export class ProjectManager {
-    // 项目管理功能
-    public getProjects(): ProjectInfo[] { /*...*/
-    }
-
-    public createProject(projectInfo: { ... }): ProjectInfo { /*...*/
-    }
-
-    public deleteProject(projectId: string): boolean { /*...*/
-    }
-
-    // 其他方法...
-}
-```
-
-主要职责：
-
-- 项目CRUD操作
-- 项目索引文件管理
-- 文件系统交互
-
-#### Vue组件 - 渲染进程
-
-```typescript
-// 加载项目列表
-const loadProjects = async () => {
-    if (window.electronAPI) {
-        const projects = await window.electronAPI.getProjects();
-        // 处理和显示项目列表
-    }
-};
-```
-
-主要职责：
-
-- 用户界面展示
-- 用户交互处理
-- 通过electronAPI与主进程通信
-
-## 通信模式
-
-### 1. 请求-响应模式
-
-渲染进程调用主进程功能并等待结果：
+## 项目结构
 
 ```
-渲染进程: window.electronAPI.getProjects()
-↓
-预加载脚本: ipcRenderer.invoke('get-projects')
-↓
-主进程: ipcMain.handle('get-projects', ...)
-↓
-主进程: 执行操作，返回结果
-↑
-预加载脚本: 将结果通过Promise返回
-↑
-渲染进程: await window.electronAPI.getProjects()
+qc-studio/
+├── electron/                # Electron 主进程
+│   ├── main.ts              # 应用入口，窗口管理
+│   ├── preload.ts           # contextBridge 预加载脚本
+│   ├── core/                # IPC 通信与业务控制器
+│   └── jest.config.js       # 主进程测试配置
+├── frontend/                # Vue 3 前端
+│   ├── src/
+│   │   ├── views/           # 页面视图
+│   │   │   ├── home-page/   # 首页与项目概览
+│   │   │   ├── data-view/   # 数据浏览与质量控制
+│   │   │   ├── workflow/    # 工作流编辑器
+│   │   │   └── ...          # 其他页面
+│   │   ├── components/      # 通用组件
+│   │   ├── stores/          # Pinia 状态管理
+│   │   ├── router/          # 路由配置
+│   │   └── utils/           # 工具函数
+│   └── package.json
+├── python/                  # Python 科学计算后端
+│   ├── main.py              # Python 入口，处理来自 Electron 的请求
+│   ├── requirements.txt     # Python 依赖
+│   └── pyproject.toml
+├── scripts/                 # 构建辅助脚本
+├── e2e/                     # Playwright 端到端测试
+└── electron-builder.json    # 打包配置
 ```
 
-### 2. 事件通知模式
-
-主进程向渲染进程发送事件：
+## 通信架构
 
 ```
-主进程: mainWindow.webContents.send('open-create-project-dialog')
-↓
-预加载脚本: ipcRenderer.on('open-create-project-dialog', callback)
-↓
-渲染进程: 执行注册的回调函数
+渲染进程 (Vue 3)
+    ↕ contextBridge (preload.ts)
+主进程 (Electron / Node.js)
+    ↕ child_process
+Python 计算引擎 / R 脚本
 ```
 
-## 数据存储
+渲染进程通过安全的 `contextBridge` 与主进程通信，主进程通过子进程调用 Python 进行科学计算。
 
-项目数据通过文件系统存储：
+## 测试
 
-- 项目目录结构: `/projects/{项目名}/`
-- 项目索引文件: `/projects/index.json`
-- 项目配置文件: `/projects/{项目名}/project.json`
+```bash
+# 运行所有测试
+pnpm test
 
-### 索引文件结构
+# 仅前端测试
+pnpm test:frontend
 
-```json
-{
-  "lastUpdated": 1684123456789,
-  "projects": [
-    {
-      "id": "项目_1684123456789",
-      "name": "项目",
-      "path": "/.../projects/项目",
-      "createdAt": 1684123456789,
-      "siteInfo": {
-        "longitude": "116.123",
-        "latitude": "39.456",
-        "altitude": "50"
-      }
-    }
-  ]
-}
+# 仅 Electron 主进程测试
+pnpm test:electron
+
+# 仅 Python 测试
+pnpm test:python
+
+# 端到端测试
+pnpm test:e2e
 ```
 
-## 项目生命周期
+## 许可证
 
-1. **创建项目**
-    - 用户输入项目信息
-    - 检查项目名称唯一性
-    - 创建项目目录
-    - 保存项目配置
-    - 更新项目索引
-    - 刷新UI显示
+[MIT](LICENSE)
 
-2. **查询项目**
-    - 读取项目索引文件
-    - 验证项目目录存在性
-    - 返回有效项目列表
-    - 在UI中展示
-
-3. **删除项目**
-    - 确认删除操作
-    - 删除项目目录
-    - 从索引中移除项目
-    - 更新项目索引
-    - 刷新UI显示
-
-## 安全考量
-
-- 使用contextBridge实现上下文隔离
-- 精确控制渲染进程可用的API
-- 所有文件系统操作都在主进程执行
-- 错误处理和参数验证保障应用稳定性

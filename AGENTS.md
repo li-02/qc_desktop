@@ -21,40 +21,14 @@ Use TypeScript for Electron and Vue integration code. Follow Prettier: 2-space i
 
 ## Testing Guidelines
 
-### Test Architecture Overview
+默认不进行详细测试。只有当用户明确指出需要测试、运行测试、补充测试用例，或任务本身直接要求测试时，才执行测试相关工作。
 
-This project uses a four-layer automated test architecture. Unit tests validate isolated frontend utilities, Pinia stores, Electron services, and pure functions. Integration tests validate boundaries between layers, especially IPC handlers, Python bridge calls, and repository/database behavior. E2E tests launch the Electron application and verify user workflows from the renderer through the main process. Python tests cover data processing functions and model helper algorithms under `python/`.
+未被明确要求时：
+- 不主动运行 `pnpm test`、`pnpm test:frontend`、`pnpm test:electron`、`pnpm test:python`、`pnpm test:e2e` 等测试命令。
+- 不因修改或新增模块而默认编写新的测试文件。
+- 可以做轻量级静态检查、阅读代码、人工核对或说明未运行测试，但不要把它升级为详细测试流程。
 
-### Unit Tests
-
-#### Frontend Unit Tests
-- 工具：Vitest + @vue/test-utils + happy-dom
-- 范围：Pinia stores、工具函数、composables
-- 文件命名：`*.spec.ts`，放在被测试文件同级目录
-- 运行命令：`pnpm test:frontend`
-
-#### Main Process Unit Tests
-- 工具：ts-jest
-- 范围：Service 层、工具函数
-- 文件命名：`*.spec.ts`
-- 运行命令：`pnpm test:electron`
-- Mock 策略：Mock Repository 层、文件系统和外部进程调用
-
-### Integration Tests
-- IPC 通信测试：验证 controller handler 的正确性
-- Python 桥接测试：验证 Python 脚本调用和结果解析
-- 数据库测试：使用 SQLite 内存模式进行 Repository 测试
-
-### E2E Tests
-- 工具：Playwright + Electron 插件
-- 覆盖流程：应用启动、数据导入、异常检测、结果导出
-- 运行命令：`pnpm test:e2e`
-- 配置：超时 30s，失败时保存截图
-
-### Python Tests
-- 工具：pytest + pytest-cov
-- 范围：数据处理函数、模型算法
-- 运行命令：`pnpm test:python`
+被明确要求测试时，按变更范围选择最小必要测试集；只有在用户要求完整验证或改动风险较高时，才运行完整测试套件。
 
 ### Test Commands Reference
 
@@ -67,28 +41,9 @@ This project uses a four-layer automated test architecture. Unit tests validate 
 | `pnpm test:e2e` | 端到端测试 | Electron |
 | `pnpm test:frontend:watch` | 前端测试监听模式 | 开发 |
 
-### Coverage Targets
-
-| 层级 | 目标覆盖率 | 优先级 |
-|------|-----------|--------|
-| 工具函数 (utils) | 90%+ | P0 |
-| Pinia Stores | 85%+ | P0 |
-| Service 层 | 80%+ | P1 |
-| Controller 层 | 70%+ | P1 |
-| Vue 组件 | 60%+ | P2 |
-| Python 脚本 | 80%+ | P1 |
-
 ### Continuous Integration
-- 使用 GitHub Actions
-- 触发条件：push 到 main、PR 到 main
-- 并行运行前端、主进程、Python 三套测试
-- 失败时上传覆盖率报告
 
-### Writing New Tests
-- 在修改或新增模块时，必须同时编写对应的测试文件
-- 测试文件遵循 `*.spec.ts` 命名，放在被测试文件同级目录
-- 使用中文编写测试描述（`describe`/`it` 的字符串参数）
-- Mock 所有外部依赖，确保测试独立可重复
+CI 仍可按项目配置运行测试；本地代理执行任务时遵循上面的默认测试策略。
 
 ## Commit & Pull Request Guidelines
 

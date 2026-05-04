@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import Papa from "papaparse";
 
@@ -40,6 +41,12 @@ type SiteFallbackRule = (typeof SITE_FALLBACK_RULES)[number];
 type CsvRecord = Record<string, string>;
 
 const FALLBACK_COLUMN_EXCLUDES = new Set([TIME_COLUMN, "id", "site_id", "is_del", "created_at", "updated_at", "deleted_at"]);
+
+interface CachedImportResult {
+  csvPath: string;
+  rowCount: number;
+  cachePath?: string;
+}
 
 interface BatchState {
   cancelled: boolean;
@@ -251,31 +258,18 @@ export class BEONBatchService {
       throw new Error(`未找到 ${item.siteCode} 的 ${item.dataType} 数据表`);
     }
 
-    log("info", `正在连接 MySQL 并导入 ${tableName} (${request.startTime} ~ ${request.endTime}) ...`);
-    emit(2, `正在从 MySQL 导入 ${dataType} 数据 (${tableName})...`);
+    log("info", `正在准备 ${tableName} (${request.startTime} ~ ${request.endTime}) 数据...`);
+    emit(2, `正在准备 ${dataType} 数据 (${tableName})...`);
 
     const importStart = Date.now();
-    const importResult = await this.mysqlService.importTableByTimeRange(
-      connection,
-      tableName,
-      request.startTime,
-      request.endTime,
-      undefined,
-      "record_time",
-      pool
-    );
+    const importResult = await this.importTableWithLocalCache(connection, tableName, request, pool, tmpFiles, log);
     const importMs = Date.now() - importStart;
 
-    if (!importResult.success || !importResult.data) {
-      throw new Error(importResult.error || `导入 ${item.siteCode} ${dataType} 数据失败`);
-    }
+    const rowCount = importResult.rowCount;
+    log("info", `数据准备完成: ${rowCount} 行, 耗时 ${(importMs / 1000).toFixed(1)}s`);
+    emit(8, `数据准备完成 (${rowCount} 行, ${(importMs / 1000).toFixed(1)}s)`);
 
-    const rowCount = importResult.data.rowCount;
-    log("info", `MySQL 导入完成: ${rowCount} 行, 耗时 ${(importMs / 1000).toFixed(1)}s`);
-    emit(8, `导入完成 (${rowCount} 行, ${(importMs / 1000).toFixed(1)}s)`);
-
-    let inputFile = importResult.data.csvPath;
-    tmpFiles.push(inputFile);
+    let inputFile = importResult.csvPath;
     const fallbackRule = this.resolveFallbackRule(site);
     if (fallbackRule) {
       inputFile = await this.applyFallbackColumnsIfNeeded({
@@ -383,28 +377,15 @@ export class BEONBatchService {
         }
 
         const fluxImportStart = Date.now();
-        const fluxImportResult = await this.mysqlService.importTableByTimeRange(
-          connection,
-          fluxTableName,
-          request.startTime,
-          request.endTime,
-          undefined,
-          "record_time",
-          pool
-        );
+        const fluxImportResult = await this.importTableWithLocalCache(connection, fluxTableName, request, pool, tmpFiles, log);
         const fluxImportMs = Date.now() - fluxImportStart;
-
-        if (!fluxImportResult.success || !fluxImportResult.data) {
-          throw new Error(fluxImportResult.error || `导入 ${item.siteCode} flux 驱动变量失败`);
-        }
 
         log(
           "info",
-          `flux 驱动变量导入完成: ${fluxImportResult.data.rowCount} 行, 耗时 ${(fluxImportMs / 1000).toFixed(1)}s`
+          `flux 驱动变量准备完成: ${fluxImportResult.rowCount} 行, 耗时 ${(fluxImportMs / 1000).toFixed(1)}s`
         );
 
-        fluxDrivingFile = fluxImportResult.data.csvPath;
-        tmpFiles.push(fluxDrivingFile);
+        fluxDrivingFile = fluxImportResult.csvPath;
         if (fallbackRule) {
           fluxDrivingFile = await this.applyFallbackColumnsIfNeeded({
             connection,
@@ -482,6 +463,198 @@ export class BEONBatchService {
     return site.siteCode + TABLE_SUFFIX[dataType];
   }
 
+  private async importTableWithLocalCache(
+    connection: MySQLConnectionConfig,
+    tableName: string,
+    request: BEONBatchRequest,
+    pool: any,
+    tmpFiles: string[],
+    log: (level: BEONBatchLogEntry["level"], text: string) => void
+  ): Promise<CachedImportResult> {
+    const localDataDir = (request.localDataDir || "").trim();
+    if (!localDataDir) {
+      const directImport = await this.mysqlService.importTableByTimeRange(
+        connection,
+        tableName,
+        request.startTime,
+        request.endTime,
+        undefined,
+        TIME_COLUMN,
+        pool
+      );
+      if (!directImport.success || !directImport.data) {
+        throw new Error(directImport.error || `导入 ${tableName} 数据失败`);
+      }
+      tmpFiles.push(directImport.data.csvPath);
+      return directImport.data;
+    }
+
+    fs.mkdirSync(localDataDir, { recursive: true });
+    const cachePath = this.resolveCachePath(localDataDir, request.connectionProfileId, tableName);
+    await this.ensureCacheCoversRange({
+      connection,
+      pool,
+      tableName,
+      cachePath,
+      startTime: request.startTime,
+      endTime: request.endTime,
+      log,
+      tmpFiles,
+    });
+
+    const slicePath = this.writeTimeRangeSlice(cachePath, tableName, request.startTime, request.endTime);
+    tmpFiles.push(slicePath);
+    const rowCount = this.readCsvRecords(slicePath).data.length;
+    return { csvPath: slicePath, rowCount, cachePath };
+  }
+
+  private async ensureCacheCoversRange(args: {
+    connection: MySQLConnectionConfig;
+    pool: any;
+    tableName: string;
+    cachePath: string;
+    startTime: string;
+    endTime: string;
+    log: (level: BEONBatchLogEntry["level"], text: string) => void;
+    tmpFiles: string[];
+  }): Promise<void> {
+    if (!fs.existsSync(args.cachePath)) {
+      args.log("info", `本地缓存不存在，正在拉取 ${args.tableName} 首次数据...`);
+      const imported = await this.fetchTableRange(args.connection, args.tableName, args.startTime, args.endTime, args.pool);
+      args.tmpFiles.push(imported.csvPath);
+      fs.mkdirSync(path.dirname(args.cachePath), { recursive: true });
+      fs.copyFileSync(imported.csvPath, args.cachePath);
+      args.log("info", `已写入本地缓存 ${args.cachePath}`);
+      return;
+    }
+
+    const cached = this.readCsvRecords(args.cachePath);
+    const bounds = this.getCsvTimeBounds(cached.data);
+    if (!bounds) {
+      args.log("warn", `本地缓存 ${args.tableName} 为空，正在重新拉取请求时间段...`);
+      const imported = await this.fetchTableRange(args.connection, args.tableName, args.startTime, args.endTime, args.pool);
+      args.tmpFiles.push(imported.csvPath);
+      fs.mkdirSync(path.dirname(args.cachePath), { recursive: true });
+      fs.copyFileSync(imported.csvPath, args.cachePath);
+      return;
+    }
+
+    if (this.compareTime(args.startTime, bounds.min) < 0) {
+      args.log("info", `本地缓存缺少前段数据，正在拉取 ${args.startTime} ~ ${bounds.min}...`);
+      const imported = await this.fetchTableRange(args.connection, args.tableName, args.startTime, bounds.min, args.pool);
+      args.tmpFiles.push(imported.csvPath);
+      this.mergeCsvIntoCache(args.cachePath, imported.csvPath);
+    }
+
+    if (this.compareTime(args.endTime, bounds.max) > 0) {
+      args.log("info", `本地缓存缺少新增数据，正在拉取 ${bounds.max} ~ ${args.endTime}...`);
+      const imported = await this.fetchTableRange(args.connection, args.tableName, bounds.max, args.endTime, args.pool);
+      args.tmpFiles.push(imported.csvPath);
+      this.mergeCsvIntoCache(args.cachePath, imported.csvPath);
+    }
+  }
+
+  private async fetchTableRange(
+    connection: MySQLConnectionConfig,
+    tableName: string,
+    startTime: string,
+    endTime: string,
+    pool: any
+  ): Promise<{ csvPath: string; rowCount: number }> {
+    const imported = await this.mysqlService.importTableByTimeRange(
+      connection,
+      tableName,
+      startTime,
+      endTime,
+      undefined,
+      TIME_COLUMN,
+      pool
+    );
+    if (!imported.success || !imported.data) {
+      throw new Error(imported.error || `导入 ${tableName} 数据失败`);
+    }
+    return imported.data;
+  }
+
+  private mergeCsvIntoCache(cachePath: string, incomingCsvPath: string): void {
+    const cached = this.readCsvRecords(cachePath);
+    const incoming = this.readCsvRecords(incomingCsvPath);
+    const fields = this.mergeCsvFields(cached.meta.fields || [], incoming.meta.fields || []);
+    const byTime = new Map<string, CsvRecord>();
+
+    for (const row of [...cached.data, ...incoming.data]) {
+      const timeValue = row[TIME_COLUMN];
+      if (!timeValue) {
+        continue;
+      }
+      const existing = byTime.get(timeValue);
+      if (!existing) {
+        byTime.set(timeValue, row);
+        continue;
+      }
+      for (const [column, value] of Object.entries(row)) {
+        if (this.isBlankCsvValue(existing[column]) && !this.isBlankCsvValue(value)) {
+          existing[column] = value;
+        }
+      }
+    }
+
+    const mergedRows = Array.from(byTime.values()).sort((a, b) => this.compareTime(a[TIME_COLUMN], b[TIME_COLUMN]));
+    this.writeCsv(cachePath, fields, mergedRows);
+  }
+
+  private writeTimeRangeSlice(cachePath: string, tableName: string, startTime: string, endTime: string): string {
+    const cached = this.readCsvRecords(cachePath);
+    const fields = cached.meta.fields || [];
+    const rows = cached.data
+      .filter(row => this.isTimeInRange(row[TIME_COLUMN], startTime, endTime))
+      .sort((a, b) => this.compareTime(a[TIME_COLUMN], b[TIME_COLUMN]));
+    const slicePath = path.join(os.tmpdir(), `beon_cache_${this.sanitizePathSegment(tableName)}_${Date.now()}.csv`);
+    this.writeCsv(slicePath, fields, rows);
+    return slicePath;
+  }
+
+  private resolveCachePath(localDataDir: string, connectionProfileId: number, tableName: string): string {
+    return path.join(localDataDir, `profile_${connectionProfileId}`, `${this.sanitizePathSegment(tableName)}.csv`);
+  }
+
+  private mergeCsvFields(primary: string[], secondary: string[]): string[] {
+    return Array.from(new Set([...primary, ...secondary]));
+  }
+
+  private getCsvTimeBounds(rows: CsvRecord[]): { min: string; max: string } | null {
+    const values = rows.map(row => row[TIME_COLUMN]).filter(Boolean).sort((a, b) => this.compareTime(a, b));
+    if (values.length === 0) {
+      return null;
+    }
+    return { min: values[0], max: values[values.length - 1] };
+  }
+
+  private isTimeInRange(value: string | undefined, startTime: string, endTime: string): boolean {
+    if (!value) {
+      return false;
+    }
+    return this.compareTime(value, startTime) >= 0 && this.compareTime(value, endTime) <= 0;
+  }
+
+  private compareTime(left: string, right: string): number {
+    const leftTime = Date.parse(String(left).replace(" ", "T"));
+    const rightTime = Date.parse(String(right).replace(" ", "T"));
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) {
+      return leftTime - rightTime;
+    }
+    return String(left).localeCompare(String(right));
+  }
+
+  private sanitizePathSegment(value: string): string {
+    return value.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/\.+$/g, "_") || "table";
+  }
+
+  private writeCsv(filePath: string, fields: string[], rows: CsvRecord[]): void {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, Papa.unparse({ fields, data: rows }), { encoding: "utf-8" });
+  }
+
   private resolveFallbackRule(site: BEONBatchRequest["sites"][number]): SiteFallbackRule | null {
     const siteCode = (site.siteCode || "").trim().toLowerCase();
     return (
@@ -529,25 +702,17 @@ export class BEONBatchService {
         "info",
         `站点缺指标回退已启用，正在导入 ${args.fallbackRule.sourceSiteCode}/${args.dataType} 数据 (${fallbackTableName})...`
       );
-      const fallbackImport = await this.mysqlService.importTableByTimeRange(
+      const fallbackImport = await this.importTableWithLocalCache(
         args.connection,
         fallbackTableName,
-        args.request.startTime,
-        args.request.endTime,
-        undefined,
-        TIME_COLUMN,
-        args.pool
+        args.request,
+        args.pool,
+        args.tmpFiles,
+        args.log
       );
-      if (!fallbackImport.success || !fallbackImport.data) {
-        throw new Error(
-          fallbackImport.error ||
-            `导入 ${args.fallbackRule.sourceSiteCode} ${args.dataType} 回退数据失败，无法补齐目标站点缺失指标`
-        );
-      }
 
-      fallbackCsvPath = fallbackImport.data.csvPath;
+      fallbackCsvPath = fallbackImport.csvPath;
       args.fallbackImportFiles.set(cacheKey, fallbackCsvPath);
-      args.tmpFiles.push(fallbackCsvPath);
     }
 
     const mergedCsvPath = this.mergeMissingColumnsByTime(args.primaryCsvPath, fallbackCsvPath, args.dataType);

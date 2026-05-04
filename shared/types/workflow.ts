@@ -447,6 +447,8 @@ export interface BEONBatchRequest {
   endTime: string;
   /** MySQL 连接配置 profile ID */
   connectionProfileId: number;
+  /** BEON QC data cache directory */
+  localDataDir: string;
   /** 输出文件保存目录 */
   outputDir: string;
   /** 共享的 QC 参数 */

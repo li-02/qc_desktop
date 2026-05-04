@@ -6,6 +6,9 @@ import { IPCManager } from "./core/IPCManager";
 import { ControllerRegistry } from "./core/ControllerRegistry";
 import { DatabaseManager } from "./core/DatabaseManager";
 
+const APP_NAME = "QC Studio";
+const APP_ID = "com.qcstudio.app";
+
 // 应用状态管理
 interface AppState {
   mainWindow: BrowserWindow | null;
@@ -22,6 +25,16 @@ const appState: AppState = {
   isReady: false,
 };
 
+app.setName(APP_NAME);
+if (process.platform === "win32") {
+  app.setAppUserModelId(APP_ID);
+}
+
+function getAppIconPath(): string {
+  const iconName = process.platform === "win32" ? "app-icon.ico" : "app-icon.png";
+  return path.join(app.getAppPath(), "public", "icons", iconName);
+}
+
 /**
  * 创建主窗口
  */
@@ -33,6 +46,8 @@ function createWindow(): void {
     height: 800,
     minWidth: 1000,
     minHeight: 600,
+    title: APP_NAME,
+    icon: getAppIconPath(),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

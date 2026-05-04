@@ -1,12 +1,13 @@
 {
-    "appId": "com.yourcompany.qc-desktop",
-    "productName": "QC Desktop",
+    "appId": "com.qcstudio.app",
+    "productName": "QC Studio",
     "directories": {
       "output": "release"
     },
     "files": [
       "public/dist/**/*",
       "public/frontend/dist/**/*",
+      "public/icons/**/*",
       "node_modules/**/*",
       "package.json"
     ],
@@ -26,11 +27,13 @@
       "category": "public.app-category.utilities"
     },
     "win": {
+      "icon": "public/icons/app-icon.ico",
       "target": [
         "nsis"
       ]
     },
     "linux": {
+      "icon": "public/icons",
       "target": [
         "AppImage"
       ]

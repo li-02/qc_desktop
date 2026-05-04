@@ -1,4 +1,4 @@
-# QC Desktop - 质量控制桌面应用
+# QC Studio
 
 基于Electron + Vue 3 + TypeScript构建的智能数据质量控制桌面应用。
 

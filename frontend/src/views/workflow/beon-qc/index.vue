@@ -24,6 +24,12 @@
                 <el-button type="primary" plain @click="showConnDialog = true">新建连接</el-button>
               </div>
             </el-form-item>
+            <el-form-item label="本地数据目录" required>
+              <div class="connection-row">
+                <el-input v-model="form.localDataDir" placeholder="选择 BEON QC 数据持久化目录" readonly style="flex: 1" />
+                <el-button type="primary" plain @click="chooseLocalDataDir">选择目录</el-button>
+              </div>
+            </el-form-item>
           </div>
 
           <!-- 站点管理 -->
@@ -492,6 +498,7 @@ const form = reactive({
   sapflowStdWindow: 480,
   sapflowStdStep: 96,
   thresholdsJson: "",
+  localDataDir: "",
   outputDir: "",
 });
 
@@ -656,6 +663,16 @@ const chooseOutputDir = async () => {
   }
 };
 
+const chooseLocalDataDir = async () => {
+  const result = await window.electronAPI.invoke("dialog/open-directory", {
+    title: "选择 BEON QC 数据持久化目录",
+    defaultPath: form.localDataDir || undefined,
+  });
+  if (result?.success && result.data) {
+    form.localDataDir = result.data;
+  }
+};
+
 const showInFolder = async (filePath: string) => {
   await window.electronAPI.invoke("shell/show-in-folder", { path: filePath });
 };
@@ -665,6 +682,7 @@ const handleStart = async () => {
   if (form.sites.length === 0) return ElMessage.warning("请至少添加一个站点");
   if (!form.startTime || !form.endTime) return ElMessage.warning("请选择时间范围");
   if (form.dataTypes.length === 0) return ElMessage.warning("请至少选择一种数据类型");
+  if (!form.localDataDir) return ElMessage.warning("请选择 BEON QC 数据持久化目录");
   if (!form.outputDir) return ElMessage.warning("请选择输出目录");
 
   try {
@@ -686,6 +704,7 @@ const handleStart = async () => {
       startTime: plain.startTime,
       endTime: plain.endTime,
       connectionProfileId: plain.connectionProfileId,
+      localDataDir: plain.localDataDir,
       outputDir: plain.outputDir,
       qcFlagList: plain.qcFlagList,
       useStrg: plain.useStrg,
@@ -792,6 +811,7 @@ const loadFormFromDb = async () => {
     if (saved.sapflowStdWindow != null) form.sapflowStdWindow = saved.sapflowStdWindow;
     if (saved.sapflowStdStep != null) form.sapflowStdStep = saved.sapflowStdStep;
     if (saved.thresholdsJson != null) form.thresholdsJson = saved.thresholdsJson;
+    if (saved.localDataDir) form.localDataDir = saved.localDataDir;
     if (saved.outputDir) form.outputDir = saved.outputDir;
   } catch {}
   formLoaded = true;

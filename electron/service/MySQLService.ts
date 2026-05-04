@@ -104,7 +104,7 @@ export class MySQLService {
         const aliases = selection.columns.map((column, index) => ({
           column,
           alias: `c${index}`,
-          header: this.uniqueColumnHeader(`${selection.table}_${column}`, usedHeaders),
+          header: this.uniqueColumnHeader(column, usedHeaders),
         }));
         aliases.forEach(item => columnHeaders.push(item.header));
 

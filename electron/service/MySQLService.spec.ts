@@ -126,7 +126,7 @@ describe("MySQLService", () => {
       expect.objectContaining({
         datasetName: "joined",
         rows: 3,
-        columns: ["record_time", "fluxs_nee", "aqis_co"],
+        columns: ["record_time", "nee", "co"],
       })
     );
   });

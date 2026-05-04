@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import * as fs from "fs";
 import * as path from "path";
+import Papa from "papaparse";
 
 import { BrowserWindow } from "electron";
 import { PythonBridgeService } from "./PythonBridgeService";
@@ -22,6 +23,23 @@ const TABLE_SUFFIX: Record<BEONDataType, string> = {
   aqi: "_aqis",
   nai: "_nais",
 };
+
+const TIME_COLUMN = "record_time";
+
+const SITE_FALLBACK_RULES = [
+  {
+    targetSiteIds: new Set([10, 17]),
+    targetSiteCodes: new Set(["hanshiqiao", "badaling"]),
+    sourceSiteId: 14,
+    sourceSiteCode: "shisanling",
+  },
+];
+
+type SiteFallbackRule = (typeof SITE_FALLBACK_RULES)[number];
+
+type CsvRecord = Record<string, string>;
+
+const FALLBACK_COLUMN_EXCLUDES = new Set([TIME_COLUMN, "id", "site_id", "is_del", "created_at", "updated_at", "deleted_at"]);
 
 interface BatchState {
   cancelled: boolean;
@@ -146,6 +164,7 @@ export class BEONBatchService {
     const pool = this.mysqlService.getPool(connectionConfig);
 
     const siteFluxDrivingFile: Map<string, string> = new Map();
+    const fallbackImportFiles: Map<string, string> = new Map();
     const tmpFiles: string[] = [];
 
     try {
@@ -168,6 +187,7 @@ export class BEONBatchService {
             connectionConfig,
             pool,
             siteFluxDrivingFile,
+            fallbackImportFiles,
             tmpFiles,
             batchId,
             state,
@@ -202,6 +222,7 @@ export class BEONBatchService {
     connection: MySQLConnectionConfig,
     pool: any,
     siteFluxDrivingFile: Map<string, string>,
+    fallbackImportFiles: Map<string, string>,
     tmpFiles: string[],
     batchId: string,
     state: BatchState,
@@ -253,8 +274,22 @@ export class BEONBatchService {
     log("info", `MySQL 导入完成: ${rowCount} 行, 耗时 ${(importMs / 1000).toFixed(1)}s`);
     emit(8, `导入完成 (${rowCount} 行, ${(importMs / 1000).toFixed(1)}s)`);
 
-    const inputFile = importResult.data.csvPath;
+    let inputFile = importResult.data.csvPath;
     tmpFiles.push(inputFile);
+    const fallbackRule = this.resolveFallbackRule(site);
+    if (fallbackRule) {
+      inputFile = await this.applyFallbackColumnsIfNeeded({
+        connection,
+        pool,
+        primaryCsvPath: inputFile,
+        request,
+        dataType,
+        fallbackRule,
+        fallbackImportFiles,
+        tmpFiles,
+        log,
+      });
+    }
 
     const outputFile = path.join(request.outputDir, `beon_${item.siteCode}_${dataType}_${Date.now()}.csv`);
     // Output file is NOT added to tmpFiles — user wants to keep it
@@ -370,6 +405,19 @@ export class BEONBatchService {
 
         fluxDrivingFile = fluxImportResult.data.csvPath;
         tmpFiles.push(fluxDrivingFile);
+        if (fallbackRule) {
+          fluxDrivingFile = await this.applyFallbackColumnsIfNeeded({
+            connection,
+            pool,
+            primaryCsvPath: fluxDrivingFile,
+            request,
+            dataType: "flux",
+            fallbackRule,
+            fallbackImportFiles,
+            tmpFiles,
+            log,
+          });
+        }
         siteFluxDrivingFile.set(site.siteCode, fluxDrivingFile);
       } else {
         log("info", "复用已有 flux 驱动文件");
@@ -432,6 +480,157 @@ export class BEONBatchService {
     }
 
     return site.siteCode + TABLE_SUFFIX[dataType];
+  }
+
+  private resolveFallbackRule(site: BEONBatchRequest["sites"][number]): SiteFallbackRule | null {
+    const siteCode = (site.siteCode || "").trim().toLowerCase();
+    return (
+      SITE_FALLBACK_RULES.find(rule => rule.targetSiteIds.has(site.siteId) || rule.targetSiteCodes.has(siteCode)) || null
+    );
+  }
+
+  private resolveFallbackTableName(
+    request: BEONBatchRequest,
+    fallbackRule: SiteFallbackRule,
+    dataType: BEONDataType
+  ): string {
+    const configuredSource = request.sites.find(
+      site =>
+        site.siteId === fallbackRule.sourceSiteId ||
+        (site.siteCode || "").trim().toLowerCase() === fallbackRule.sourceSiteCode
+    );
+    if (configuredSource) {
+      const configuredTable = this.resolveTableName(configuredSource, dataType);
+      if (configuredTable) {
+        return configuredTable;
+      }
+    }
+
+    return fallbackRule.sourceSiteCode + TABLE_SUFFIX[dataType];
+  }
+
+  private async applyFallbackColumnsIfNeeded(args: {
+    connection: MySQLConnectionConfig;
+    pool: any;
+    primaryCsvPath: string;
+    request: BEONBatchRequest;
+    dataType: BEONDataType;
+    fallbackRule: SiteFallbackRule;
+    fallbackImportFiles: Map<string, string>;
+    tmpFiles: string[];
+    log: (level: BEONBatchLogEntry["level"], text: string) => void;
+  }): Promise<string> {
+    const fallbackTableName = this.resolveFallbackTableName(args.request, args.fallbackRule, args.dataType);
+    const cacheKey = `${fallbackTableName}|${args.request.startTime}|${args.request.endTime}`;
+
+    let fallbackCsvPath = args.fallbackImportFiles.get(cacheKey);
+    if (!fallbackCsvPath) {
+      args.log(
+        "info",
+        `站点缺指标回退已启用，正在导入 ${args.fallbackRule.sourceSiteCode}/${args.dataType} 数据 (${fallbackTableName})...`
+      );
+      const fallbackImport = await this.mysqlService.importTableByTimeRange(
+        args.connection,
+        fallbackTableName,
+        args.request.startTime,
+        args.request.endTime,
+        undefined,
+        TIME_COLUMN,
+        args.pool
+      );
+      if (!fallbackImport.success || !fallbackImport.data) {
+        throw new Error(
+          fallbackImport.error ||
+            `导入 ${args.fallbackRule.sourceSiteCode} ${args.dataType} 回退数据失败，无法补齐目标站点缺失指标`
+        );
+      }
+
+      fallbackCsvPath = fallbackImport.data.csvPath;
+      args.fallbackImportFiles.set(cacheKey, fallbackCsvPath);
+      args.tmpFiles.push(fallbackCsvPath);
+    }
+
+    const mergedCsvPath = this.mergeMissingColumnsByTime(args.primaryCsvPath, fallbackCsvPath, args.dataType);
+    if (mergedCsvPath === args.primaryCsvPath) {
+      return args.primaryCsvPath;
+    }
+
+    args.tmpFiles.push(mergedCsvPath);
+    args.log(
+      "info",
+      `已从 ${args.fallbackRule.sourceSiteCode}/${args.dataType} 按 ${TIME_COLUMN} 补齐目标站点缺失指标`
+    );
+    return mergedCsvPath;
+  }
+
+  private mergeMissingColumnsByTime(primaryCsvPath: string, fallbackCsvPath: string, dataType: BEONDataType): string {
+    const primary = this.readCsvRecords(primaryCsvPath);
+    const fallback = this.readCsvRecords(fallbackCsvPath);
+    if (!primary.meta.fields?.includes(TIME_COLUMN) || !fallback.meta.fields?.includes(TIME_COLUMN)) {
+      return primaryCsvPath;
+    }
+
+    const primaryColumns = primary.meta.fields;
+    const fallbackColumns = fallback.meta.fields;
+    const primaryColumnSet = new Set(primaryColumns);
+    const columnsToCopy = fallbackColumns.filter(
+      column => !primaryColumnSet.has(column) && !FALLBACK_COLUMN_EXCLUDES.has(column)
+    );
+    const columnsToFill = fallbackColumns.filter(
+      column =>
+        primaryColumnSet.has(column) &&
+        !FALLBACK_COLUMN_EXCLUDES.has(column) &&
+        primary.data.every(row => this.isBlankCsvValue(row[column]))
+    );
+    if (columnsToCopy.length === 0 && columnsToFill.length === 0) {
+      return primaryCsvPath;
+    }
+
+    const fallbackByTime = new Map<string, CsvRecord>();
+    for (const row of fallback.data) {
+      const timeValue = row[TIME_COLUMN];
+      if (timeValue && !fallbackByTime.has(timeValue)) {
+        fallbackByTime.set(timeValue, row);
+      }
+    }
+
+    const mergedRows = primary.data.map(row => {
+      const source = fallbackByTime.get(row[TIME_COLUMN]);
+      const merged: CsvRecord = { ...row };
+      for (const column of columnsToCopy) {
+        merged[column] = source?.[column] ?? "";
+      }
+      for (const column of columnsToFill) {
+        merged[column] = source?.[column] ?? "";
+      }
+      return merged;
+    });
+
+    const mergedCsvPath = path.join(
+      path.dirname(primaryCsvPath),
+      `beon_${dataType}_fallback_${Date.now()}_${Math.random().toString(16).slice(2)}.csv`
+    );
+    fs.writeFileSync(mergedCsvPath, Papa.unparse({ fields: [...primaryColumns, ...columnsToCopy], data: mergedRows }), {
+      encoding: "utf-8",
+    });
+    return mergedCsvPath;
+  }
+
+  private readCsvRecords(csvPath: string): Papa.ParseResult<CsvRecord> {
+    const content = fs.readFileSync(csvPath, "utf-8");
+    const parsed = Papa.parse<CsvRecord>(content, {
+      header: true,
+      skipEmptyLines: true,
+    });
+    if (parsed.errors.length > 0) {
+      const firstError = parsed.errors[0];
+      throw new Error(`CSV 解析失败 (${path.basename(csvPath)}): ${firstError.message}`);
+    }
+    return parsed;
+  }
+
+  private isBlankCsvValue(value: string | undefined): boolean {
+    return value === undefined || value === null || String(value).trim() === "" || String(value).trim().toLowerCase() === "nan";
   }
 
   private buildProgressEvent(batchId: string, state: BatchState): BEONBatchProgressEvent {

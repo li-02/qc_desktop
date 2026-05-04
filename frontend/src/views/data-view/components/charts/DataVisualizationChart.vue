@@ -833,9 +833,6 @@ const getScatterOption = (timeData: Array<{ time: string; value: number }>) => {
     },
     yAxis: {
       type: "value",
-      name: props.selectedColumn,
-      nameLocation: "middle",
-      nameGap: 60,
       scale: true, // 自适应数据范围
     },
     series: [

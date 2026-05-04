@@ -1,7 +1,7 @@
 {
-  "name": "qc_desktop",
+  "name": "qc-studio",
   "version": "1.0.0",
-  "description": "QC Desktop Application",
+  "description": "QC Studio desktop application",
   "main": "public/dist/electron/main.js",
   "scripts": {
     "dev": "cross-env NODE_ENV=development concurrently \"pnpm run dev:frontend\" \"pnpm run dev:electron\"",

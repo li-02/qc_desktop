@@ -524,7 +524,9 @@ onUnmounted(() => {
           :class="{ active: $route.path === '/workflow' }"
           @click="router.push('/workflow')"
           title="自动化工作流">
-          <KanbanBoard class="nav-icon" :size="18" stroke-width="1.8" />
+          <span class="nav-icon-wrap">
+            <KanbanBoard class="nav-icon" :size="18" stroke-width="1.8" />
+          </span>
           <span class="nav-text">自动化工作流</span>
         </button>
         <button
@@ -532,7 +534,9 @@ onUnmounted(() => {
           :class="{ active: $route.path === '/data-source' }"
           @click="router.push('/data-source')"
           title="数据源管理">
-          <DatabaseIcon class="nav-icon" :size="18" stroke-width="1.8" />
+          <span class="nav-icon-wrap">
+            <DatabaseIcon class="nav-icon" :size="18" stroke-width="1.8" />
+          </span>
           <span class="nav-text">数据源管理</span>
         </button>
         <button
@@ -540,7 +544,9 @@ onUnmounted(() => {
           :class="{ active: $route.path === '/workflow/beon-qc' }"
           @click="router.push('/workflow/beon-qc')"
           title="BEON QC 管线">
-          <Gauge class="nav-icon" :size="18" stroke-width="1.8" />
+          <span class="nav-icon-wrap">
+            <Gauge class="nav-icon" :size="18" stroke-width="1.8" />
+          </span>
           <span class="nav-text">BEON QC</span>
         </button>
       </div>
@@ -1431,9 +1437,10 @@ onUnmounted(() => {
 }
 
 .sidebar-nav-btn {
-  display: flex;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
   align-items: center;
-  gap: var(--space-2-5);
+  column-gap: var(--space-2-5);
   width: 100%;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--c-border);
@@ -1459,11 +1466,25 @@ onUnmounted(() => {
   font-weight: var(--font-semibold);
 }
 
+.sidebar-nav-btn .nav-icon-wrap {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .sidebar-nav-btn .nav-icon {
-  font-size: var(--text-lg);
+  width: 18px;
+  height: 18px;
+  display: block;
+  flex-shrink: 0;
 }
 .sidebar-nav-btn .nav-text {
+  min-width: 0;
   white-space: nowrap;
+  text-align: left;
 }
 
 /* ── 滚动条 ── */

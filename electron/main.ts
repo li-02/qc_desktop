@@ -1,6 +1,6 @@
 // electron/main.ts
 
-import { app, BrowserWindow, Menu } from "electron";
+import { app, BrowserWindow } from "electron";
 import * as path from "path";
 import { IPCManager } from "./core/IPCManager";
 import { ControllerRegistry } from "./core/ControllerRegistry";
@@ -48,6 +48,7 @@ function createWindow(): void {
     minHeight: 600,
     title: APP_NAME,
     icon: getAppIconPath(),
+    autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -59,12 +60,11 @@ function createWindow(): void {
   });
 
   // 注入 mainWindow 给 controllerRegistry
+  appState.mainWindow.setMenu(null);
+
   if (appState.controllerRegistry && appState.mainWindow) {
     appState.controllerRegistry.setMainWindow(appState.mainWindow);
   }
-
-  // 创建应用菜单
-  createApplicationMenu();
 
   // 根据环境加载不同的URL
   if (process.env.NODE_ENV === "development") {
@@ -114,99 +114,15 @@ function setupWindowEvents(): void {
 }
 
 /**
- * 创建应用菜单
- */
-function createApplicationMenu(): void {
-  const menuTemplate = [
-    {
-      label: "文件",
-      submenu: [
-        {
-          label: "新建项目",
-          accelerator: "CmdOrCtrl+N",
-          click: () => {
-            if (appState.mainWindow) {
-              appState.mainWindow.webContents.send("open-create-category-dialog");
-            }
-          },
-        },
-        {
-          label: "导入数据",
-          accelerator: "CmdOrCtrl+I",
-          click: () => {
-            if (appState.mainWindow) {
-              appState.mainWindow.webContents.send("open-import-data-dialog");
-            }
-          },
-        },
-        { type: "separator" },
-        {
-          label: "退出",
-          accelerator: process.platform === "darwin" ? "Cmd+Q" : "Ctrl+Q",
-          click: () => {
-            app.quit();
-          },
-        },
-      ],
-    },
-    {
-      label: "编辑",
-      submenu: [
-        { label: "撤销", accelerator: "CmdOrCtrl+Z", role: "undo" },
-        { label: "重做", accelerator: "Shift+CmdOrCtrl+Z", role: "redo" },
-        { type: "separator" },
-        { label: "剪切", accelerator: "CmdOrCtrl+X", role: "cut" },
-        { label: "复制", accelerator: "CmdOrCtrl+C", role: "copy" },
-        { label: "粘贴", accelerator: "CmdOrCtrl+V", role: "paste" },
-      ],
-    },
-    {
-      label: "视图",
-      submenu: [
-        { label: "重新加载", accelerator: "CmdOrCtrl+R", role: "reload" },
-        {
-          label: "强制重新加载",
-          accelerator: "CmdOrCtrl+Shift+R",
-          role: "forceReload",
-        },
-        { label: "切换开发者工具", accelerator: "F12", role: "toggleDevTools" },
-        { type: "separator" },
-        { label: "实际大小", accelerator: "CmdOrCtrl+0", role: "resetZoom" },
-        { label: "放大", accelerator: "CmdOrCtrl+Plus", role: "zoomIn" },
-        { label: "缩小", accelerator: "CmdOrCtrl+-", role: "zoomOut" },
-        { type: "separator" },
-        { label: "切换全屏", accelerator: "F11", role: "togglefullscreen" },
-      ],
-    },
-    {
-      label: "帮助",
-      submenu: [
-        {
-          label: "关于",
-          click: () => {
-            if (appState.mainWindow) {
-              appState.mainWindow.webContents.send("show-about-dialog");
-            }
-          },
-        },
-      ],
-    },
-  ];
-
-  const menu = Menu.buildFromTemplate(menuTemplate as any);
-  Menu.setApplicationMenu(menu);
-
-  console.log("应用菜单创建完成");
-}
-
-/**
  * 初始化应用配置
  */
 function initializeAppConfig(): void {
   console.log("正在初始化应用配置...");
 
   // 设置项目根目录
-  appState.projectsDir = path.join(app.getAppPath(), "projects");
+  appState.projectsDir = app.isPackaged
+    ? path.join(app.getPath("userData"), "projects")
+    : path.join(app.getAppPath(), "projects");
   console.log(`项目根目录: ${appState.projectsDir}`);
 
   // 确保项目目录存在

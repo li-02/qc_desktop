@@ -6,6 +6,7 @@ import type { VersionStatsInfo } from "@shared/types/projectInterface";
 const props = defineProps<{
   stats: VersionStatsInfo | null;
   qualityPercentage?: number;
+  datasetName?: string;
 }>();
 
 const totalRows = computed(() => props.stats?.totalRows ?? 0);
@@ -30,6 +31,7 @@ const formatNumber = (n: number): string => {
   <div class="quality-card">
     <div class="card-header">
       <span class="card-title">数据质量概览</span>
+      <span v-if="datasetName" class="dataset-chip">{{ datasetName }}</span>
     </div>
     <div class="card-body">
       <div class="stats-grid">
@@ -81,12 +83,30 @@ const formatNumber = (n: number): string => {
 .card-header {
   padding: var(--space-2-5) var(--space-3);
   border-bottom: 1px solid var(--c-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
 
 .card-title {
   font-size: var(--text-sm);
   font-weight: var(--font-bold);
   color: var(--c-text-primary);
+}
+
+.dataset-chip {
+  min-width: 0;
+  max-width: 50%;
+  font-size: var(--text-xs);
+  color: var(--c-brand);
+  background: var(--c-brand-soft);
+  border: 1px solid var(--c-brand-border);
+  border-radius: var(--radius-btn);
+  padding: var(--space-0-5) var(--space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .card-body {

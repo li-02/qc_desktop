@@ -1,22 +1,20 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from "element-plus";
 import { computed } from "vue";
-import { useRouter } from "vue-router";
 import { RefreshCw, Plus, Trash2, Gauge, Cloud, Flag, BarChart, FileText } from "@/components/icons/iconoir";
 import { useCategoryStore } from "@/stores/useCategoryStore";
 import { useDatasetStore } from "@/stores/useDatasetStore";
 import emitter from "@/utils/eventBus";
 
-const router = useRouter();
 const categoryStore = useCategoryStore();
 const datasetStore = useDatasetStore();
 
 const datasets = computed(() => categoryStore.currentCategory?.datasets || []);
+const currentDatasetId = computed(() => datasetStore.currentDataset?.id);
 
 const selectDataset = (dataset: any) => {
   if (categoryStore.currentCategory) {
     datasetStore.setCurrentDataset(dataset.id);
-    router.push(`/data-view?dataset=${dataset.id}`);
   }
 };
 
@@ -113,7 +111,12 @@ const formatRelativeTime = (timestamp: number): string => {
 
       <!-- Dataset List -->
       <div v-else class="datasets-container">
-        <div v-for="dataset in datasets" :key="dataset.id" class="dataset-item" @click="selectDataset(dataset)">
+        <div
+          v-for="dataset in datasets"
+          :key="dataset.id"
+          class="dataset-item"
+          :class="{ active: String(dataset.id) === String(currentDatasetId) }"
+          @click="selectDataset(dataset)">
           <div class="dataset-header">
             <div class="dataset-icon-wrapper">
               <component :is="getIconName(dataset.type)" :size="16" class="dataset-icon" />
@@ -121,6 +124,7 @@ const formatRelativeTime = (timestamp: number): string => {
 
             <div class="dataset-info">
               <div class="dataset-name">{{ dataset.name }}</div>
+              <div v-if="String(dataset.id) === String(currentDatasetId)" class="current-badge">当前</div>
               <div class="dataset-type-badge" :class="getTypeTagClass(dataset.type)">
                 {{ getDatasetTypeLabel(dataset.type) }}
               </div>
@@ -268,6 +272,12 @@ const formatRelativeTime = (timestamp: number): string => {
   box-shadow: var(--shadow-xs);
 }
 
+.dataset-item.active {
+  background: var(--c-brand-soft);
+  border-color: var(--c-brand);
+  box-shadow: var(--shadow-brand-sm);
+}
+
 .dataset-header {
   display: flex;
   align-items: center;
@@ -291,6 +301,11 @@ const formatRelativeTime = (timestamp: number): string => {
 .dataset-item:hover .dataset-icon-wrapper {
   background: var(--color-primary-200);
   border-color: var(--color-primary-300);
+}
+
+.dataset-item.active .dataset-icon-wrapper {
+  background: var(--color-primary-200);
+  border-color: var(--c-brand-border);
 }
 
 .dataset-icon {
@@ -321,6 +336,16 @@ const formatRelativeTime = (timestamp: number): string => {
   border-radius: var(--radius-btn);
   font-weight: var(--font-semibold);
   text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.current-badge {
+  font-size: var(--text-2xs);
+  padding: 2px var(--space-1-5);
+  border-radius: var(--radius-btn);
+  font-weight: var(--font-semibold);
+  background: var(--c-brand);
+  color: var(--c-text-inverse);
   flex-shrink: 0;
 }
 

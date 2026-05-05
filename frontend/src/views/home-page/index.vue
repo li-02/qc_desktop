@@ -21,7 +21,8 @@ const categoryStore = useCategoryStore();
 const datasetStore = useDatasetStore();
 
 // ── Data loading ──
-// Auto-load the first dataset's details when category changes
+// Auto-load a dataset for the category. Keep the user's current selection
+// when it still belongs to this category; otherwise fall back to the first one.
 const dataLoading = ref(false);
 
 const firstDataset = computed(() => {
@@ -29,13 +30,24 @@ const firstDataset = computed(() => {
   return datasets.length > 0 ? datasets[0] : null;
 });
 
+const selectedDataset = computed(() => {
+  const datasets = categoryStore.currentCategory?.datasets || [];
+  const currentId = datasetStore.currentDataset?.id;
+  return datasets.find(dataset => String(dataset.id) === String(currentId)) || firstDataset.value;
+});
+
 watch(
-  () => firstDataset.value,
-  async ds => {
-    if (ds) {
+  () => [categoryStore.currentCategory?.id, firstDataset.value?.id],
+  async () => {
+    const datasets = categoryStore.currentCategory?.datasets || [];
+    const currentId = datasetStore.currentDataset?.id;
+    const hasCurrentDataset = datasets.some(dataset => String(dataset.id) === String(currentId));
+    const dataset = hasCurrentDataset ? null : firstDataset.value;
+
+    if (dataset) {
       dataLoading.value = true;
       try {
-        await datasetStore.setCurrentDataset(ds.id);
+        await datasetStore.setCurrentDataset(dataset.id);
       } finally {
         dataLoading.value = false;
       }
@@ -51,10 +63,11 @@ const qualityPercentage = computed(() => {
   const dq = datasetStore.currentDataset?.originalFile?.dataQuality;
   return dq?.qualityPercentage ?? undefined;
 });
+const currentDatasetName = computed(() => selectedDataset.value?.name || "");
 
 // ── Navigation ──
 const quickViewData = () => {
-  const ds = firstDataset.value;
+  const ds = selectedDataset.value;
   if (ds) {
     router.push(`/data-view?dataset=${ds.id}`);
   } else {
@@ -96,12 +109,15 @@ const showGuide = () => {
       <!-- Row 1: Dataset List + Quality Overview -->
       <div class="row-grid">
         <DatasetInfoCard />
-        <DataQualityOverview :stats="versionStats" :quality-percentage="qualityPercentage" />
+        <DataQualityOverview
+          :stats="versionStats"
+          :quality-percentage="qualityPercentage"
+          :dataset-name="currentDatasetName" />
       </div>
 
       <!-- Row 2: Missing Distribution + Workflow Progress -->
       <div class="row-grid">
-        <MissingDistribution :stats="versionStats" />
+        <MissingDistribution :stats="versionStats" :dataset-name="currentDatasetName" />
         <WorkflowProgress :versions="versions" />
       </div>
 

@@ -1,9 +1,16 @@
 name: Build & Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（如 1.0.1，不需要 v 前缀）'
+        required: true
+        type: string
+  # 自动触发暂关，待 CI 构建问题修复后启用
+  # push:
+  #   tags:
+  #     - 'v*'
 
 jobs:
   # 提取版本号，供后续 job 使用
@@ -12,9 +19,14 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
     steps:
-      - name: Extract version from tag
+      - name: Get version
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "VERSION=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
 
   build:
     needs: prepare

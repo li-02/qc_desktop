@@ -7,6 +7,7 @@ import Papa from "papaparse";
 import { BrowserWindow } from "electron";
 import { PythonBridgeService } from "./PythonBridgeService";
 import { MySQLService } from "./MySQLService";
+import type { BEONEquipmentTableNameMap } from "./MySQLService";
 import {
   BEONDataType,
   BEONBatchRequest,
@@ -39,8 +40,17 @@ const SITE_FALLBACK_RULES = [
 type SiteFallbackRule = (typeof SITE_FALLBACK_RULES)[number];
 
 type CsvRecord = Record<string, string>;
+type SiteConfig = BEONBatchRequest["sites"][number];
 
-const FALLBACK_COLUMN_EXCLUDES = new Set([TIME_COLUMN, "id", "site_id", "is_del", "created_at", "updated_at", "deleted_at"]);
+const FALLBACK_COLUMN_EXCLUDES = new Set([
+  TIME_COLUMN,
+  "id",
+  "site_id",
+  "is_del",
+  "created_at",
+  "updated_at",
+  "deleted_at",
+]);
 
 interface CachedImportResult {
   csvPath: string;
@@ -169,6 +179,7 @@ export class BEONBatchService {
 
     // Acquire a connection pool for the entire batch — all items reuse the same pool
     const pool = this.mysqlService.getPool(connectionConfig);
+    const equipmentTableNames = await this.resolveEquipmentTableNames(connectionConfig, request, pool);
 
     const siteFluxDrivingFile: Map<string, string> = new Map();
     const fallbackImportFiles: Map<string, string> = new Map();
@@ -193,6 +204,7 @@ export class BEONBatchService {
             request,
             connectionConfig,
             pool,
+            equipmentTableNames,
             siteFluxDrivingFile,
             fallbackImportFiles,
             tmpFiles,
@@ -228,6 +240,7 @@ export class BEONBatchService {
     request: BEONBatchRequest,
     connection: MySQLConnectionConfig,
     pool: any,
+    equipmentTableNames: BEONEquipmentTableNameMap,
     siteFluxDrivingFile: Map<string, string>,
     fallbackImportFiles: Map<string, string>,
     tmpFiles: string[],
@@ -253,214 +266,342 @@ export class BEONBatchService {
     };
 
     // --- 1. Import data from MySQL ---
-    const tableName = this.resolveTableName(site, item.dataType);
-    if (!tableName) {
+    const tableNames = this.resolveTableNames(site, item.dataType, equipmentTableNames);
+    if (tableNames.length === 0) {
       throw new Error(`未找到 ${item.siteCode} 的 ${item.dataType} 数据表`);
     }
-
-    log("info", `正在准备 ${tableName} (${request.startTime} ~ ${request.endTime}) 数据...`);
-    emit(2, `正在准备 ${dataType} 数据 (${tableName})...`);
-
-    const importStart = Date.now();
-    const importResult = await this.importTableWithLocalCache(connection, tableName, request, pool, tmpFiles, log);
-    const importMs = Date.now() - importStart;
-
-    const rowCount = importResult.rowCount;
-    log("info", `数据准备完成: ${rowCount} 行, 耗时 ${(importMs / 1000).toFixed(1)}s`);
-    emit(8, `数据准备完成 (${rowCount} 行, ${(importMs / 1000).toFixed(1)}s)`);
-
-    let inputFile = importResult.csvPath;
     const fallbackRule = this.resolveFallbackRule(site);
-    if (fallbackRule) {
-      inputFile = await this.applyFallbackColumnsIfNeeded({
+    const resultFiles: string[] = [];
+    let totalRowCount = 0;
+    let lastPythonResult: any;
+
+    for (let tableIndex = 0; tableIndex < tableNames.length; tableIndex++) {
+      const tableName = tableNames[tableIndex];
+      const tableLabel = tableNames.length > 1 ? `第 ${tableIndex + 1}/${tableNames.length} 个 FTP 表` : "FTP 表";
+      log("info", `正在准备 ${tableLabel}: ${tableName} (${request.startTime} ~ ${request.endTime}) 数据...`);
+      emit(2, `正在准备 ${dataType} 数据 (${tableName})...`);
+
+      const importStart = Date.now();
+      const chunkProgress = (current: number, total: number) => {
+        emit(2 + Math.round((current / total) * 6), `拉取 ${tableName} 数据 ${current}/${total} 分片...`);
+        log("info", `${tableName} 数据拉取分片 ${current}/${total} 完成`);
+      };
+      const importResult = await this.importTableWithLocalCache(
         connection,
-        pool,
-        primaryCsvPath: inputFile,
+        tableName,
         request,
-        dataType,
-        fallbackRule,
-        fallbackImportFiles,
+        pool,
         tmpFiles,
         log,
-      });
-    }
-
-    const outputFile = path.join(request.outputDir, `beon_${item.siteCode}_${dataType}_${Date.now()}.csv`);
-    // Output file is NOT added to tmpFiles — user wants to keep it
-
-    // --- 2. Run pipeline ---
-    if (dataType === "flux") {
-      log("info", "启动 flux QC 管线 (REddyProc)...");
-      emit(10, "正在执行 flux QC 管线...");
-
-      const fluxMapping = {
-        co2FluxCol: request.fluxColumnMapping?.co2FluxCol || "co2_flux",
-        ppfdCol: request.fluxColumnMapping?.ppfdCol || "ppfd",
-        rgRawCol: request.fluxColumnMapping?.rgRawCol || "rg_raw",
-        tairRawCol: request.fluxColumnMapping?.tairRawCol || "tair_raw",
-        rhRawCol: request.fluxColumnMapping?.rhRawCol || "rh_raw",
-        ustarRawCol: request.fluxColumnMapping?.ustarRawCol || "ustar_raw",
-      };
-
-      const pipelineStart = Date.now();
-      const result = await this.pythonBridge.runBEONREddyProcImputation(
-        {
-          inputFile,
-          outputFile,
-          latDeg: site.latitude,
-          longDeg: site.longitude,
-          timezoneHour: site.timezone,
-          siteCode: site.siteCode,
-          allowedQcFlags: request.qcFlagList?.length ? request.qcFlagList.join(",") : "0,1,2",
-          useStrg: request.useStrg,
-          despikingZ: request.despikingZ,
-          co2FluxCol: fluxMapping.co2FluxCol || "co2_flux",
-          h2oFluxCol: request.fluxColumnMapping?.h2oFluxCol,
-          leCol: request.fluxColumnMapping?.leCol,
-          hCol: request.fluxColumnMapping?.hCol,
-          qcCo2FluxCol: request.fluxColumnMapping?.qcCo2FluxCol,
-          qcH2oFluxCol: request.fluxColumnMapping?.qcH2oFluxCol,
-          qcLeCol: request.fluxColumnMapping?.qcLeCol,
-          qcHCol: request.fluxColumnMapping?.qcHCol,
-          ppfdCol: fluxMapping.ppfdCol || "ppfd",
-          rgRawCol: fluxMapping.rgRawCol || "rg_raw",
-          tairRawCol: fluxMapping.tairRawCol || "tair_raw",
-          rhRawCol: fluxMapping.rhRawCol || "rh_raw",
-          vpdRawCol: request.fluxColumnMapping?.vpdRawCol,
-          ustarRawCol: fluxMapping.ustarRawCol || "ustar_raw",
-          co2StrgCol: request.fluxColumnMapping?.co2StrgCol,
-          h2oStrgCol: request.fluxColumnMapping?.h2oStrgCol,
-          leStrgCol: request.fluxColumnMapping?.leStrgCol,
-          hStrgCol: request.fluxColumnMapping?.hStrgCol,
-          shortUpCol: request.fluxColumnMapping?.shortUpCol,
-          rh12mCol: request.fluxColumnMapping?.rh12mCol,
-          rh10mCol: request.fluxColumnMapping?.rh10mCol,
-          ta12mCol: request.fluxColumnMapping?.ta12mCol,
-          thresholdsJson: request.thresholdsJson,
-          localRulesJson: request.localRulesJson,
-          fillAll: true,
-        },
-        progress => {
-          const mapped = 10 + Math.round((progress.progress / 100) * 85);
-          emit(mapped, `[flux] ${progress.message}`);
-          if (progress.message) {
-            appendLog(item, "info", `[Python] ${progress.message}`);
-          }
-        }
+        chunkProgress
       );
-      const pipelineMs = Date.now() - pipelineStart;
+      const importMs = Date.now() - importStart;
 
-      if (!result.success) {
-        throw new Error(result.error || result.data?.error || "flux QC 管线执行失败");
+      const rowCount = importResult.rowCount;
+      totalRowCount += rowCount;
+      log("info", `${tableName} 数据准备完成: ${rowCount} 行, 耗时 ${(importMs / 1000).toFixed(1)}s`);
+      emit(8, `${tableName} 数据准备完成 (${rowCount} 行)`);
+
+      let inputFile = importResult.csvPath;
+      if (fallbackRule) {
+        const fallbackProgress = (current: number, total: number) => {
+          emit(8 + Math.round((current / total) * 2), `回退站点数据 ${current}/${total} 分片...`);
+          log("info", `回退源 ${fallbackRule.sourceSiteCode} → ${site.siteCode} 数据拉取分片 ${current}/${total} 完成`);
+        };
+        inputFile = await this.applyFallbackColumnsIfNeeded({
+          connection,
+          pool,
+          primaryCsvPath: inputFile,
+          request,
+          dataType,
+          fallbackRule,
+          equipmentTableNames,
+          fallbackImportFiles,
+          tmpFiles,
+          log,
+          onChunkProgress: fallbackProgress,
+        });
       }
 
-      log("info", `flux QC 管线完成, 耗时 ${(pipelineMs / 1000).toFixed(1)}s`);
+      const outputFile = this.createQCOutputPath(request.outputDir, tableName, dataType);
+      // Output file is NOT added to tmpFiles — user wants to keep it
 
-      // Store the RAW MySQL CSV (not the processed output) for non-flux driving data.
-      // The raw CSV has record_time + original column names that non-flux pipelines expect.
-      siteFluxDrivingFile.set(site.siteCode, inputFile);
-      item.resultData = {
-        outputFile,
-        rowCount,
-        pythonResult: result.data,
-      };
-    } else {
-      // --- non-flux: need flux driving file ---
-      let fluxDrivingFile = siteFluxDrivingFile.get(site.siteCode);
+      // --- 2. Run pipeline ---
+      if (dataType === "flux") {
+        log("info", `启动 ${tableName} flux QC 管线 (REddyProc)...`);
+        emit(10, `正在执行 ${tableName} flux QC 管线...`);
 
-      if (!fluxDrivingFile) {
-        log("info", "flux 驱动文件尚未准备，正在导入 flux 数据...");
-        emit(8, "正在导入 flux 驱动变量...");
-        const fluxTableName = this.resolveTableName(site, "flux");
-        if (!fluxTableName) {
-          throw new Error(`未找到 ${item.siteCode} 的 flux 驱动表`);
+        const fluxMapping = {
+          co2FluxCol: request.fluxColumnMapping?.co2FluxCol || "co2_flux",
+          ppfdCol: request.fluxColumnMapping?.ppfdCol || "ppfd",
+          rgRawCol: request.fluxColumnMapping?.rgRawCol || "rg_raw",
+          tairRawCol: request.fluxColumnMapping?.tairRawCol || "tair_raw",
+          rhRawCol: request.fluxColumnMapping?.rhRawCol || "rh_raw",
+          ustarRawCol: request.fluxColumnMapping?.ustarRawCol || "ustar_raw",
+        };
+
+        const pipelineStart = Date.now();
+        const result = await this.pythonBridge.runBEONREddyProcImputation(
+          {
+            inputFile,
+            outputFile,
+            latDeg: site.latitude,
+            longDeg: site.longitude,
+            timezoneHour: site.timezone,
+            siteCode: site.siteCode,
+            allowedQcFlags: request.qcFlagList?.length ? request.qcFlagList.join(",") : "0,1,2",
+            useStrg: request.useStrg,
+            despikingZ: request.despikingZ,
+            co2FluxCol: fluxMapping.co2FluxCol || "co2_flux",
+            h2oFluxCol: request.fluxColumnMapping?.h2oFluxCol,
+            leCol: request.fluxColumnMapping?.leCol,
+            hCol: request.fluxColumnMapping?.hCol,
+            qcCo2FluxCol: request.fluxColumnMapping?.qcCo2FluxCol,
+            qcH2oFluxCol: request.fluxColumnMapping?.qcH2oFluxCol,
+            qcLeCol: request.fluxColumnMapping?.qcLeCol,
+            qcHCol: request.fluxColumnMapping?.qcHCol,
+            ppfdCol: fluxMapping.ppfdCol || "ppfd",
+            rgRawCol: fluxMapping.rgRawCol || "rg_raw",
+            tairRawCol: fluxMapping.tairRawCol || "tair_raw",
+            rhRawCol: fluxMapping.rhRawCol || "rh_raw",
+            vpdRawCol: request.fluxColumnMapping?.vpdRawCol,
+            ustarRawCol: fluxMapping.ustarRawCol || "ustar_raw",
+            co2StrgCol: request.fluxColumnMapping?.co2StrgCol,
+            h2oStrgCol: request.fluxColumnMapping?.h2oStrgCol,
+            leStrgCol: request.fluxColumnMapping?.leStrgCol,
+            hStrgCol: request.fluxColumnMapping?.hStrgCol,
+            shortUpCol: request.fluxColumnMapping?.shortUpCol,
+            rh12mCol: request.fluxColumnMapping?.rh12mCol,
+            rh10mCol: request.fluxColumnMapping?.rh10mCol,
+            ta12mCol: request.fluxColumnMapping?.ta12mCol,
+            thresholdsJson: request.thresholdsJson,
+            localRulesJson: request.localRulesJson,
+            fillAll: true,
+          },
+          progress => {
+            if (progress.progress >= 0) {
+              const mapped = 10 + Math.round((progress.progress / 100) * 85);
+              emit(mapped, `[${tableName}] ${progress.message}`);
+            }
+            if (progress.message) {
+              appendLog(item, "info", `[Python] ${progress.message}`);
+            }
+          }
+        );
+        const pipelineMs = Date.now() - pipelineStart;
+
+        if (!result.success) {
+          const stderrInfo = result.stderr ? `\n[stderr]: ${result.stderr}` : "";
+          throw new Error((result.error || result.data?.error || "flux QC 管线执行失败") + stderrInfo);
         }
 
-        const fluxImportStart = Date.now();
-        const fluxImportResult = await this.importTableWithLocalCache(connection, fluxTableName, request, pool, tmpFiles, log);
-        const fluxImportMs = Date.now() - fluxImportStart;
+        log("info", `${tableName} flux QC 管线完成, 耗时 ${(pipelineMs / 1000).toFixed(1)}s`);
 
-        log(
-          "info",
-          `flux 驱动变量准备完成: ${fluxImportResult.rowCount} 行, 耗时 ${(fluxImportMs / 1000).toFixed(1)}s`
-        );
+        // Store the RAW MySQL CSV (not the processed output) for non-flux driving data.
+        // The raw CSV has record_time + original column names that non-flux pipelines expect.
+        siteFluxDrivingFile.set(site.siteCode, inputFile);
+        lastPythonResult = result.data;
+      } else {
+        // --- non-flux: need flux driving file ---
+        let fluxDrivingFile = siteFluxDrivingFile.get(site.siteCode);
 
-        fluxDrivingFile = fluxImportResult.csvPath;
-        if (fallbackRule) {
-          fluxDrivingFile = await this.applyFallbackColumnsIfNeeded({
+        if (!fluxDrivingFile) {
+          log("info", "flux 驱动文件尚未准备，正在导入 flux 数据...");
+          emit(8, "正在导入 flux 驱动变量...");
+          const fluxTableNames = this.resolveTableNames(site, "flux", equipmentTableNames);
+          if (fluxTableNames.length === 0) {
+            throw new Error(`未找到 ${item.siteCode} 的 flux 驱动表`);
+          }
+
+          const fluxImportStart = Date.now();
+          const fluxChunkProgress = (current: number, total: number) => {
+            emit(8 + Math.round((current / total) * 7), `拉取 flux 驱动 ${current}/${total} 分片...`);
+            log("info", `flux 驱动数据拉取分片 ${current}/${total} 完成`);
+          };
+          const fluxImportResult = await this.importTablesWithLocalCache(
             connection,
-            pool,
-            primaryCsvPath: fluxDrivingFile,
+            fluxTableNames,
             request,
-            dataType: "flux",
-            fallbackRule,
-            fallbackImportFiles,
+            pool,
             tmpFiles,
             log,
-          });
-        }
-        siteFluxDrivingFile.set(site.siteCode, fluxDrivingFile);
-      } else {
-        log("info", "复用已有 flux 驱动文件");
-      }
+            fluxChunkProgress
+          );
+          const fluxImportMs = Date.now() - fluxImportStart;
 
-      log("info", `启动 ${dataType} QC 管线...`);
-      emit(15, `正在执行 ${dataType} QC 管线...`);
+          log(
+            "info",
+            `flux 驱动变量准备完成: ${fluxImportResult.rowCount} 行, 耗时 ${(fluxImportMs / 1000).toFixed(1)}s`
+          );
 
-      const pipelineStart = Date.now();
-      const result = await this.pythonBridge.runBEONNonFluxPipeline(
-        {
-          inputFile,
-          outputFile,
-          fluxInputFile: fluxDrivingFile,
-          dataType,
-          latDeg: site.latitude,
-          longDeg: site.longitude,
-          timezoneHour: site.timezone,
-          siteCode: site.siteCode,
-          thresholdsJson: request.thresholdsJson,
-          gapfillIndicators: request.gapfillIndicators?.join(","),
-        },
-        progress => {
-          const mapped = 15 + Math.round((progress.progress / 100) * 80);
-          emit(mapped, `[${dataType}] ${progress.message}`);
-          if (progress.message) {
-            appendLog(item, "info", `[Python] ${progress.message}`);
+          fluxDrivingFile = fluxImportResult.csvPath;
+          if (fallbackRule) {
+            const fluxFallbackProgress = (current: number, total: number) => {
+              emit(14 + Math.round((current / total) * 1), `回退驱动数据 ${current}/${total} 分片...`);
+              log(
+                "info",
+                `回退源 ${fallbackRule.sourceSiteCode} → ${site.siteCode} flux驱动拉取分片 ${current}/${total} 完成`
+              );
+            };
+            fluxDrivingFile = await this.applyFallbackColumnsIfNeeded({
+              connection,
+              pool,
+              primaryCsvPath: fluxDrivingFile,
+              request,
+              dataType: "flux",
+              fallbackRule,
+              equipmentTableNames,
+              fallbackImportFiles,
+              tmpFiles,
+              log,
+              onChunkProgress: fluxFallbackProgress,
+            });
           }
+          siteFluxDrivingFile.set(site.siteCode, fluxDrivingFile);
+        } else {
+          log("info", "复用已有 flux 驱动文件");
         }
-      );
-      const pipelineMs = Date.now() - pipelineStart;
 
-      if (!result.success) {
-        throw new Error(result.error || result.data?.error || `${dataType} QC 管线执行失败`);
+        log("info", `启动 ${tableName} ${dataType} QC 管线...`);
+        emit(15, `正在执行 ${tableName} ${dataType} QC 管线...`);
+
+        const pipelineStart = Date.now();
+        const result = await this.pythonBridge.runBEONNonFluxPipeline(
+          {
+            inputFile,
+            outputFile,
+            fluxInputFile: fluxDrivingFile,
+            dataType,
+            latDeg: site.latitude,
+            longDeg: site.longitude,
+            timezoneHour: site.timezone,
+            siteCode: site.siteCode,
+            thresholdsJson: request.thresholdsJson,
+            gapfillIndicators: request.gapfillIndicators?.join(","),
+          },
+          progress => {
+            if (progress.progress >= 0) {
+              const mapped = 15 + Math.round((progress.progress / 100) * 80);
+              emit(mapped, `[${tableName}] ${progress.message}`);
+            }
+            if (progress.message) {
+              appendLog(item, "info", `[Python] ${progress.message}`);
+            }
+          }
+        );
+        const pipelineMs = Date.now() - pipelineStart;
+
+        if (!result.success) {
+          const stderrInfo = result.stderr ? `\n[stderr]: ${result.stderr}` : "";
+          throw new Error((result.error || result.data?.error || `${dataType} QC 管线执行失败`) + stderrInfo);
+        }
+
+        log("info", `${tableName} ${dataType} QC 管线完成, 耗时 ${(pipelineMs / 1000).toFixed(1)}s`);
+        lastPythonResult = result.data;
       }
 
-      log("info", `${dataType} QC 管线完成, 耗时 ${(pipelineMs / 1000).toFixed(1)}s`);
-
-      item.resultData = {
-        outputFile,
-        fluxDrivingFile,
-        rowCount,
-        pythonResult: result.data,
-      };
+      resultFiles.push(outputFile);
     }
+
+    item.resultData = {
+      outputFile: resultFiles[0],
+      outputFiles: resultFiles,
+      rowCount: totalRowCount,
+      pythonResult: lastPythonResult,
+    };
 
     emit(98, "处理完成");
   }
 
-  private resolveTableName(site: BEONBatchRequest["sites"][number], dataType: BEONDataType): string | undefined {
+  private async resolveEquipmentTableNames(
+    connection: MySQLConnectionConfig,
+    request: BEONBatchRequest,
+    pool: any
+  ): Promise<BEONEquipmentTableNameMap> {
+    const siteIds = request.sites.map(site => site.siteId);
+    const dataTypes = Array.from(new Set([...request.dataTypes, "flux" as BEONDataType]));
+    const result = await this.mysqlService.resolveBEONEquipmentTableNames(connection, siteIds, dataTypes, pool);
+    if (!result.success) {
+      throw new Error(result.error || "查询 equipments 表失败");
+    }
+    return result.data || {};
+  }
+
+  private resolveTableNames(
+    site: SiteConfig,
+    dataType: BEONDataType,
+    equipmentTableNames?: BEONEquipmentTableNameMap
+  ): string[] {
     const explicitMap: Record<BEONDataType, string | undefined> = {
       flux: site.fluxTableName,
       sapflow: site.sapflowTableName,
       aqi: site.aqiTableName,
       nai: site.naiTableName,
     };
+    const explicitListMap: Record<BEONDataType, string[] | undefined> = {
+      flux: site.tableNames?.flux || site.fluxTableNames,
+      sapflow: site.tableNames?.sapflow || site.sapflowTableNames,
+      aqi: site.tableNames?.aqi || site.aqiTableNames,
+      nai: site.tableNames?.nai || site.naiTableNames,
+    };
 
-    if (explicitMap[dataType]) {
-      return explicitMap[dataType];
+    const normalize = (values: Array<string | undefined>): string[] =>
+      Array.from(new Set(values.map(value => (value || "").trim()).filter(Boolean)));
+
+    const explicitList = normalize(explicitListMap[dataType] || []);
+    if (site.tableNames && Object.prototype.hasOwnProperty.call(site.tableNames, dataType)) {
+      return explicitList;
+    }
+    if (explicitList.length > 0) {
+      return explicitList;
     }
 
-    return site.siteCode + TABLE_SUFFIX[dataType];
+    const equipmentTableNamesForType = equipmentTableNames?.[site.siteId]?.[dataType] || [];
+    if (equipmentTableNamesForType.length > 0) {
+      return normalize(equipmentTableNamesForType);
+    }
+
+    const explicit = explicitMap[dataType]?.trim();
+    if (explicit) {
+      return [explicit];
+    }
+
+    const siteCode = (site.siteCode || "").trim();
+    return siteCode ? [siteCode + TABLE_SUFFIX[dataType]] : [];
+  }
+
+  private async importTablesWithLocalCache(
+    connection: MySQLConnectionConfig,
+    tableNames: string[],
+    request: BEONBatchRequest,
+    pool: any,
+    tmpFiles: string[],
+    log: (level: BEONBatchLogEntry["level"], text: string) => void,
+    onChunkProgress?: (current: number, total: number) => void
+  ): Promise<CachedImportResult> {
+    if (tableNames.length === 1) {
+      return this.importTableWithLocalCache(connection, tableNames[0], request, pool, tmpFiles, log, onChunkProgress);
+    }
+
+    const importedFiles: CachedImportResult[] = [];
+    for (let index = 0; index < tableNames.length; index++) {
+      const tableName = tableNames[index];
+      log("info", `正在拉取第 ${index + 1}/${tableNames.length} 个 FTP 表: ${tableName}`);
+      importedFiles.push(
+        await this.importTableWithLocalCache(connection, tableName, request, pool, tmpFiles, log, onChunkProgress)
+      );
+    }
+
+    const mergedCsvPath = path.join(
+      os.tmpdir(),
+      `beon_multi_ftp_${this.sanitizePathSegment(tableNames[0])}_${Date.now()}.csv`
+    );
+    const rowCount = this.mergeCsvFilesByTime(
+      importedFiles.map(file => file.csvPath),
+      mergedCsvPath
+    );
+    tmpFiles.push(mergedCsvPath);
+    return { csvPath: mergedCsvPath, rowCount };
   }
 
   private async importTableWithLocalCache(
@@ -469,7 +610,8 @@ export class BEONBatchService {
     request: BEONBatchRequest,
     pool: any,
     tmpFiles: string[],
-    log: (level: BEONBatchLogEntry["level"], text: string) => void
+    log: (level: BEONBatchLogEntry["level"], text: string) => void,
+    onChunkProgress?: (current: number, total: number) => void
   ): Promise<CachedImportResult> {
     const localDataDir = (request.localDataDir || "").trim();
     if (!localDataDir) {
@@ -480,7 +622,9 @@ export class BEONBatchService {
         request.endTime,
         undefined,
         TIME_COLUMN,
-        pool
+        pool,
+        30,
+        onChunkProgress
       );
       if (!directImport.success || !directImport.data) {
         throw new Error(directImport.error || `导入 ${tableName} 数据失败`);
@@ -500,6 +644,7 @@ export class BEONBatchService {
       endTime: request.endTime,
       log,
       tmpFiles,
+      onChunkProgress,
     });
 
     const slicePath = this.writeTimeRangeSlice(cachePath, tableName, request.startTime, request.endTime);
@@ -517,10 +662,18 @@ export class BEONBatchService {
     endTime: string;
     log: (level: BEONBatchLogEntry["level"], text: string) => void;
     tmpFiles: string[];
+    onChunkProgress?: (current: number, total: number) => void;
   }): Promise<void> {
     if (!fs.existsSync(args.cachePath)) {
       args.log("info", `本地缓存不存在，正在拉取 ${args.tableName} 首次数据...`);
-      const imported = await this.fetchTableRange(args.connection, args.tableName, args.startTime, args.endTime, args.pool);
+      const imported = await this.fetchTableRange(
+        args.connection,
+        args.tableName,
+        args.startTime,
+        args.endTime,
+        args.pool,
+        args.onChunkProgress
+      );
       args.tmpFiles.push(imported.csvPath);
       fs.mkdirSync(path.dirname(args.cachePath), { recursive: true });
       fs.copyFileSync(imported.csvPath, args.cachePath);
@@ -532,7 +685,14 @@ export class BEONBatchService {
     const bounds = this.getCsvTimeBounds(cached.data);
     if (!bounds) {
       args.log("warn", `本地缓存 ${args.tableName} 为空，正在重新拉取请求时间段...`);
-      const imported = await this.fetchTableRange(args.connection, args.tableName, args.startTime, args.endTime, args.pool);
+      const imported = await this.fetchTableRange(
+        args.connection,
+        args.tableName,
+        args.startTime,
+        args.endTime,
+        args.pool,
+        args.onChunkProgress
+      );
       args.tmpFiles.push(imported.csvPath);
       fs.mkdirSync(path.dirname(args.cachePath), { recursive: true });
       fs.copyFileSync(imported.csvPath, args.cachePath);
@@ -541,14 +701,28 @@ export class BEONBatchService {
 
     if (this.compareTime(args.startTime, bounds.min) < 0) {
       args.log("info", `本地缓存缺少前段数据，正在拉取 ${args.startTime} ~ ${bounds.min}...`);
-      const imported = await this.fetchTableRange(args.connection, args.tableName, args.startTime, bounds.min, args.pool);
+      const imported = await this.fetchTableRange(
+        args.connection,
+        args.tableName,
+        args.startTime,
+        bounds.min,
+        args.pool,
+        args.onChunkProgress
+      );
       args.tmpFiles.push(imported.csvPath);
       this.mergeCsvIntoCache(args.cachePath, imported.csvPath);
     }
 
     if (this.compareTime(args.endTime, bounds.max) > 0) {
       args.log("info", `本地缓存缺少新增数据，正在拉取 ${bounds.max} ~ ${args.endTime}...`);
-      const imported = await this.fetchTableRange(args.connection, args.tableName, bounds.max, args.endTime, args.pool);
+      const imported = await this.fetchTableRange(
+        args.connection,
+        args.tableName,
+        bounds.max,
+        args.endTime,
+        args.pool,
+        args.onChunkProgress
+      );
       args.tmpFiles.push(imported.csvPath);
       this.mergeCsvIntoCache(args.cachePath, imported.csvPath);
     }
@@ -559,7 +733,8 @@ export class BEONBatchService {
     tableName: string,
     startTime: string,
     endTime: string,
-    pool: any
+    pool: any,
+    onChunkProgress?: (current: number, total: number) => void
   ): Promise<{ csvPath: string; rowCount: number }> {
     const imported = await this.mysqlService.importTableByTimeRange(
       connection,
@@ -568,7 +743,9 @@ export class BEONBatchService {
       endTime,
       undefined,
       TIME_COLUMN,
-      pool
+      pool,
+      30, // 30 天分片
+      onChunkProgress
     );
     if (!imported.success || !imported.data) {
       throw new Error(imported.error || `导入 ${tableName} 数据失败`);
@@ -603,6 +780,41 @@ export class BEONBatchService {
     this.writeCsv(cachePath, fields, mergedRows);
   }
 
+  private mergeCsvFilesByTime(csvPaths: string[], outputPath: string): number {
+    const fields: string[] = [TIME_COLUMN];
+    const rowsByTime = new Map<string, CsvRecord>();
+
+    for (const csvPath of csvPaths) {
+      const parsed = this.readCsvRecords(csvPath);
+      for (const field of parsed.meta.fields || []) {
+        if (!fields.includes(field)) {
+          fields.push(field);
+        }
+      }
+
+      for (const row of parsed.data) {
+        const timeValue = row[TIME_COLUMN];
+        if (!timeValue) {
+          continue;
+        }
+        const merged = rowsByTime.get(timeValue) || { [TIME_COLUMN]: timeValue };
+        for (const [column, value] of Object.entries(row)) {
+          if (column === TIME_COLUMN) {
+            continue;
+          }
+          if (this.isBlankCsvValue(merged[column]) && !this.isBlankCsvValue(value)) {
+            merged[column] = value;
+          }
+        }
+        rowsByTime.set(timeValue, merged);
+      }
+    }
+
+    const rows = Array.from(rowsByTime.values()).sort((a, b) => this.compareTime(a[TIME_COLUMN], b[TIME_COLUMN]));
+    this.writeCsv(outputPath, fields, rows);
+    return rows.length;
+  }
+
   private writeTimeRangeSlice(cachePath: string, tableName: string, startTime: string, endTime: string): string {
     const cached = this.readCsvRecords(cachePath);
     const fields = cached.meta.fields || [];
@@ -618,12 +830,33 @@ export class BEONBatchService {
     return path.join(localDataDir, `profile_${connectionProfileId}`, `${this.sanitizePathSegment(tableName)}.csv`);
   }
 
+  private createQCOutputPath(outputDir: string, tableName: string, dataType: BEONDataType): string {
+    const ftp = this.resolveFtpFromTableName(tableName, dataType);
+    return path.join(outputDir, `QC_${this.sanitizePathSegment(ftp)}_${dataType}_${this.randomBase36(12)}.csv`);
+  }
+
+  private resolveFtpFromTableName(tableName: string, dataType: BEONDataType): string {
+    const suffix = TABLE_SUFFIX[dataType];
+    return tableName.endsWith(suffix) ? tableName.slice(0, -suffix.length) : tableName;
+  }
+
+  private randomBase36(length: number): string {
+    let value = "";
+    while (value.length < length) {
+      value += Math.random().toString(36).slice(2);
+    }
+    return value.slice(0, length);
+  }
+
   private mergeCsvFields(primary: string[], secondary: string[]): string[] {
     return Array.from(new Set([...primary, ...secondary]));
   }
 
   private getCsvTimeBounds(rows: CsvRecord[]): { min: string; max: string } | null {
-    const values = rows.map(row => row[TIME_COLUMN]).filter(Boolean).sort((a, b) => this.compareTime(a, b));
+    const values = rows
+      .map(row => row[TIME_COLUMN])
+      .filter(Boolean)
+      .sort((a, b) => this.compareTime(a, b));
     if (values.length === 0) {
       return null;
     }
@@ -655,17 +888,19 @@ export class BEONBatchService {
     fs.writeFileSync(filePath, Papa.unparse({ fields, data: rows }), { encoding: "utf-8" });
   }
 
-  private resolveFallbackRule(site: BEONBatchRequest["sites"][number]): SiteFallbackRule | null {
+  private resolveFallbackRule(site: SiteConfig): SiteFallbackRule | null {
     const siteCode = (site.siteCode || "").trim().toLowerCase();
     return (
-      SITE_FALLBACK_RULES.find(rule => rule.targetSiteIds.has(site.siteId) || rule.targetSiteCodes.has(siteCode)) || null
+      SITE_FALLBACK_RULES.find(rule => rule.targetSiteIds.has(site.siteId) || rule.targetSiteCodes.has(siteCode)) ||
+      null
     );
   }
 
   private resolveFallbackTableName(
     request: BEONBatchRequest,
     fallbackRule: SiteFallbackRule,
-    dataType: BEONDataType
+    dataType: BEONDataType,
+    equipmentTableNames?: BEONEquipmentTableNameMap
   ): string {
     const configuredSource = request.sites.find(
       site =>
@@ -673,10 +908,15 @@ export class BEONBatchService {
         (site.siteCode || "").trim().toLowerCase() === fallbackRule.sourceSiteCode
     );
     if (configuredSource) {
-      const configuredTable = this.resolveTableName(configuredSource, dataType);
-      if (configuredTable) {
-        return configuredTable;
+      const configuredTables = this.resolveTableNames(configuredSource, dataType, equipmentTableNames);
+      if (configuredTables.length > 0) {
+        return configuredTables[0];
       }
+    }
+
+    const equipmentTableName = equipmentTableNames?.[fallbackRule.sourceSiteId]?.[dataType]?.[0];
+    if (equipmentTableName) {
+      return equipmentTableName;
     }
 
     return fallbackRule.sourceSiteCode + TABLE_SUFFIX[dataType];
@@ -689,29 +929,83 @@ export class BEONBatchService {
     request: BEONBatchRequest;
     dataType: BEONDataType;
     fallbackRule: SiteFallbackRule;
+    equipmentTableNames?: BEONEquipmentTableNameMap;
     fallbackImportFiles: Map<string, string>;
     tmpFiles: string[];
     log: (level: BEONBatchLogEntry["level"], text: string) => void;
+    onChunkProgress?: (current: number, total: number) => void;
   }): Promise<string> {
-    const fallbackTableName = this.resolveFallbackTableName(args.request, args.fallbackRule, args.dataType);
+    const fallbackTableName = this.resolveFallbackTableName(
+      args.request,
+      args.fallbackRule,
+      args.dataType,
+      args.equipmentTableNames
+    );
     const cacheKey = `${fallbackTableName}|${args.request.startTime}|${args.request.endTime}`;
 
     let fallbackCsvPath = args.fallbackImportFiles.get(cacheKey);
     if (!fallbackCsvPath) {
       args.log(
         "info",
-        `站点缺指标回退已启用，正在导入 ${args.fallbackRule.sourceSiteCode}/${args.dataType} 数据 (${fallbackTableName})...`
-      );
-      const fallbackImport = await this.importTableWithLocalCache(
-        args.connection,
-        fallbackTableName,
-        args.request,
-        args.pool,
-        args.tmpFiles,
-        args.log
+        `站点缺指标回退已启用，正在分析 ${args.fallbackRule.sourceSiteCode}/${args.dataType} 需要补齐的指标列...`
       );
 
-      fallbackCsvPath = fallbackImport.csvPath;
+      // 1. 分析主表已有列及全为空列
+      const primary = this.readCsvRecords(args.primaryCsvPath);
+      const primaryColumns = primary.meta.fields || [];
+      const primaryColumnSet = new Set(primaryColumns);
+      const emptyPrimaryColumns = primaryColumns.filter(
+        col => !FALLBACK_COLUMN_EXCLUDES.has(col) && primary.data.every(row => this.isBlankCsvValue(row[col]))
+      );
+
+      // 2. 获取回退表列名（轻量 SHOW COLUMNS，不传输数据行）
+      const columnsResult = await this.mysqlService.getTableColumns(args.connection, fallbackTableName, args.pool);
+      if (!columnsResult.success || !columnsResult.data) {
+        throw new Error(`获取回退表 ${fallbackTableName} 列结构失败: ${columnsResult.error}`);
+      }
+      const fallbackAllColumns = columnsResult.data;
+
+      // 3. 计算实际需要拉取的列
+      const neededColumns: string[] = [TIME_COLUMN];
+      for (const col of fallbackAllColumns) {
+        if (FALLBACK_COLUMN_EXCLUDES.has(col)) continue;
+        if (!primaryColumnSet.has(col)) {
+          neededColumns.push(col); // columnsToCopy: 主表没有的列
+        } else if (emptyPrimaryColumns.includes(col)) {
+          neededColumns.push(col); // columnsToFill: 主表有但全为空的列
+        }
+      }
+
+      // 4. 无需要补齐的列则跳过拉取
+      if (neededColumns.length <= 1) {
+        args.log("info", `回退表 ${fallbackTableName} 无需补齐任何指标列，跳过`);
+        args.fallbackImportFiles.set(cacheKey, args.primaryCsvPath);
+        return args.primaryCsvPath;
+      }
+
+      args.log(
+        "info",
+        `按需拉取回退表 ${fallbackTableName}: ${neededColumns.length} 个指标列 (原表共 ${fallbackAllColumns.length} 列)，可减少 ${fallbackAllColumns.length - neededColumns.length} 列传输`
+      );
+
+      const fallbackImport = await this.mysqlService.importTableByTimeRange(
+        args.connection,
+        fallbackTableName,
+        args.request.startTime,
+        args.request.endTime,
+        neededColumns,
+        TIME_COLUMN,
+        args.pool,
+        30,
+        args.onChunkProgress
+      );
+
+      if (!fallbackImport.success || !fallbackImport.data) {
+        throw new Error(fallbackImport.error || `导入回退表 ${fallbackTableName} 数据失败`);
+      }
+
+      fallbackCsvPath = fallbackImport.data.csvPath;
+      args.tmpFiles.push(fallbackCsvPath);
       args.fallbackImportFiles.set(cacheKey, fallbackCsvPath);
     }
 
@@ -795,7 +1089,12 @@ export class BEONBatchService {
   }
 
   private isBlankCsvValue(value: string | undefined): boolean {
-    return value === undefined || value === null || String(value).trim() === "" || String(value).trim().toLowerCase() === "nan";
+    return (
+      value === undefined ||
+      value === null ||
+      String(value).trim() === "" ||
+      String(value).trim().toLowerCase() === "nan"
+    );
   }
 
   private buildProgressEvent(batchId: string, state: BatchState): BEONBatchProgressEvent {

@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import sys
+import traceback
 from typing import Dict, List, Optional, Sequence
 
 import numpy as np
@@ -135,9 +136,9 @@ def apply_threshold_limit(
 ) -> pd.DataFrame:
     result = convert_non_time_columns_to_numeric(df, time_col=time_col)
 
-    for column in list(result.columns):
-        if column == time_col or column.endswith("_threshold_limit") or column.endswith("_threshold_limit_std"):
-            continue
+    data_columns = [c for c in result.columns if c != time_col and not c.endswith("_threshold_limit") and not c.endswith("_threshold_limit_std")]
+    print(f"    应用阈值上限: {len(data_columns)} 个数据列")
+    for column in data_columns:
 
         threshold_column = column + "_threshold_limit"
         values = pd.to_numeric(result[column], errors="coerce")
@@ -167,25 +168,69 @@ def standard_deviation_limit(data: pd.DataFrame, window: int = 480, step: int = 
     for column in threshold_columns:
         sapflow_data[column + "_std"] = pd.to_numeric(result[column], errors="coerce")
 
-    index = 0
     numeric_columns = [column for column in sapflow_data.columns if column != "record_time"]
-    while index < len(sapflow_data):
-        if index + window - 1 >= len(sapflow_data):
+    n_cols = len(numeric_columns)
+    if n_cols == 0:
+        return result
+
+    # 转为 numpy 数组，避免 pandas .loc 碎片化导致性能崩塌
+    n_rows = len(sapflow_data)
+    sapflow_array = sapflow_data[numeric_columns].to_numpy(dtype=np.float64)
+    outlier_mask = np.zeros((n_rows, n_cols), dtype=bool)
+
+    total_windows = max(1, (n_rows - window) // step + 1)
+    last_report = -1
+    idx = 0
+    while idx < n_rows:
+        win_end = idx + window
+        if win_end > n_rows:
             break
 
-        window_slice = sapflow_data.iloc[index : index + window].copy()
-        mean = window_slice[numeric_columns].mean(numeric_only=True)
-        std = window_slice[numeric_columns].std(numeric_only=True)
-        lower = mean - 5 * std
-        upper = mean + 5 * std
-        mask = window_slice[numeric_columns].lt(lower, axis=1) | window_slice[numeric_columns].gt(upper, axis=1)
-        sapflow_data.loc[window_slice.index, numeric_columns] = sapflow_data.loc[window_slice.index, numeric_columns].mask(mask)
-        index += step
+        current_pct = (idx // step) * 100 // total_windows
+        if current_pct >= last_report + 10:
+            print(f"    标准差滑动窗口: {idx}/{n_rows} ({current_pct}%)")
+            last_report = current_pct - (current_pct % 10)
 
+        win_data = sapflow_array[idx:win_end, :]
+        col_mean = np.nanmean(win_data, axis=0)
+        col_std = np.nanstd(win_data, axis=0)
+        lower = col_mean - 5.0 * col_std
+        upper = col_mean + 5.0 * col_std
+        # 每列独立比较，避免广播形状问题
+        win_mask = (win_data < lower) | (win_data > upper)
+        outlier_mask[idx:win_end, :] |= win_mask
+        idx += step
+
+    print(f"    标准差滑动窗口完成, 异常值 {outlier_mask.sum()} 个, 正在回写数据...")
+
+    sapflow_array[outlier_mask] = np.nan
+    sapflow_data[numeric_columns] = sapflow_array
+
+    # 合并前检查重复时间戳（重复会导致 merge 笛卡尔积膨胀）
+    dup_in_result = result["record_time"].duplicated().sum()
+    dup_in_sapflow = sapflow_data["record_time"].duplicated().sum()
+    if dup_in_result > 0 or dup_in_sapflow > 0:
+        print(f"    检测到重复 record_time: result={dup_in_result}, sapflow={dup_in_sapflow}, 正在去重...")
+        result = result.drop_duplicates(subset=["record_time"], keep="first")
+        sapflow_data = sapflow_data.drop_duplicates(subset=["record_time"], keep="first")
+
+    print(f"    正在合并主数据与标准差筛选结果 (result={len(result)}行, sapflow={len(sapflow_data)}行)...")
     result = pd.merge(result, sapflow_data, how="outer", on="record_time")
+    print(f"    合并完成: {len(result)} 行, {len(result.columns)} 列")
+
+    # .copy() 强制整理内存碎片，避免后续 sort/filter 性能崩塌
+    result = result.copy()
+    print("    正在过滤半数点...")
     result["record_time"] = pd.to_datetime(result["record_time"], format="ISO8601", errors="coerce")
     result = result[~result["record_time"].dt.minute.isin([15, 45])]
-    return result.sort_values("record_time").reset_index(drop=True)
+    print(f"    过滤完成: {len(result)} 行, 正在排序...", flush=True)
+
+    result = result.sort_values("record_time").reset_index(drop=True)
+    print(f"    标准差筛选数据整理完成: {len(result)} 行, 正在释放临时数组...", flush=True)
+    del sapflow_data, sapflow_array, outlier_mask
+    print(f"    标准差筛选完成: {len(result)} 行", flush=True)
+
+    return result
 
 
 def interpolate_aqi_half_points(data: pd.DataFrame) -> pd.DataFrame:
@@ -217,10 +262,14 @@ def preprocess_nonflux_data(
     if data_type == "aqi":
         result = rename_aqi_columns(result)
 
+    print(f"  阈值筛选: {len(result.columns)} 列, {len(result)} 行, 正在应用阈值上下限...")
     result = apply_threshold_limit(result, threshold_map, time_col="record_time")
 
     if data_type == "sapflow":
+        threshold_cols = sum(1 for c in result.columns if c.endswith("_threshold_limit"))
+        print(f"  标准差筛选: {threshold_cols} 个阈值列, 窗口={sapflow_std_window}, 步长={sapflow_std_step}...", flush=True)
         result = standard_deviation_limit(result, window=sapflow_std_window, step=sapflow_std_step)
+        print(f"  标准差筛选函数已返回: {len(result)} 行", flush=True)
     elif data_type == "aqi":
         result = interpolate_aqi_half_points(result)
 
@@ -274,8 +323,8 @@ def resolve_indicator_name(column_name: str, available_columns: Sequence[str], d
     candidates = [column_name]
     if data_type == "sapflow":
         candidates.extend([
-            column_name + "_threshold_limit_std",
             column_name + "_threshold_limit",
+            column_name + "_threshold_limit_std",
         ])
     else:
         candidates.append(column_name + "_threshold_limit")
@@ -293,10 +342,7 @@ def resolve_indicator_name(column_name: str, available_columns: Sequence[str], d
 def detect_gapfill_indicators(df: pd.DataFrame, data_type: str) -> List[str]:
     indicators: List[str] = []
     for column in df.columns:
-        if data_type == "sapflow":
-            matched = column.endswith("_threshold_limit") or column.endswith("_threshold_limit_std")
-        else:
-            matched = column.endswith("_threshold_limit")
+        matched = column.endswith("_threshold_limit")
 
         if not matched:
             continue
@@ -306,10 +352,7 @@ def detect_gapfill_indicators(df: pd.DataFrame, data_type: str) -> List[str]:
             continue
         indicators.append(column)
 
-    if data_type == "sapflow":
-        indicators.sort(key=lambda item: (strip_indicator_suffix(item), 0 if item.endswith("_std") else 1, item))
-    else:
-        indicators.sort()
+    indicators.sort()
     return indicators
 
 
@@ -331,6 +374,13 @@ def get_gapfill_indicators(df: pd.DataFrame, data_type: str, configured: str) ->
     return indicators
 
 
+def print_gapfill_indicator_summary(indicators: Sequence[str]) -> None:
+    preview_count = min(8, len(indicators))
+    preview = ", ".join(indicators[:preview_count])
+    suffix = "" if len(indicators) <= preview_count else f", ... (+{len(indicators) - preview_count})"
+    print(f"    Gap Filling 待处理指标: {len(indicators)} 个: {preview}{suffix}", flush=True)
+
+
 def prepare_gapfill_dataframe(
     main_df: pd.DataFrame,
     flux_df: pd.DataFrame,
@@ -340,15 +390,18 @@ def prepare_gapfill_dataframe(
     result = result.sort_values("record_time").reset_index(drop=True)
 
     driving_df = prepare_driving_dataframe(flux_df)
+    print("    合并驱动变量...", flush=True)
     result = result.merge(driving_df, how="left", on="record_time")
+    result = result.copy()
     result = result.rename(columns={"record_time": "DateTime"})
     result["DateTime"] = pd.to_datetime(result["DateTime"], format="ISO8601", errors="coerce").dt.tz_localize(None)
 
-    for column in result.columns:
-        if column == "DateTime":
-            continue
-        result[column] = pd.to_numeric(result[column], errors="coerce")
+    # 批量转换，避免逐列 pd.to_numeric 重复触发内部块整理
+    non_dt_cols = [c for c in result.columns if c != "DateTime"]
+    print(f"    转换数值类型: {len(non_dt_cols)} 列...", flush=True)
+    result[non_dt_cols] = result[non_dt_cols].apply(pd.to_numeric, errors="coerce")
 
+    print("    正则化半小时时间序列...", flush=True)
     result = regularize_half_hourly(result, "DateTime")
     return result
 
@@ -360,15 +413,29 @@ def build_nonflux_r_helper() -> object:
         suppressMessages(library(REddyProc))
 
         run_nonflux_gapfill <- function(file_name, longitude, latitude, timezone, flux_data, indicators) {
+          indicator_count <- length(indicators)
+          cat(sprintf("    Gap Filling indicators: %d, data: %d rows x %d columns\\n", indicator_count, nrow(flux_data), ncol(flux_data)))
+          flush.console()
           flux_data$VPD <- fCalcVPDfromRHandTair(rH = flux_data$rH, Tair = flux_data$Tair)
           datanames <- colnames(flux_data)
           EddyProc.C <- sEddyProc$new(ID = file_name, Data = flux_data, ColNames = datanames[-1])
           EddyProc.C$sSetLocationInfo(LatDeg = latitude, LongDeg = longitude, TimeZoneHour = timezone)
-          for (i in indicators) {
+          for (idx in seq_along(indicators)) {
+            i <- indicators[[idx]]
+            started_at <- Sys.time()
+            cat(sprintf("    Gap Filling [%d/%d] start: %s\\n", idx, indicator_count, i))
+            flush.console()
             EddyProc.C$sMDSGapFill(i, FillAll = TRUE)
+            elapsed <- as.numeric(difftime(Sys.time(), started_at, units = "secs"))
+            cat(sprintf("    Gap Filling [%d/%d] done: %s, elapsed %.1fs\\n", idx, indicator_count, i, elapsed))
+            flush.console()
           }
+          cat("    Gap Filling exporting R results...\\n")
+          flush.console()
           FilledEddyData.F <- EddyProc.C$sExportResults()
           CombinedData.F <- cbind(flux_data, FilledEddyData.F)
+          cat(sprintf("    Gap Filling R export done: %d rows x %d columns\\n", nrow(CombinedData.F), ncol(CombinedData.F)))
+          flush.console()
           return(CombinedData.F)
         }
         """
@@ -386,9 +453,11 @@ def run_nonflux_gapfill_r(
     timezone_hour: int,
     indicators: Sequence[str],
 ) -> pd.DataFrame:
+    print(f"    正在转换数据给 R: {len(working_df)} 行, {len(working_df.columns)} 列...", flush=True)
     with localconverter(ro.default_converter + pandas2ri.converter):
         data_r = ro.conversion.py2rpy(working_df)
 
+    print("    R 数据转换完成, 正在执行 REddyProc MDS Gap Filling...", flush=True)
     result_data = run_nonflux_gapfill_func(
         file_name,
         float(long_deg),
@@ -398,11 +467,13 @@ def run_nonflux_gapfill_r(
         ro.StrVector(list(indicators)),
     )
 
+    print("    R Gap Filling 返回, 正在转换结果为 Python DataFrame...", flush=True)
     with localconverter(ro.default_converter + pandas2ri.converter):
         result_df = ro.conversion.rpy2py(result_data)
 
     if "DateTime" in result_df.columns:
         result_df["DateTime"] = pd.to_datetime(result_df["DateTime"], format="ISO8601", errors="coerce").dt.tz_localize(None)
+    print(f"    R 结果转换完成: {len(result_df)} 行, {len(result_df.columns)} 列", flush=True)
     return result_df
 
 
@@ -452,7 +523,7 @@ def main() -> None:
     args = parse_args()
 
     try:
-        print("[1/4] 加载数据...")
+        print("[1/4] 加载数据...", flush=True)
         r_ok, r_error = check_r_environment()
         if not r_ok:
             raise RuntimeError(r_error or "R 环境检查失败")
@@ -461,7 +532,7 @@ def main() -> None:
         flux_df = load_csv(args.flux_file, "flux")
         threshold_map = load_threshold_map(args.thresholds_json)
 
-        print("[2/4] 阈值筛选...")
+        print("[2/4] 阈值筛选...", flush=True)
         filtered_df = preprocess_nonflux_data(
             main_df,
             data_type=args.data_type,
@@ -470,9 +541,12 @@ def main() -> None:
             sapflow_std_step=args.sapflow_std_step,
         )
 
-        print("[3/4] Gap Filling...")
+        print(f"[2/4] 阈值筛选阶段已返回: {len(filtered_df)} 行 x {len(filtered_df.columns)} 列", flush=True)
+        print("[3/4] Gap Filling...", flush=True)
         working_df = prepare_gapfill_dataframe(filtered_df, flux_df)
+        print(f"    Gap Filling 输入准备完成: {len(working_df)} 行 x {len(working_df.columns)} 列", flush=True)
         gapfill_indicators = get_gapfill_indicators(working_df, args.data_type, args.gapfill_indicators)
+        print_gapfill_indicator_summary(gapfill_indicators)
         run_nonflux_gapfill_func = build_nonflux_r_helper()
         result_df = run_nonflux_gapfill_r(
             run_nonflux_gapfill_func,
@@ -500,6 +574,9 @@ def main() -> None:
             )
         )
     except Exception as exc:
+        traceback.print_exc()
+        # Also output to stdout so TS relay forwards it to UI logs
+        print(traceback.format_exc())
         print(
             "__RESULT_JSON__:"
             + json.dumps(

@@ -14,19 +14,27 @@
             <h3 class="group-title">1. 数据库连接</h3>
             <el-form-item label="连接配置" required>
               <div class="connection-row">
-                <el-select v-model="form.connectionProfileId" placeholder="请选择 MySQL 连接" style="flex: 1">
+                <el-select
+                  v-model="form.connectionProfileId"
+                  placeholder="请选择 MySQL 连接"
+                  style="flex: 1"
+                  @change="handleConnectionProfileChange">
                   <el-option
                     v-for="profile in connectionProfiles"
                     :key="profile.id"
                     :label="profile.profileName"
-                    :value="profile.id" />
+                    :value="Number(profile.id)" />
                 </el-select>
                 <el-button type="primary" plain @click="showConnDialog = true">新建连接</el-button>
               </div>
             </el-form-item>
             <el-form-item label="本地数据目录" required>
               <div class="connection-row">
-                <el-input v-model="form.localDataDir" placeholder="选择 BEON QC 数据持久化目录" readonly style="flex: 1" />
+                <el-input
+                  v-model="form.localDataDir"
+                  placeholder="选择 BEON QC 数据持久化目录"
+                  readonly
+                  style="flex: 1" />
                 <el-button type="primary" plain @click="chooseLocalDataDir">选择目录</el-button>
               </div>
             </el-form-item>
@@ -37,10 +45,16 @@
             <div class="group-header">
               <h3 class="group-title">2. 站点管理</h3>
               <div class="group-actions">
-                <el-button type="primary" plain size="small" @click="loadSiteRules" :loading="loadingSites"
+                <el-button
+                  type="primary"
+                  plain
+                  size="small"
+                  native-type="button"
+                  @click="loadSiteRules"
+                  :loading="loadingSites"
                   >从数据库加载</el-button
                 >
-                <el-button type="primary" size="small" @click="addSite">添加站点</el-button>
+                <el-button type="primary" size="small" native-type="button" @click="addSite">添加站点</el-button>
               </div>
             </div>
 
@@ -63,17 +77,31 @@
                   <el-form-item label="海拔">
                     <el-input-number v-model="site.altitude" :precision="1" :step="1" />
                   </el-form-item>
-                  <el-form-item label="Flux 表名">
-                    <el-input v-model="site.fluxTableName" :placeholder="`${site.siteCode}_fluxs`" />
+                  <el-form-item
+                    v-for="(_, tableIndex) in site.tableNames.flux"
+                    :key="`flux-${tableIndex}`"
+                    :label="`Flux 表名${site.tableNames.flux.length > 1 ? ` ${tableIndex + 1}` : ''}`">
+                    <el-input v-model="site.tableNames.flux[tableIndex]" :placeholder="`${site.siteCode}_fluxs`" />
                   </el-form-item>
-                  <el-form-item label="Sapflow 表名">
-                    <el-input v-model="site.sapflowTableName" :placeholder="`${site.siteCode}_sapflows`" />
+                  <el-form-item
+                    v-for="(_, tableIndex) in site.tableNames.sapflow"
+                    :key="`sapflow-${tableIndex}`"
+                    :label="`Sapflow 表名${site.tableNames.sapflow.length > 1 ? ` ${tableIndex + 1}` : ''}`">
+                    <el-input
+                      v-model="site.tableNames.sapflow[tableIndex]"
+                      :placeholder="`${site.siteCode}_sapflows`" />
                   </el-form-item>
-                  <el-form-item label="AQI 表名">
-                    <el-input v-model="site.aqiTableName" :placeholder="`${site.siteCode}_aqis`" />
+                  <el-form-item
+                    v-for="(_, tableIndex) in site.tableNames.aqi"
+                    :key="`aqi-${tableIndex}`"
+                    :label="`AQI 表名${site.tableNames.aqi.length > 1 ? ` ${tableIndex + 1}` : ''}`">
+                    <el-input v-model="site.tableNames.aqi[tableIndex]" :placeholder="`${site.siteCode}_aqis`" />
                   </el-form-item>
-                  <el-form-item label="NAI 表名">
-                    <el-input v-model="site.naiTableName" :placeholder="`${site.siteCode}_nais`" />
+                  <el-form-item
+                    v-for="(_, tableIndex) in site.tableNames.nai"
+                    :key="`nai-${tableIndex}`"
+                    :label="`NAI 表名${site.tableNames.nai.length > 1 ? ` ${tableIndex + 1}` : ''}`">
+                    <el-input v-model="site.tableNames.nai[tableIndex]" :placeholder="`${site.siteCode}_nais`" />
                   </el-form-item>
                 </div>
               </div>
@@ -109,10 +137,13 @@
             <h3 class="group-title">4. 数据类型</h3>
             <el-form-item label="执行管线">
               <el-checkbox-group v-model="form.dataTypes">
-                <el-checkbox label="flux">Flux</el-checkbox>
-                <el-checkbox label="sapflow">Sapflow</el-checkbox>
-                <el-checkbox label="aqi">AQI</el-checkbox>
-                <el-checkbox label="nai">NAI</el-checkbox>
+                <el-checkbox
+                  v-for="option in dataTypeOptions"
+                  :key="option.value"
+                  :label="option.value"
+                  :disabled="isDataTypeUnavailable(option.value)"
+                  >{{ option.label }}</el-checkbox
+                >
               </el-checkbox-group>
             </el-form-item>
           </div>
@@ -281,12 +312,14 @@
               <span v-if="item.finishedAt"> | 结束: {{ formatTime(item.finishedAt) }}</span>
             </div>
 
-            <div v-if="item.status === 'COMPLETED' && item.resultData?.outputFile" class="task-output">
+            <div v-if="item.status === 'COMPLETED' && getOutputFiles(item).length" class="task-output">
               <span class="output-label">输出:</span>
-              <span class="output-path" :title="item.resultData.outputFile">{{ item.resultData.outputFile }}</span>
-              <el-button type="primary" link size="small" @click="showInFolder(item.resultData.outputFile)"
-                >打开文件夹</el-button
-              >
+              <div class="output-list">
+                <div v-for="file in getOutputFiles(item)" :key="file" class="output-row">
+                  <span class="output-path" :title="file">{{ file }}</span>
+                  <el-button type="primary" link size="small" @click="showInFolder(file)">打开文件夹</el-button>
+                </div>
+              </div>
             </div>
 
             <!-- Expandable Log Panel -->
@@ -356,6 +389,7 @@
         <el-table-column type="selection" width="45" />
         <el-table-column prop="abbr_name" label="站点名称" width="120" show-overflow-tooltip />
         <el-table-column prop="ftp" label="站点代码" min-width="140" show-overflow-tooltip />
+        <el-table-column prop="equipment_ftps" label="设备 FTP" min-width="180" show-overflow-tooltip />
         <el-table-column prop="longitude" label="经度" width="130" show-overflow-tooltip />
         <el-table-column prop="latitude" label="纬度" width="130" show-overflow-tooltip />
         <el-table-column prop="altitude" label="海拔" width="80" />
@@ -412,6 +446,29 @@ const toggleLogs = (key: string) => {
 
 const itemKey = (item: BEONBatchItem) => `${item.siteCode}-${item.dataType}`;
 
+const BEON_TABLE_SUFFIXES: Record<BEONDataType, string> = {
+  flux: "_fluxs",
+  sapflow: "_sapflows",
+  aqi: "_aqis",
+  nai: "_nais",
+};
+
+const BEON_ASSET_TYPE_BY_ID: Record<number, BEONDataType> = {
+  1: "flux",
+  2: "aqi",
+  3: "nai",
+  4: "sapflow",
+};
+
+const EMPTY_FTP_VALUES = new Set(["", "null", "undefined", "none", "nil", "nan", "na", "n/a", "-", "--"]);
+
+const dataTypeOptions: Array<{ value: BEONDataType; label: string }> = [
+  { value: "flux", label: "Flux" },
+  { value: "sapflow", label: "Sapflow" },
+  { value: "aqi", label: "AQI" },
+  { value: "nai", label: "NAI" },
+];
+
 // 新建连接弹窗
 const showConnDialog = ref(false);
 const testingConn = ref(false);
@@ -454,11 +511,126 @@ interface SiteEntry {
   latitude: number;
   timezone: number;
   altitude: number;
+  tableNames: Record<BEONDataType, string[]>;
   fluxTableName: string;
   sapflowTableName: string;
   aqiTableName: string;
   naiTableName: string;
 }
+
+const createDefaultTableNames = (siteCode: string): Record<BEONDataType, string[]> => ({
+  flux: siteCode ? [`${siteCode}${BEON_TABLE_SUFFIXES.flux}`] : [""],
+  sapflow: siteCode ? [`${siteCode}${BEON_TABLE_SUFFIXES.sapflow}`] : [""],
+  aqi: siteCode ? [`${siteCode}${BEON_TABLE_SUFFIXES.aqi}`] : [""],
+  nai: siteCode ? [`${siteCode}${BEON_TABLE_SUFFIXES.nai}`] : [""],
+});
+
+const normalizeFtpValue = (value: unknown): string => {
+  const text = String(value ?? "").trim();
+  return EMPTY_FTP_VALUES.has(text.toLowerCase()) ? "" : text;
+};
+
+const isValidBEONTableName = (tableName: unknown): boolean => {
+  const text = String(tableName ?? "").trim();
+  if (!text) return false;
+  for (const suffix of Object.values(BEON_TABLE_SUFFIXES)) {
+    if (text.endsWith(suffix)) {
+      return Boolean(normalizeFtpValue(text.slice(0, -suffix.length)));
+    }
+  }
+  return Boolean(normalizeFtpValue(text));
+};
+
+const parseEquipmentTableNames = (
+  source: string | undefined,
+  fallbackSiteCode: string
+): Record<BEONDataType, string[]> => {
+  const tableNames: Record<BEONDataType, string[]> = {
+    flux: [],
+    sapflow: [],
+    aqi: [],
+    nai: [],
+  };
+
+  const entries = String(source || "")
+    .split(",")
+    .map(item => item.trim())
+    .filter(Boolean);
+
+  for (const entry of entries) {
+    const separatorIndex = entry.indexOf(":");
+    if (separatorIndex <= 0) continue;
+    const assetTypeId = Number(entry.slice(0, separatorIndex));
+    const dataType = BEON_ASSET_TYPE_BY_ID[assetTypeId];
+    const ftp = normalizeFtpValue(entry.slice(separatorIndex + 1));
+    if (!dataType || !ftp) continue;
+    const tableName = `${ftp}${BEON_TABLE_SUFFIXES[dataType]}`;
+    if (!tableNames[dataType].includes(tableName)) {
+      tableNames[dataType].push(tableName);
+    }
+  }
+
+  const fallback = normalizeFtpValue(fallbackSiteCode);
+  if (fallback && Object.values(tableNames).every(values => values.length === 0)) {
+    tableNames.flux.push(`${fallback}${BEON_TABLE_SUFFIXES.flux}`);
+  }
+
+  return tableNames;
+};
+
+const normalizeTableNames = (values: unknown): string[] => {
+  const source = Array.isArray(values) ? values : values == null ? [] : [values];
+  const normalized = source
+    .map(value => String(value).trim())
+    .filter(tableName => isValidBEONTableName(tableName));
+  return Array.from(new Set(normalized));
+};
+
+const normalizeSiteEntry = (site: Partial<SiteEntry>): SiteEntry => {
+  const siteCode = site.siteCode || "";
+  const tableNames: Record<BEONDataType, string[]> = {
+    flux: normalizeTableNames(site.tableNames?.flux || [site.fluxTableName || ""]),
+    sapflow: normalizeTableNames(site.tableNames?.sapflow || [site.sapflowTableName || ""]),
+    aqi: normalizeTableNames(site.tableNames?.aqi || [site.aqiTableName || ""]),
+    nai: normalizeTableNames(site.tableNames?.nai || [site.naiTableName || ""]),
+  };
+
+  const shouldKeepManualInputs = !site.siteId;
+  if (shouldKeepManualInputs) {
+    for (const dataType of Object.keys(tableNames) as BEONDataType[]) {
+      if (tableNames[dataType].length > 0) continue;
+      tableNames[dataType] = createDefaultTableNames(siteCode)[dataType];
+    }
+  }
+
+  return {
+    siteId: site.siteId ?? 0,
+    siteCode,
+    abbr_name: site.abbr_name || "",
+    longitude: site.longitude ?? 0,
+    latitude: site.latitude ?? 0,
+    timezone: site.timezone ?? 8,
+    altitude: site.altitude ?? 0,
+    tableNames,
+    fluxTableName: tableNames.flux[0] || "",
+    sapflowTableName: tableNames.sapflow[0] || "",
+    aqiTableName: tableNames.aqi[0] || "",
+    naiTableName: tableNames.nai[0] || "",
+  };
+};
+
+const hasDataTypeTable = (site: SiteEntry, dataType: BEONDataType): boolean => {
+  return normalizeTableNames(site.tableNames?.[dataType]).length > 0;
+};
+
+const isDataTypeUnavailable = (dataType: BEONDataType): boolean => {
+  return form.sites.length > 0 && !form.sites.some(site => hasDataTypeTable(site, dataType));
+};
+
+const syncAvailableDataTypes = () => {
+  if (form.sites.length === 0) return;
+  form.dataTypes = form.dataTypes.filter(dataType => !isDataTypeUnavailable(dataType));
+};
 
 const form = reactive({
   connectionProfileId: null as number | null,
@@ -505,15 +677,45 @@ const form = reactive({
 // Methods
 const loadConnectionProfiles = async () => {
   try {
-    const result = await window.electronAPI.invoke("mysql/get-connection-profiles");
+    const result = await window.electronAPI.invoke("mysql/get-connection-profiles", {});
     if (result?.success && result.data?.profiles) {
       connectionProfiles.value = result.data.profiles;
+      syncSelectedConnectionProfile();
     } else {
       connectionProfiles.value = [];
+      form.connectionProfileId = null;
     }
   } catch (err) {
     ElMessage.error("获取数据库连接配置失败");
   }
+};
+
+const syncSelectedConnectionProfile = () => {
+  if (form.connectionProfileId == null) return;
+  const profileId = Number(form.connectionProfileId);
+  const profile = connectionProfiles.value.find(item => Number(item.id) === profileId);
+  form.connectionProfileId = profile ? profile.id : null;
+};
+
+const handleConnectionProfileChange = (value: number | string | null) => {
+  if (value == null || value === "") {
+    form.connectionProfileId = null;
+    return;
+  }
+
+  const profileId = Number(value);
+  const profile = connectionProfiles.value.find(item => Number(item.id) === profileId);
+  if (!profile) {
+    form.connectionProfileId = null;
+    ElMessage.warning("所选数据库连接不存在，请刷新连接配置");
+    return;
+  }
+
+  form.connectionProfileId = profile.id;
+  remoteSites.value = [];
+  selectedSiteIds.value = [];
+  showSitePickerDialog.value = false;
+  ElMessage.success(`已选择数据库连接：${profile.profileName}`);
 };
 
 const handleTestConnection = async () => {
@@ -588,6 +790,10 @@ const loadSiteRules = async () => {
       connectionProfileId: form.connectionProfileId,
     });
     const sites = result?.success ? result.data : null;
+    if (!result?.success) {
+      ElMessage.error(result?.error || "加载远程站点失败");
+      return;
+    }
     if (sites && sites.length > 0) {
       remoteSites.value = sites;
       selectedSiteIds.value = [];
@@ -596,7 +802,7 @@ const loadSiteRules = async () => {
       ElMessage.info("远程数据库中未找到有效站点");
     }
   } catch (err) {
-    ElMessage.error("加载远程站点失败");
+    ElMessage.error(err instanceof Error ? err.message : "加载远程站点失败");
   } finally {
     loadingSites.value = false;
   }
@@ -608,7 +814,12 @@ const confirmSitePick = () => {
   let addedCount = 0;
   for (const s of picked) {
     if (existingIds.has(s.id)) continue;
-    const code = s.ftp || "";
+    const equipmentFtp = String(s.equipment_ftps || "")
+      .split(",")
+      .map(item => normalizeFtpValue(item))
+      .find(Boolean);
+    const code = normalizeFtpValue(s.ftp) || equipmentFtp || "";
+    const tableNames = parseEquipmentTableNames(s.equipment_table_sources, code);
     form.sites.push({
       siteId: s.id ?? 0,
       siteCode: code,
@@ -617,10 +828,11 @@ const confirmSitePick = () => {
       latitude: s.latitude ?? 0,
       timezone: s.timezone ?? 8,
       altitude: s.altitude ?? 0,
-      fluxTableName: code ? `${code}_fluxs` : "",
-      sapflowTableName: code ? `${code}_sapflows` : "",
-      aqiTableName: code ? `${code}_aqis` : "",
-      naiTableName: code ? `${code}_nais` : "",
+      tableNames,
+      fluxTableName: tableNames.flux[0] || "",
+      sapflowTableName: tableNames.sapflow[0] || "",
+      aqiTableName: tableNames.aqi[0] || "",
+      naiTableName: tableNames.nai[0] || "",
     });
     existingIds.add(s.id);
     addedCount++;
@@ -642,6 +854,7 @@ const addSite = () => {
     latitude: 0,
     timezone: 8,
     altitude: 0,
+    tableNames: createDefaultTableNames(""),
     fluxTableName: "",
     sapflowTableName: "",
     aqiTableName: "",
@@ -664,17 +877,33 @@ const chooseOutputDir = async () => {
 };
 
 const chooseLocalDataDir = async () => {
-  const result = await window.electronAPI.invoke("dialog/open-directory", {
-    title: "选择 BEON QC 数据持久化目录",
-    defaultPath: form.localDataDir || undefined,
-  });
-  if (result?.success && result.data) {
-    form.localDataDir = result.data;
+  try {
+    const result = await window.electronAPI.invoke("dialog/open-directory", {
+      title: "选择 BEON QC 数据持久化目录",
+      defaultPath: form.localDataDir || undefined,
+    });
+    if (!result?.success) {
+      ElMessage.error(result?.error || "打开目录选择失败");
+      return;
+    }
+    if (result.data) {
+      form.localDataDir = result.data;
+    }
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : "打开目录选择失败");
   }
 };
 
 const showInFolder = async (filePath: string) => {
   await window.electronAPI.invoke("shell/show-in-folder", { path: filePath });
+};
+
+const getOutputFiles = (item: BEONBatchItem): string[] => {
+  const files = item.resultData?.outputFiles;
+  if (Array.isArray(files)) {
+    return files.filter((file): file is string => typeof file === "string" && file.length > 0);
+  }
+  return typeof item.resultData?.outputFile === "string" ? [item.resultData.outputFile] : [];
 };
 
 const handleStart = async () => {
@@ -686,6 +915,19 @@ const handleStart = async () => {
   if (!form.outputDir) return ElMessage.warning("请选择输出目录");
 
   try {
+    const executableDataTypes = form.dataTypes.filter(dataType => !isDataTypeUnavailable(dataType));
+    if (executableDataTypes.length === 0) {
+      return ElMessage.warning("当前站点没有可执行的数据类型表名");
+    }
+    if (executableDataTypes.length !== form.dataTypes.length) {
+      const skipped = form.dataTypes
+        .filter(dataType => isDataTypeUnavailable(dataType))
+        .map(dataType => dataTypeOptions.find(option => option.value === dataType)?.label || dataType)
+        .join("、");
+      ElMessage.warning(`已跳过没有表名的数据类型：${skipped}`);
+      form.dataTypes = executableDataTypes;
+    }
+
     // Deep-clone to strip Vue reactive Proxy — Electron structuredClone cannot serialize Proxy objects
     const plain = JSON.parse(JSON.stringify(form));
     const request: BEONBatchRequest = {
@@ -695,12 +937,22 @@ const handleStart = async () => {
         longitude: s.longitude,
         latitude: s.latitude,
         timezone: s.timezone,
-        fluxTableName: s.fluxTableName || undefined,
-        sapflowTableName: s.sapflowTableName || undefined,
-        aqiTableName: s.aqiTableName || undefined,
-        naiTableName: s.naiTableName || undefined,
+        tableNames: {
+          flux: normalizeTableNames(s.tableNames?.flux || []),
+          sapflow: normalizeTableNames(s.tableNames?.sapflow || []),
+          aqi: normalizeTableNames(s.tableNames?.aqi || []),
+          nai: normalizeTableNames(s.tableNames?.nai || []),
+        },
+        fluxTableNames: normalizeTableNames(s.tableNames?.flux || []),
+        sapflowTableNames: normalizeTableNames(s.tableNames?.sapflow || []),
+        aqiTableNames: normalizeTableNames(s.tableNames?.aqi || []),
+        naiTableNames: normalizeTableNames(s.tableNames?.nai || []),
+        fluxTableName: s.tableNames?.flux?.[0] || s.fluxTableName || undefined,
+        sapflowTableName: s.tableNames?.sapflow?.[0] || s.sapflowTableName || undefined,
+        aqiTableName: s.tableNames?.aqi?.[0] || s.aqiTableName || undefined,
+        naiTableName: s.tableNames?.nai?.[0] || s.naiTableName || undefined,
       })),
-      dataTypes: plain.dataTypes,
+      dataTypes: executableDataTypes,
       startTime: plain.startTime,
       endTime: plain.endTime,
       connectionProfileId: plain.connectionProfileId,
@@ -798,7 +1050,7 @@ const loadFormFromDb = async () => {
       return;
     }
     if (saved.connectionProfileId != null) form.connectionProfileId = saved.connectionProfileId;
-    if (saved.sites?.length) form.sites = saved.sites;
+    if (saved.sites?.length) form.sites = saved.sites.map((site: Partial<SiteEntry>) => normalizeSiteEntry(site));
     if (saved.startTime) form.startTime = saved.startTime;
     if (saved.endTime) form.endTime = saved.endTime;
     if (saved.dataTypes?.length) form.dataTypes = saved.dataTypes;
@@ -818,6 +1070,7 @@ const loadFormFromDb = async () => {
 };
 
 watch(form, saveFormToDb, { deep: true });
+watch(() => form.sites, syncAvailableDataTypes, { deep: true });
 
 // Lifecycle
 onMounted(async () => {
@@ -1147,7 +1400,7 @@ onUnmounted(() => {
 
 .task-output {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-2);
   font-size: var(--text-sm);
   margin-top: var(--space-1);
@@ -1159,6 +1412,18 @@ onUnmounted(() => {
 .task-output .output-label {
   color: var(--c-text-muted);
   flex-shrink: 0;
+}
+
+.task-output .output-list {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-output .output-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
 .task-output .output-path {

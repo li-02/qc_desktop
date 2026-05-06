@@ -304,7 +304,18 @@ export class BEONQCPipelineExecutor implements INodeExecutor {
       database: connectionProfile.database,
     };
 
-    const tableNameMap: Record<BEONDataType, string | undefined> = {
+    const equipmentTablesResult = await this.mysqlService.resolveBEONEquipmentTableNames(
+      connection,
+      [config.siteId],
+      Array.from(new Set([...dataTypes, "flux"]))
+    );
+    if (!equipmentTablesResult.success) {
+      throw new Error(equipmentTablesResult.error || "查询 equipments 表失败");
+    }
+    const equipmentTableNameMap: Partial<Record<BEONDataType, string[]>> =
+      equipmentTablesResult.data?.[config.siteId] || {};
+
+    const explicitTableNameMap: Record<BEONDataType, string | undefined> = {
       flux: config.fluxTableName,
       sapflow: config.sapflowTableName,
       aqi: config.aqiTableName,
@@ -345,7 +356,7 @@ export class BEONQCPipelineExecutor implements INodeExecutor {
     };
 
     const importInputFile = async (dataType: BEONDataType) => {
-      const tableName = tableNameMap[dataType];
+      const tableName = equipmentTableNameMap[dataType]?.[0] || explicitTableNameMap[dataType];
       if (!tableName) {
         throw new Error(`${dataType} 数据表未配置`);
       }

@@ -435,6 +435,11 @@ export interface BEONBatchRequest {
     longitude: number;
     latitude: number;
     timezone: number;
+    tableNames?: Partial<Record<BEONDataType, string[]>>;
+    fluxTableNames?: string[];
+    sapflowTableNames?: string[];
+    aqiTableNames?: string[];
+    naiTableNames?: string[];
     fluxTableName?: string;
     sapflowTableName?: string;
     aqiTableName?: string;

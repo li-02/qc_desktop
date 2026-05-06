@@ -35,7 +35,7 @@ export class PythonBridgeService {
     // 生产环境使用 resources/python（通过 electron-builder extraResources 打包）
     this.pythonDir = app.isPackaged
       ? path.join(process.resourcesPath, "python")
-      : path.join(__dirname, "..", "..", "..", "python");
+      : path.join(__dirname, "..", "..", "..", "..", "python");
   }
 
   public static getInstance(): PythonBridgeService {
@@ -1752,6 +1752,9 @@ export class PythonBridgeService {
         const text = data.toString();
         stdout += text;
 
+        // 提取非空行，过滤 R 控制台噪点
+        const lines = text.split(/\r?\n/).filter((l: string) => l.trim() && !l.startsWith("[") && !l.startsWith("__RESULT_JSON__"));
+
         if (text.includes("[1/4]")) {
           progressCallback?.({ stage: "loading", progress: 15, message: "正在加载非通量数据..." });
         } else if (text.includes("[2/4]")) {
@@ -1763,10 +1766,24 @@ export class PythonBridgeService {
         } else if (text.includes("流程完成")) {
           progressCallback?.({ stage: "completed", progress: 100, message: "BEON 非通量流程完成" });
         }
+
+        // 转发 Python 内部进度信息到前端日志（不改变进度百分比，仅补充消息）
+        for (const line of lines) {
+          progressCallback?.({ stage: "info", progress: -1, message: line });
+        }
       });
 
       proc.stderr.on("data", data => {
-        stderr += data.toString();
+        const text = data.toString();
+        stderr += text;
+
+        const stderrLines = text
+          .split(/\r?\n/)
+          .map((line: string) => line.trim())
+          .filter((line: string) => line && !/^[.\s]+$/.test(line));
+        for (const line of stderrLines) {
+          progressCallback?.({ stage: "info", progress: -1, message: line });
+        }
       });
 
       proc.on("close", code => {

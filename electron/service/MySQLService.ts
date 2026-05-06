@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { BrowserWindow, safeStorage } from "electron";
+import type { BEONDataType } from "@shared/types/workflow";
 import {
   BEONResolvedSiteContext,
   BEONSiteRule,
@@ -22,6 +23,22 @@ import { DatabaseManager } from "../core/DatabaseManager";
 const IMPORT_PROGRESS_CHANNEL = "mysql/import-progress";
 
 const ENCRYPTED_PREFIX = "__enc__";
+
+const BEON_ASSET_TYPE_ID: Record<BEONDataType, number> = {
+  flux: 1,
+  aqi: 2,
+  nai: 3,
+  sapflow: 4,
+};
+
+const BEON_TABLE_SUFFIX: Record<BEONDataType, string> = {
+  flux: "_fluxs",
+  sapflow: "_sapflows",
+  aqi: "_aqis",
+  nai: "_nais",
+};
+
+export type BEONEquipmentTableNameMap = Record<number, Partial<Record<BEONDataType, string[]>>>;
 
 function encryptPassword(plaintext: string): string {
   if (!plaintext) return "";
@@ -441,6 +458,9 @@ export class MySQLService {
    * 按时间范围导出表数据到临时 CSV (streaming)
    * 使用 mysql2 的 query().stream() 将行直接流式写入文件，避免将全量数据加载到内存。
    * 如果传入 pool 则复用连接，否则创建新连接 (向后兼容)
+   *
+   * @param chunkDurationDays 分片天数，默认 30 天。设为 0 则不分片，一次性查询全量。
+   * @param onChunkProgress  每完成一个分片后回调 (当前分片序号, 总分片数)
    */
   async importTableByTimeRange(
     config: MySQLConnectionConfig,
@@ -449,57 +469,84 @@ export class MySQLService {
     endTime: string,
     columns?: string[],
     timeColumn: string = "record_time",
-    pool?: any
+    pool?: any,
+    chunkDurationDays: number = 30,
+    onChunkProgress?: (current: number, total: number) => void
   ): Promise<ServiceResponse<{ csvPath: string; rowCount: number }>> {
     const usePool = !!pool;
     let connection: any = null;
     const csvPath = path.join(os.tmpdir(), `mysql_time_range_${Date.now()}.csv`);
 
-    try {
-      if (usePool) {
-        connection = await pool.getConnection();
-      } else {
-        connection = await this.createConnection(config);
+    const safeTable = this.escapeIdentifier(table);
+    const safeTimeColumn = this.escapeIdentifier(timeColumn);
+    const safeColumns = columns?.length ? columns.map(column => this.escapeIdentifier(column)).join(", ") : "*";
+
+    const escapeCsvField = (val: any): string => {
+      if (val === null || val === undefined) return "";
+      const str = String(val);
+      if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+        return `"${str.replace(/"/g, '""')}"`;
       }
+      return str;
+    };
 
-      const safeTable = this.escapeIdentifier(table);
-      const safeTimeColumn = this.escapeIdentifier(timeColumn);
-      const safeColumns = columns?.length ? columns.map(column => this.escapeIdentifier(column)).join(", ") : "*";
+    const parseTime = (s: string): Date => new Date(s.replace(" ", "T"));
+    const formatTime = (d: Date): string => {
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    };
 
-      const sql = `SELECT ${safeColumns}
-         FROM ${safeTable}
-         WHERE ${safeTimeColumn} BETWEEN ? AND ?
-         ORDER BY ${safeTimeColumn} ASC`;
+    const buildChunks = (): { start: string; end: string; isLast: boolean }[] => {
+      const effectiveDays = chunkDurationDays > 0 ? chunkDurationDays : 99999;
+      const startMs = parseTime(startTime).getTime();
+      const endMs = parseTime(endTime).getTime();
+      const chunkMs = effectiveDays * 24 * 60 * 60 * 1000;
 
-      // Access the underlying non-promise connection for streaming
-      const rawConn = connection.connection;
-      const queryCmd = rawConn.query(sql, [startTime, endTime]);
-      const rowStream = queryCmd.stream({ highWaterMark: 256 });
+      const chunks: { start: string; end: string; isLast: boolean }[] = [];
+      let current = startMs;
+      while (current < endMs) {
+        const chunkEndMs = Math.min(current + chunkMs, endMs);
+        const chunkStart = new Date(current);
+        const chunkEnd = new Date(chunkEndMs);
+        chunks.push({
+          start: formatTime(chunkStart),
+          end: formatTime(chunkEnd),
+          isLast: chunkEndMs >= endMs,
+        });
+        current = chunkEndMs + 1000; // +1s 避免分片边界行重复
+      }
+      return chunks;
+    };
 
-      const result = await new Promise<{ rowCount: number }>((resolve, reject) => {
-        const fileStream = fs.createWriteStream(csvPath, { encoding: "utf-8" });
-        let headerWritten = false;
-        let csvColumns: string[] = [];
+    const streamChunk = (
+      rawConn: any,
+      chunkStart: string,
+      chunkEnd: string,
+      isLast: boolean,
+      fileStream: fs.WriteStream,
+      headerWritten: boolean,
+      knownColumns: string[]
+    ): Promise<{ rowCount: number; headerWritten: boolean; columns: string[] }> => {
+      return new Promise((resolve, reject) => {
+        const operator = isLast ? "<=" : "<";
+        const sql = `SELECT ${safeColumns}
+           FROM ${safeTable}
+           WHERE ${safeTimeColumn} >= ? AND ${safeTimeColumn} ${operator} ?
+           ORDER BY ${safeTimeColumn} ASC`;
+
+        const rowStream = rawConn.query(sql, [chunkStart, chunkEnd]).stream({ highWaterMark: 256 });
+        let hw = headerWritten;
+        let cols = knownColumns;
         let rowCount = 0;
 
-        const escapeCsvField = (val: any): string => {
-          if (val === null || val === undefined) return "";
-          const str = String(val);
-          if (str.includes(",") || str.includes('"') || str.includes("\n")) {
-            return `"${str.replace(/"/g, '""')}"`;
-          }
-          return str;
-        };
-
         rowStream.on("data", (row: any) => {
-          if (!headerWritten) {
-            csvColumns = columns?.length ? columns : Object.keys(row);
-            fileStream.write(csvColumns.map(escapeCsvField).join(",") + "\n");
-            headerWritten = true;
+          if (!hw) {
+            cols = columns?.length ? columns : Object.keys(row);
+            fileStream.write(cols.map(escapeCsvField).join(",") + "\n");
+            hw = true;
           }
-          const line = csvColumns.map(col => escapeCsvField(row[col])).join(",") + "\n";
+          const line = cols.map(col => escapeCsvField(row[col])).join(",") + "\n";
           rowCount++;
-          // Respect backpressure: if write buffer is full, pause the row stream
           if (!fileStream.write(line)) {
             rowStream.pause();
             fileStream.once("drain", () => rowStream.resume());
@@ -511,25 +558,56 @@ export class MySQLService {
           reject(err);
         });
 
-        rowStream.on("end", () => {
-          // If no rows came through, still write an empty file (or header-only)
-          if (!headerWritten && columns?.length) {
-            fileStream.write(columns.map(escapeCsvField).join(",") + "\n");
-          }
-          fileStream.end(() => resolve({ rowCount }));
-        });
+        rowStream.on("end", () => resolve({ rowCount, headerWritten: hw, columns: cols }));
+      });
+    };
 
-        fileStream.on("error", (err: Error) => {
-          rowStream.destroy();
-          reject(err);
-        });
+    try {
+      if (usePool) {
+        connection = await pool.getConnection();
+      } else {
+        connection = await this.createConnection(config);
+      }
+
+      const rawConn = connection.connection;
+      const chunks = buildChunks();
+      const fileStream = fs.createWriteStream(csvPath, { encoding: "utf-8" });
+      let headerWritten = false;
+      let csvColumns: string[] = [];
+      let totalRowCount = 0;
+
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const result = await streamChunk(
+          rawConn,
+          chunk.start,
+          chunk.end,
+          chunk.isLast,
+          fileStream,
+          headerWritten,
+          csvColumns
+        );
+        headerWritten = result.headerWritten;
+        csvColumns = result.columns;
+        totalRowCount += result.rowCount;
+        onChunkProgress?.(i + 1, chunks.length);
+      }
+
+      // No rows at all: optionally write header
+      if (!headerWritten && columns?.length) {
+        fileStream.write(columns.map(escapeCsvField).join(",") + "\n");
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        fileStream.end(() => resolve());
+        fileStream.on("error", reject);
       });
 
       return {
         success: true,
         data: {
           csvPath,
-          rowCount: result.rowCount,
+          rowCount: totalRowCount,
         },
       };
     } catch (error: any) {
@@ -538,6 +616,114 @@ export class MySQLService {
           fs.unlinkSync(csvPath);
         } catch (_) {}
       }
+      return { success: false, error: this.formatMySQLError(error) };
+    } finally {
+      if (connection) {
+        try {
+          if (usePool) {
+            connection.release();
+          } else {
+            await connection.end();
+          }
+        } catch (_) {}
+      }
+    }
+  }
+
+  /**
+   * 获取表的列名列表
+   * 使用 SHOW COLUMNS 快速获取表结构，避免传输数据行
+   */
+  async getTableColumns(config: MySQLConnectionConfig, table: string, pool?: any): Promise<ServiceResponse<string[]>> {
+    const usePool = !!pool;
+    let connection: any = null;
+    try {
+      if (usePool) {
+        connection = await pool.getConnection();
+      } else {
+        connection = await this.createConnection(config);
+      }
+      const safeTable = this.escapeIdentifier(table);
+      const [rows] = await connection.execute(`SHOW COLUMNS FROM ${safeTable}`);
+      return { success: true, data: rows.map((r: any) => r.Field) };
+    } catch (error: any) {
+      return { success: false, error: this.formatMySQLError(error) };
+    } finally {
+      if (connection) {
+        try {
+          if (usePool) {
+            connection.release();
+          } else {
+            await connection.end();
+          }
+        } catch (_) {}
+      }
+    }
+  }
+
+  async resolveBEONEquipmentTableNames(
+    config: MySQLConnectionConfig,
+    siteIds: number[],
+    dataTypes: BEONDataType[],
+    pool?: any
+  ): Promise<ServiceResponse<BEONEquipmentTableNameMap>> {
+    const normalizedSiteIds = Array.from(new Set(siteIds.filter(id => Number.isFinite(id) && id > 0)));
+    const normalizedDataTypes = Array.from(new Set(dataTypes));
+    if (normalizedSiteIds.length === 0 || normalizedDataTypes.length === 0) {
+      return { success: true, data: {} };
+    }
+
+    const assetTypeEntries = normalizedDataTypes.map(dataType => ({
+      dataType,
+      assetTypeId: BEON_ASSET_TYPE_ID[dataType],
+      suffix: BEON_TABLE_SUFFIX[dataType],
+    }));
+    const assetTypeIds = assetTypeEntries.map(entry => entry.assetTypeId);
+    const assetTypeById = new Map(assetTypeEntries.map(entry => [entry.assetTypeId, entry]));
+    const usePool = !!pool;
+    let connection: any = null;
+
+    try {
+      if (usePool) {
+        connection = await pool.getConnection();
+      } else {
+        connection = await this.createConnection(config);
+      }
+
+      const sitePlaceholders = normalizedSiteIds.map(() => "?").join(", ");
+      const assetPlaceholders = assetTypeIds.map(() => "?").join(", ");
+      const [rows] = await connection.execute(
+        `SELECT site_id, asset_type_id, ftp
+         FROM equipments
+         WHERE site_id IN (${sitePlaceholders})
+           AND asset_type_id IN (${assetPlaceholders})
+           AND ftp IS NOT NULL
+           AND ftp != ''
+           AND (is_del IS NULL OR is_del != 1)
+         ORDER BY site_id ASC, asset_type_id ASC, id ASC`,
+        [...normalizedSiteIds, ...assetTypeIds]
+      );
+
+      const result: BEONEquipmentTableNameMap = {};
+      for (const row of rows as any[]) {
+        const siteId = Number(row.site_id);
+        const assetTypeId = Number(row.asset_type_id);
+        const ftp = String(row.ftp || "").trim();
+        const entry = assetTypeById.get(assetTypeId);
+        if (!siteId || !entry || !ftp) {
+          continue;
+        }
+
+        result[siteId] ||= {};
+        const tableName = ftp + entry.suffix;
+        result[siteId][entry.dataType] ||= [];
+        if (!result[siteId][entry.dataType]?.includes(tableName)) {
+          result[siteId][entry.dataType]?.push(tableName);
+        }
+      }
+
+      return { success: true, data: result };
+    } catch (error: any) {
       return { success: false, error: this.formatMySQLError(error) };
     } finally {
       if (connection) {
@@ -1010,11 +1196,40 @@ export class MySQLService {
     let connection: any = null;
     try {
       connection = await this.createConnection(config);
+      const [equipmentColumnRows] = await connection.execute(
+        `SELECT COLUMN_NAME AS column_name
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'equipments'`,
+        [config.database]
+      );
+      const equipmentColumns = new Set((equipmentColumnRows as any[]).map(row => row.column_name));
+      const equipmentActiveCondition = equipmentColumns.has("is_del") ? "AND (e.is_del IS NULL OR e.is_del != 1)" : "";
+      const [siteColumnRows] = await connection.execute(
+        `SELECT COLUMN_NAME AS column_name
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'sites'`,
+        [config.database]
+      );
+      const siteColumns = new Set((siteColumnRows as any[]).map(row => row.column_name));
+      const siteActiveCondition = siteColumns.has("is_del") ? "WHERE (s.is_del IS NULL OR s.is_del != 1)" : "";
       const [rows] = await connection.execute(
-        `SELECT id, abbr_name, ftp, longitude, latitude, altitude
-         FROM sites
-         WHERE ftp IS NOT NULL AND (is_del IS NULL OR is_del != 1)
-         ORDER BY id ASC`
+        `SELECT s.id,
+                s.abbr_name,
+                s.ftp,
+                GROUP_CONCAT(DISTINCT e.ftp ORDER BY e.ftp SEPARATOR ',') AS equipment_ftps,
+                GROUP_CONCAT(DISTINCT CONCAT(e.asset_type_id, ':', e.ftp) ORDER BY e.asset_type_id, e.ftp SEPARATOR ',') AS equipment_table_sources,
+                s.longitude,
+                s.latitude,
+                s.altitude
+         FROM sites s
+         INNER JOIN equipments e
+           ON e.site_id = s.id
+          AND e.ftp IS NOT NULL
+          AND e.ftp != ''
+          ${equipmentActiveCondition}
+         ${siteActiveCondition}
+         GROUP BY s.id, s.abbr_name, s.ftp, s.longitude, s.latitude, s.altitude
+         ORDER BY s.id ASC`
       );
       return { success: true, data: rows as any[] };
     } catch (error: any) {

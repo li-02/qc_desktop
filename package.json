@@ -1,6 +1,6 @@
 {
   "name": "qc-studio",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "QC Studio desktop application",
   "main": "public/dist/electron/main.js",
   "scripts": {

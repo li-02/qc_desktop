@@ -12,6 +12,7 @@
     },
     /* Vue 相关 */
     "allowImportingTsExtensions": true,
+    "noEmit": true,
     "isolatedModules": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,

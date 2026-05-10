@@ -84,9 +84,9 @@ export class MySQLController extends BaseController {
   /**
    * 获取保存的连接配置
    */
-  async getConnectionProfiles(args: Record<string, never>, event: IpcMainInvokeEvent) {
+  async getConnectionProfiles(args: { source?: string }, event: IpcMainInvokeEvent) {
     return this.handleAsync(async () => {
-      const result = this.mysqlService.getConnectionProfiles();
+      const result = this.mysqlService.getConnectionProfiles(args?.source);
       if (!result.success) throw new Error(result.error);
       return { profiles: result.data };
     });

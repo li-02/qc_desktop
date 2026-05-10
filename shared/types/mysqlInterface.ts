@@ -62,6 +62,7 @@ export interface DatabaseConnectionProfile {
   password: string;
   database: string;
   isDefault: boolean;
+  source?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -72,6 +73,7 @@ export interface SaveDatabaseConnectionProfileRequest {
   dbType?: DatabaseType;
   connection: MySQLConnectionConfig;
   isDefault?: boolean;
+  source?: string;
 }
 
 export type BEONSiteRuleType = "fallback_query" | "local_override";

@@ -2521,6 +2521,13 @@ export class DatabaseManager {
     if (!templateColumns.has("is_builtin")) {
       this.db.exec("ALTER TABLE conf_threshold_template ADD COLUMN is_builtin INTEGER DEFAULT 0;");
     }
+
+    // 检查并添加 conf_db_connection_profile 表的 source 字段
+    const connProfileInfo = this.db.prepare("PRAGMA table_info(conf_db_connection_profile)").all() as { name: string }[];
+    const connProfileColumns = new Set(connProfileInfo.map(c => c.name));
+    if (!connProfileColumns.has("source")) {
+      this.db.exec("ALTER TABLE conf_db_connection_profile ADD COLUMN source TEXT DEFAULT 'import-data';");
+    }
   }
 
   /**

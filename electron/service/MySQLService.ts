@@ -741,18 +741,23 @@ export class MySQLService {
   /**
    * 获取保存的数据库连接配置
    */
-  getConnectionProfiles(): ServiceResponse<DatabaseConnectionProfile[]> {
+  getConnectionProfiles(source?: string): ServiceResponse<DatabaseConnectionProfile[]> {
     try {
-      const rows = this.db
-        .prepare(
-          `
+      let query = `
           SELECT *
           FROM conf_db_connection_profile
           WHERE is_del = 0
-          ORDER BY is_default DESC, profile_name ASC
-        `
-        )
-        .all() as Array<any>;
+        `;
+      const params: any[] = [];
+
+      if (source) {
+        query += ` AND source = ?`;
+        params.push(source);
+      }
+
+      query += ` ORDER BY is_default DESC, profile_name ASC`;
+
+      const rows = this.db.prepare(query).all(...params) as Array<any>;
 
       return {
         success: true,
@@ -773,23 +778,33 @@ export class MySQLService {
       }
 
       const dbType: DatabaseType = request.dbType || "MYSQL";
-      const duplicate = this.db
-        .prepare(
-          `
+      let dupQuery = `
           SELECT id
           FROM conf_db_connection_profile
           WHERE profile_name = ? AND is_del = 0 AND (? IS NULL OR id != ?)
-        `
-        )
-        .get(request.profileName.trim(), request.id ?? null, request.id ?? null) as { id: number } | undefined;
+        `;
+      if (request.source) {
+        dupQuery += ` AND source = ?`;
+      }
+      const duplicate = this.db
+        .prepare(dupQuery)
+        .get(
+          request.profileName.trim(),
+          request.id ?? null,
+          request.id ?? null,
+          ...(request.source ? [request.source] : [])
+        ) as { id: number } | undefined;
 
       if (duplicate) {
         return { success: false, error: `连接名称已存在: ${request.profileName.trim()}` };
       }
 
       const activeCount = this.db
-        .prepare(`SELECT COUNT(*) as cnt FROM conf_db_connection_profile WHERE is_del = 0`)
-        .get() as { cnt: number };
+        .prepare(
+          `SELECT COUNT(*) as cnt FROM conf_db_connection_profile WHERE is_del = 0` +
+            (request.source ? ` AND source = ?` : "")
+        )
+        .get(...(request.source ? [request.source] : [])) as { cnt: number };
       const shouldBeDefault = request.isDefault === true || activeCount.cnt === 0;
 
       const trx = this.db.transaction(() => {
@@ -813,6 +828,7 @@ export class MySQLService {
                   user_name = ?,
                   password = ?,
                   database_name = ?,
+                  source = ?,
                   is_default = ?,
                   updated_at = CURRENT_TIMESTAMP
               WHERE id = ? AND is_del = 0
@@ -826,6 +842,7 @@ export class MySQLService {
               request.connection.user.trim(),
               encryptPassword(request.connection.password),
               request.connection.database.trim(),
+              request.source || null,
               shouldBeDefault ? 1 : 0,
               request.id
             );
@@ -836,8 +853,8 @@ export class MySQLService {
           .prepare(
             `
             INSERT INTO conf_db_connection_profile
-              (profile_name, db_type, host, port, user_name, password, database_name, is_default)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              (profile_name, db_type, host, port, user_name, password, database_name, source, is_default)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           `
           )
           .run(
@@ -848,6 +865,7 @@ export class MySQLService {
             request.connection.user.trim(),
             encryptPassword(request.connection.password),
             request.connection.database.trim(),
+            request.source || null,
             shouldBeDefault ? 1 : 0
           );
         return Number(info.lastInsertRowid);
@@ -1284,6 +1302,7 @@ export class MySQLService {
       password: decryptPassword(row.password || ""),
       database: row.database_name,
       isDefault: row.is_default === 1,
+      source: row.source || undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

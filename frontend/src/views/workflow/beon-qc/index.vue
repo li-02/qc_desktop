@@ -26,6 +26,7 @@
                     :value="Number(profile.id)" />
                 </el-select>
                 <el-button type="primary" plain @click="showConnDialog = true">新建连接</el-button>
+                <el-button plain @click="showManageConnDialog = true">管理连接</el-button>
               </div>
             </el-form-item>
             <el-form-item label="本地数据目录" required>
@@ -374,6 +375,41 @@
       </template>
     </el-dialog>
 
+    <!-- 管理连接弹窗 -->
+    <el-dialog
+      v-model="showManageConnDialog"
+      title="管理数据库连接"
+      width="780px"
+      :close-on-click-modal="false"
+      destroy-on-close>
+      <el-table :data="connectionProfiles" style="width: 100%" max-height="400" empty-text="暂无保存的连接">
+        <el-table-column prop="profileName" label="配置名称" min-width="150" show-overflow-tooltip />
+        <el-table-column label="连接地址" min-width="200" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.host }}:{{ row.port }}</template>
+        </el-table-column>
+        <el-table-column prop="database" label="数据库" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="createdAt" label="创建时间" width="160">
+          <template #default="{ row }">{{ row.createdAt?.slice(0, 16).replace("T", " ") }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="120" fixed="right">
+          <template #default="{ row }">
+            <el-popconfirm
+              title="确定删除该连接配置？"
+              confirm-button-text="删除"
+              cancel-button-text="取消"
+              @confirm="handleDeleteConnection(row)">
+              <template #reference>
+                <el-button type="danger" size="small" plain>删除</el-button>
+              </template>
+            </el-popconfirm>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="showManageConnDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 站点选择弹窗 -->
     <el-dialog
       v-model="showSitePickerDialog"
@@ -472,6 +508,9 @@ const dataTypeOptions: Array<{ value: BEONDataType; label: string }> = [
 // 新建连接弹窗
 const showConnDialog = ref(false);
 const testingConn = ref(false);
+
+// 管理连接弹窗
+const showManageConnDialog = ref(false);
 const connForm = reactive({
   profileName: "",
   host: "127.0.0.1",
@@ -677,7 +716,7 @@ const form = reactive({
 // Methods
 const loadConnectionProfiles = async () => {
   try {
-    const result = await window.electronAPI.invoke("mysql/get-connection-profiles", {});
+    const result = await window.electronAPI.invoke("mysql/get-connection-profiles", { source: "beon-qc" });
     if (result?.success && result.data?.profiles) {
       connectionProfiles.value = result.data.profiles;
       syncSelectedConnectionProfile();
@@ -731,7 +770,9 @@ const handleTestConnection = async () => {
       },
     });
     if (result?.success) {
-      ElMessage.success("连接成功");
+      ElMessage.success("连接成功，正在保存...");
+      // 测试成功后自动保存连接
+      await handleSaveConnection();
     } else {
       ElMessage.error(result?.error || "连接失败");
     }
@@ -747,6 +788,7 @@ const handleSaveConnection = async () => {
   try {
     const result = await window.electronAPI.invoke("mysql/save-connection-profile", {
       profileName: connForm.profileName.trim(),
+      source: "beon-qc",
       connection: {
         host: connForm.host,
         port: connForm.port,
@@ -777,6 +819,26 @@ const handleSaveConnection = async () => {
     }
   } catch (err) {
     ElMessage.error("保存连接配置失败");
+  }
+};
+
+const handleDeleteConnection = async (profile: DatabaseConnectionProfile) => {
+  try {
+    const result = await window.electronAPI.invoke("mysql/delete-connection-profile", {
+      id: profile.id,
+    });
+    if (result?.success) {
+      ElMessage.success(`已删除连接：${profile.profileName}`);
+      // 如果删除的是当前选中的连接，清除选择
+      if (form.connectionProfileId === profile.id) {
+        form.connectionProfileId = null;
+      }
+      await loadConnectionProfiles();
+    } else {
+      ElMessage.error(result?.error || "删除失败");
+    }
+  } catch (err) {
+    ElMessage.error("删除连接配置失败");
   }
 };
 

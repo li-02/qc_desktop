@@ -460,7 +460,7 @@ const submitImport = async () => {
 const loadDbConnectionProfiles = async () => {
   dbProfilesLoading.value = true;
   try {
-    const result = await window.electronAPI.invoke(API_ROUTES.MYSQL.GET_CONNECTION_PROFILES, {});
+    const result = await window.electronAPI.invoke(API_ROUTES.MYSQL.GET_CONNECTION_PROFILES, { source: "import-data" });
     if (result.success) {
       dbConnectionProfiles.value = result.data?.profiles || [];
     } else {
@@ -500,6 +500,7 @@ const saveCurrentDbConnectionProfile = async () => {
   const result = await window.electronAPI.invoke(API_ROUTES.MYSQL.SAVE_CONNECTION_PROFILE, {
     id: matchedProfile?.id,
     profileName: matchedProfile?.profileName || getDbProfileName(),
+    source: "import-data",
     connection: {
       host: dbConfig.value.host.trim(),
       port: dbConfig.value.port,
